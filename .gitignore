@@ -1,0 +1,35 @@
+# ===============================================================================
+# GITIGNORE - SISTEMA DE GESTIÓN DE STOCK PESCO S.A.
+# ===============================================================================
+
+# 1. Archivos de datos pesados y planillas (Excel, CSV, Parquet)
+*.xlsx
+*.xls
+*.csv
+*.parquet
+data/
+data_set.xlsx
+2907 00.- Proyeccion Stock Disponible Pañol 1.xls
+
+# 2. Reportes generados e imágenes exportadas (PDF, PNG, JPG)
+*.pdf
+*.png
+*.jpg
+*.jpeg
+reports/
+
+# 3. Archivos y carpetas temporales de Python y entornos virtuales
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+ENV/
+env/
+.pytest_cache/
+
+# 4. Archivos de configuración de editores y sistema operativo
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
