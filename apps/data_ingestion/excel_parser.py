@@ -408,7 +408,7 @@ def parse_and_ingest_excel(file_path_or_buffer):
             if final_disp_future < rop:
                 suggested_buy = max(0, rop - final_disp_future)
                 if final_disp_future <= 0:
-                    urgency        = 'CRITICO'
+                    urgency        = 'URGENTE'
                     shortage_units = max(0, rop - final_disp_future)
                 else:
                     urgency        = 'MEDIO'

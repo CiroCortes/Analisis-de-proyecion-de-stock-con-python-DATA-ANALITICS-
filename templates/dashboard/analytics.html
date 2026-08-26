@@ -146,8 +146,8 @@
             <span class="text-[10px] text-emerald-600 font-bold block mt-0.5">Reorden Activo</span>
         </div>
         <div class="bg-red-50 rounded-2xl border border-red-200 p-5 text-center shadow-sm">
-            <div class="text-[10px] font-bold text-red-600 uppercase tracking-wider">SKUs Críticos</div>
-            <div class="text-3xl font-black text-red-600 mt-1 font-mono">{{ total_criticos|default:"—" }}</div>
+            <div class="text-[10px] font-bold text-red-600 uppercase tracking-wider">SKUs Urgentes</div>
+            <div class="text-3xl font-black text-red-600 mt-1 font-mono">{{ total_urgentes|default:"—" }}</div>
             <span class="text-[10px] text-red-500 font-bold block mt-0.5">Stock &le; 0</span>
         </div>
         <div class="bg-amber-50 rounded-2xl border border-amber-200 p-5 text-center shadow-sm">
@@ -187,7 +187,7 @@
                 </div>
                 <ul class="space-y-1 pl-1">
                     <li class="flex items-start gap-1.5">
-                        <span class="text-red-500 font-black">🔴 CRÍTICO:</span>
+                        <span class="text-red-500 font-black">🔴 URGENTE:</span>
                         <span>Stock disponible proyectado &le; 0. Desabastecimiento inminente; requiere emisión urgente de orden de compra.</span>
                     </li>
                     <li class="flex items-start gap-1.5">
@@ -286,7 +286,7 @@
                     <strong>Fórmula:</strong> Días de Cobertura = Disponible Futuro / Demanda Diaria Promedio (DPD).
                 </p>
                 <div class="flex flex-wrap gap-2 pt-1 text-[10px]">
-                    <span class="bg-red-100 text-red-700 px-2 py-0.5 rounded font-bold">0-7 días: Quiebre crítico</span>
+                    <span class="bg-red-100 text-red-700 px-2 py-0.5 rounded font-bold">0-7 días: Quiebre urgente</span>
                     <span class="bg-amber-100 text-amber-700 px-2 py-0.5 rounded font-bold">8-30 días: Ciclo regular</span>
                     <span class="bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded font-bold">&gt; 90 días: Cobertura amplia</span>
                 </div>
@@ -318,7 +318,7 @@
             <div class="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
                 <div class="bg-white p-3 rounded-xl border border-red-100">
                     <span class="font-bold text-red-600">↗ Cuadrante Superior Derecho (Alta Demanda + Alto Quiebre):</span>
-                    <p class="text-slate-500 mt-0.5">Son los repuestos más críticos de la empresa. Tienen un ROP alto y muchas unidades en déficit. Requieren atención inmediata del equipo de Abastecimiento.</p>
+                    <p class="text-slate-500 mt-0.5">Son los repuestos más urgentes de la empresa. Tienen un ROP alto y muchas unidades en déficit. Requieren atención inmediata del equipo de Abastecimiento.</p>
                 </div>
                 <div class="bg-white p-3 rounded-xl border border-slate-200">
                     <span class="font-bold text-slate-700">↘ Cuadrante Inferior Izquierdo (Bajo ROP + Bajo Quiebre):</span>

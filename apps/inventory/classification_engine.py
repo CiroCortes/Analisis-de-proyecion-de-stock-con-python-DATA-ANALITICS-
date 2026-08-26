@@ -551,7 +551,7 @@ def run_drp_engine():
                         sug_transfer = 0
 
                 # Nivel de urgencia
-                urgency = 'CRITICO' if disp_fut <= 0 else 'MEDIO'
+                urgency = 'URGENTE' if disp_fut <= 0 else 'MEDIO'
                 shortage_units = deficit
                 shortage_usd = Decimal(str(deficit)) * cost_usd
 

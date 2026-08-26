@@ -18,7 +18,7 @@
    - Si `Disponible Futuro < ROP`:
      - `Unidades a Comprar = ROP - Disponible Futuro`
      - Si `Disponible Futuro <= 0`:
-       - `Nivel Urgencia = CRITICO`
+       - `Nivel Urgencia = URGENTE`
        - `Quiebre Unidades = abs(Disponible Futuro)`
      - Si `Disponible Futuro > 0`:
        - `Nivel Urgencia = MEDIO`

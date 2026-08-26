@@ -125,7 +125,8 @@ def configurar_grupos_view(request):
     search_q = request.GET.get('q', '').strip()
     categories = Category.objects.annotate(
         sku_count=Count('productsku', distinct=True),
-        criticos_count=Count('productsku__projections', filter=Q(productsku__projections__urgency_level='CRITICO'), distinct=True),
+        urgentes_count=Count('productsku__projections', filter=Q(productsku__projections__urgency_level='URGENTE'), distinct=True),
+        criticos_count=Count('productsku__projections', filter=Q(productsku__projections__urgency_level='URGENTE'), distinct=True),
         total_shortage=Sum('productsku__projections__shortage_usd')
     ).order_by('name')
 

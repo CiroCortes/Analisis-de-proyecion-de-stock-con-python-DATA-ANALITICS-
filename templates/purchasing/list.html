@@ -41,8 +41,8 @@
             <div class="text-2xl sm:text-3xl font-black text-emerald-700 mt-1 font-mono">{{ si_stock_count|default:"0" }}</div>
         </div>
         <div class="bg-red-50 rounded-2xl border border-red-200 p-4 sm:p-5 text-center shadow-sm">
-            <div class="text-[10px] font-bold text-red-600 uppercase tracking-wider">SKUs en Crítico</div>
-            <div class="text-2xl sm:text-3xl font-black text-red-600 mt-1 font-mono">{{ criticos_count|default:"0" }}</div>
+            <div class="text-[10px] font-bold text-red-600 uppercase tracking-wider">SKUs en Urgente</div>
+            <div class="text-2xl sm:text-3xl font-black text-red-600 mt-1 font-mono">{{ urgentes_count|default:"0" }}</div>
         </div>
         <div class="bg-indigo-50 rounded-2xl border border-indigo-200 p-4 sm:p-5 text-center shadow-sm">
             <div class="text-[10px] font-bold text-indigo-700 uppercase tracking-wider">Total Sugerido (u)</div>
@@ -163,7 +163,7 @@
                     </label>
                     <select name="urgency" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-pesco-cyan focus:border-pesco-cyan outline-none transition">
                         <option value="">-- Todos los Niveles --</option>
-                        <option value="CRITICO" {% if selected_urgency == 'CRITICO' %}selected{% endif %}>🔴 CRÍTICO (Stock ≤ 0)</option>
+                        <option value="URGENTE" {% if selected_urgency == 'URGENTE' %}selected{% endif %}>🔴 URGENTE (Stock ≤ 0)</option>
                         <option value="MEDIO" {% if selected_urgency == 'MEDIO' %}selected{% endif %}>🟡 MEDIO (Bajo ROP)</option>
                         <option value="NORMAL" {% if selected_urgency == 'NORMAL' %}selected{% endif %}>🟢 NORMAL (Stock Seguro)</option>
                     </select>
@@ -425,8 +425,8 @@
 
                         <!-- Urgencia -->
                         <td class="py-4 px-4 text-center">
-                            {% if proj.urgency_level == 'CRITICO' %}
-                            <span class="inline-flex items-center justify-center gap-1 px-3 py-1 bg-red-100 text-red-800 border border-red-200 rounded-full text-xs font-black shadow-sm">🔴 CRÍTICO</span>
+                            {% if proj.urgency_level == 'URGENTE' %}
+                            <span class="inline-flex items-center justify-center gap-1 px-3 py-1 bg-red-100 text-red-800 border border-red-200 rounded-full text-xs font-black shadow-sm">🔴 URGENTE</span>
                             {% elif proj.urgency_level == 'MEDIO' %}
                             <span class="inline-flex items-center justify-center gap-1 px-3 py-1 bg-amber-100 text-amber-800 border border-amber-200 rounded-full text-xs font-bold shadow-sm">🟡 MEDIO</span>
                             {% else %}

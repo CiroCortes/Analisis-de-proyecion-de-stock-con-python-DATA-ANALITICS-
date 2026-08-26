@@ -264,7 +264,7 @@ class StockProjection(models.Model):
     balanceo de inventario (Traslado Interno vs Compra a Proveedor).
     """
     URGENCY_CHOICES = [
-        ('CRITICO', '🔴 Crítico'),
+        ('URGENTE', '🔴 Urgente'),
         ('MEDIO', '🟡 Medio'),
         ('NORMAL', '🟢 Normal'),
     ]

@@ -21,13 +21,13 @@ def query_api_view(request):
     api_key = os.environ.get('GEMINI_API_KEY') or os.environ.get('GOOGLE_API_KEY')
     
     # Extraer contexto relevante de la base de datos (RAG simplificado sobre DB)
-    top_criticals = StockProjection.objects.filter(urgency_level='CRITICO').order_by('-shortage_usd')[:10]
+    top_urgentes = StockProjection.objects.filter(urgency_level='URGENTE').order_by('-shortage_usd')[:10]
     context_str = "CONTEXTO DE INVENTARIO PESCO S.A.:\n"
-    for proj in top_criticals:
+    for proj in top_urgentes:
         context_str += f"- SKU: {proj.product.code} | Desc: {proj.product.description} | Bodega: {proj.warehouse.code if proj.warehouse else 'Global'} | Sugerido Compra: {proj.suggested_buy_units} u | Quiebre USD: ${proj.shortage_usd}\n"
         
     if not api_key:
-        response_text = f"🤖 [Modo Simulado - Configura GEMINI_API_KEY en tu .env]\n\nBasándome en los datos del sistema Pesco S.A.:\nFound {top_criticals.count()} SKUs críticos.\n\nContexto analizado:\n{context_str}"
+        response_text = f"🤖 [Modo Simulado - Configura GEMINI_API_KEY en tu .env]\n\nBasándome en los datos del sistema Pesco S.A.:\nFound {top_urgentes.count()} SKUs urgentes.\n\nContexto analizado:\n{context_str}"
         return JsonResponse({'reply': response_text})
         
     try:

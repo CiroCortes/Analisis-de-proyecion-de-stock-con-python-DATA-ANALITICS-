@@ -52,5 +52,5 @@ Bodegas permitidas en el arnés:
 - `shortage_units`: IntegerField(default=0)   # Unidades en quiebre
 - `shortage_usd`: DecimalField(max_digits=14, decimal_places=2, default=0.00) # Quiebre en USD
 - `suggested_buy_units`: IntegerField(default=0) # Unidades a comprar recomendadas
-- `urgency_level`: CharField(max_length=20, choices=[('CRITICO', 'Crítico'), ('MEDIO', 'Medio'), ('NORMAL', 'Normal')])
+- `urgency_level`: CharField(max_length=20, choices=[('URGENTE', 'Urgente'), ('MEDIO', 'Medio'), ('NORMAL', 'Normal')])
 - `calculated_at`: DateTimeField(auto_now=True)

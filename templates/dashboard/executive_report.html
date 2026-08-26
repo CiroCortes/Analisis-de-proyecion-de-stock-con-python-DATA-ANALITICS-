@@ -125,8 +125,8 @@
     <!-- ═══ KPI CARDS ═══ -->
     <div class="grid grid-cols-2 md:grid-cols-6 gap-4">
         <div class="bg-white rounded-2xl border border-slate-200 p-4 text-center shadow-sm">
-            <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">SKUs Críticos</div>
-            <div class="text-2xl font-black text-red-600 mt-1 font-mono">{{ total_skus_criticos|default:"0" }}</div>
+            <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">SKUs Urgentes</div>
+            <div class="text-2xl font-black text-red-600 mt-1 font-mono">{{ total_skus_urgentes|default:"0" }}</div>
         </div>
         <div class="bg-white rounded-2xl border border-slate-200 p-4 text-center shadow-sm">
             <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Quiebre Total USD</div>
@@ -230,8 +230,8 @@
                             <span class="font-mono bg-slate-100 px-2 py-0.5 rounded text-slate-700">{{ item.bodega }}</span>
                         </td>
                         <td class="py-3 px-4 text-center">
-                            {% if item.urgency == 'CRITICO' %}
-                            <span class="px-2 py-0.5 bg-red-100 text-red-800 rounded-full text-[10px] font-black">🔴 CRÍTICO</span>
+                            {% if item.urgency == 'URGENTE' %}
+                            <span class="px-2 py-0.5 bg-red-100 text-red-800 rounded-full text-[10px] font-black">🔴 URGENTE</span>
                             {% else %}
                             <span class="px-2 py-0.5 bg-amber-100 text-amber-800 rounded-full text-[10px] font-bold">🟡 MEDIO</span>
                             {% endif %}

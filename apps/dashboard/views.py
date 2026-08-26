@@ -65,7 +65,7 @@ def dashboard_home_view(request):
         sku_qs = sku_qs.filter(classification__stock_policy=f['policy'])
 
     total_skus = sku_qs.count()
-    total_critical_skus = projections.filter(urgency_level='CRITICO').values('product').distinct().count()
+    total_critical_skus = projections.filter(urgency_level='URGENTE').values('product').distinct().count()
     total_shortage_usd = float(projections.aggregate(total=Sum('shortage_usd'))['total'] or 0)
     total_suggested_buy = projections.aggregate(total=Sum('suggested_buy_units'))['total'] or 0
 
@@ -81,17 +81,18 @@ def dashboard_home_view(request):
     target_warehouses = warehouses.filter(code=f['warehouse']) if f['warehouse'] else warehouses
     for wh in target_warehouses:
         wh_proj = projections.filter(warehouse=wh)
-        wh_crit = wh_proj.filter(urgency_level='CRITICO').count()
+        wh_crit = wh_proj.filter(urgency_level='URGENTE').count()
         wh_usd = float(wh_proj.aggregate(total=Sum('shortage_usd'))['total'] or 0)
         wh_stats.append({
             'code': wh.code,
             'name': wh.name,
             'critical_count': wh_crit,
+            'urgente_count': wh_crit,
             'shortage_usd': wh_usd,
         })
 
     top_critical_items = (
-        projections.filter(urgency_level='CRITICO')
+        projections.filter(urgency_level='URGENTE')
         .order_by('-shortage_usd')
         .select_related('product', 'warehouse', 'product__category', 'product__classification')[:15]
     )
@@ -99,6 +100,7 @@ def dashboard_home_view(request):
     context = {
         'total_skus': total_skus,
         'total_critical_skus': total_critical_skus,
+        'total_urgente_skus': total_critical_skus,
         'total_shortage_usd': total_shortage_usd,
         'total_suggested_buy': total_suggested_buy,
         'total_panol': total_panol,
@@ -147,7 +149,7 @@ def analytics_view(request):
 
     total_skus = sku_qs.count()
     total_shortage_usd = float(projections.aggregate(t=Sum('shortage_usd'))['t'] or 0)
-    total_criticos     = projections.filter(urgency_level='CRITICO').values('product').distinct().count()
+    total_urgentes     = projections.filter(urgency_level='URGENTE').values('product').distinct().count()
     total_medios       = projections.filter(urgency_level='MEDIO').values('product').distinct().count()
     total_normales     = projections.filter(urgency_level='NORMAL').values('product').distinct().count()
     total_sugerido     = projections.aggregate(t=Sum('suggested_buy_units'))['t'] or 0
@@ -160,7 +162,8 @@ def analytics_view(request):
     context = {
         'total_skus': total_skus,
         'total_shortage_usd': total_shortage_usd,
-        'total_criticos': total_criticos,
+        'total_urgentes': total_urgentes,
+        'total_criticos': total_urgentes,
         'total_medios': total_medios,
         'total_normales': total_normales,
         'total_sugerido': total_sugerido,
@@ -193,19 +196,19 @@ def api_chart_urgency_distribution(request):
         warehouses = warehouses.filter(code=f['warehouse'])
 
     labels = []
-    critico_data, medio_data, normal_data = [], [], []
+    urgente_data, medio_data, normal_data = [], [], []
 
     for wh in warehouses:
         proj_wh = projections.filter(warehouse=wh)
         labels.append(wh.code)
-        critico_data.append(proj_wh.filter(urgency_level='CRITICO').count())
+        urgente_data.append(proj_wh.filter(urgency_level='URGENTE').count())
         medio_data.append(proj_wh.filter(urgency_level='MEDIO').count())
         normal_data.append(proj_wh.filter(urgency_level='NORMAL').count())
 
     return JsonResponse({
         'labels': labels,
         'datasets': [
-            {'label': 'CRITICO', 'data': critico_data, 'backgroundColor': '#ef4444', 'hidden': False},
+            {'label': 'URGENTE', 'data': urgente_data, 'backgroundColor': '#ef4444', 'hidden': False},
             {'label': 'MEDIO',   'data': medio_data,   'backgroundColor': '#f59e0b', 'hidden': False},
             {'label': 'NORMAL',  'data': normal_data,  'backgroundColor': '#10b981', 'hidden': True},
         ]
@@ -250,7 +253,7 @@ def api_chart_top_shortage_skus(request):
     labels = [f"{p.product.code}" for p in top]
     data   = [float(p.shortage_usd) for p in top]
     urgencies = [p.urgency_level for p in top]
-    colors = ['#ef4444' if u == 'CRITICO' else '#f59e0b' for u in urgencies]
+    colors = ['#ef4444' if u == 'URGENTE' else '#f59e0b' for u in urgencies]
 
     return JsonResponse({
         'labels': labels,
@@ -415,7 +418,7 @@ def executive_report_view(request):
     pedido_ranking.sort(key=lambda x: x['valor_total'], reverse=True)
 
     # ── KPIs resumen sobre el conjunto filtrado ───────────────────────────────
-    total_skus_criticos = projections.filter(urgency_level='CRITICO').values('product').distinct().count()
+    total_skus_urgentes = projections.filter(urgency_level='URGENTE').values('product').distinct().count()
     total_quiebre_usd   = float(projections.aggregate(t=Sum('shortage_usd'))['t'] or 0)
     total_repo_r        = sku_qs.filter(classification__repo_category='R').count()
     total_repo_p        = sku_qs.filter(classification__repo_category='P').count()
@@ -435,7 +438,8 @@ def executive_report_view(request):
         'selected_policy': f['policy'],
         'quiebre_list': quiebre_list,
         'pedido_ranking': pedido_ranking[:30],
-        'total_skus_criticos': total_skus_criticos,
+        'total_skus_urgentes': total_skus_urgentes,
+        'total_skus_criticos': total_skus_urgentes,
         'total_quiebre_usd': total_quiebre_usd,
         'total_repo_r': total_repo_r,
         'total_repo_p': total_repo_p,
@@ -601,7 +605,7 @@ def api_quiebres_por_dias(request):
             'label': 'Días en Quiebre Estimados',
             'data': [r['dias'] for r in top20],
             'backgroundColor': [
-                '#ef4444' if r['urgency'] == 'CRITICO' else '#f59e0b'
+                '#ef4444' if r['urgency'] == 'URGENTE' else '#f59e0b'
                 for r in top20
             ],
             'borderRadius': 6,

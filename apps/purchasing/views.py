@@ -74,7 +74,7 @@ def purchasing_list_view(request):
     total_items           = projections.count()
     total_shortage_usd    = float(projections.aggregate(t=Sum('shortage_usd'))['t'] or 0)
     total_suggested_units = projections.aggregate(t=Sum('suggested_buy_units'))['t'] or 0
-    criticos_count        = projections.filter(urgency_level='CRITICO').count()
+    urgentes_count        = projections.filter(urgency_level='URGENTE').count()
     si_stock_count        = projections.filter(product__classification__stock_policy='SI_STOCK').count()
 
     # KPIs REPO
@@ -122,7 +122,8 @@ def purchasing_list_view(request):
         'total_items': total_items,
         'total_shortage_usd': total_shortage_usd,
         'total_suggested_units': total_suggested_units,
-        'criticos_count': criticos_count,
+        'urgentes_count': urgentes_count,
+        'criticos_count': urgentes_count,
         'si_stock_count': si_stock_count,
         # KPIs REPO
         'repo_r_count': repo_r_count,

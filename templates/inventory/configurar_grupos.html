@@ -135,7 +135,7 @@
                             <th class="py-4 px-5">Grupo de Materiales / Área</th>
                             <th class="py-4 px-5 text-center">Código SAP</th>
                             <th class="py-4 px-5 text-center">Total SKUs</th>
-                            <th class="py-4 px-5 text-center">SKUs Críticos</th>
+                            <th class="py-4 px-5 text-center">SKUs Urgentes</th>
                             <th class="py-4 px-5 text-right">Quiebre USD</th>
                             <th class="py-4 px-6 text-center w-36">Estado S&amp;OP</th>
                         </tr>
@@ -179,11 +179,11 @@
                                 {{ cat.sku_count|default:"0" }}
                             </td>
 
-                            <!-- SKUs Críticos -->
+                            <!-- SKUs Urgentes -->
                             <td class="py-4 px-5 text-center font-bold font-mono">
-                                {% if cat.criticos_count > 0 %}
+                                {% if cat.urgentes_count > 0 or cat.criticos_count > 0 %}
                                 <span class="text-red-600 bg-red-50 border border-red-200 px-2.5 py-0.5 rounded-full text-xs font-black">
-                                    {{ cat.criticos_count }}
+                                    {{ cat.urgentes_count|default:cat.criticos_count }}
                                 </span>
                                 {% else %}
                                 <span class="text-slate-400">0</span>
