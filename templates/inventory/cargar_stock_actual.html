@@ -1,0 +1,152 @@
+{% extends 'base.html' %}
+
+{% block title %}Carga Stock Actual SAP | Pesco S.A.{% endblock %}
+
+{% block content %}
+<div class="space-y-6 max-w-5xl mx-auto">
+
+    <!-- Header -->
+    <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 border-l-4 border-l-pesco-cyan">
+        <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+            <div>
+                <span class="text-xs font-bold text-pesco-cyan uppercase tracking-wider flex items-center gap-1.5">
+                    <i class="fa-solid fa-boxes-stacked"></i> Stock Actual de Bodegas — Archivo SAP con Precios
+                </span>
+                <h1 class="text-2xl font-black text-slate-900 mt-1">Carga de Stock Actual SAP</h1>
+                <p class="text-sm text-slate-500 mt-1">
+                    Suba el reporte de stock SAP con columnas de precio y bodega.
+                    Los costos se sincronizarán automáticamente con el módulo S&OP para calcular quiebres en USD reales.
+                </p>
+            </div>
+            <a href="{% url 'inventory:consultar_stock_actual' %}" class="bg-pesco-cyan hover:bg-pesco-darkcyan text-white text-xs font-bold px-5 py-3 rounded-full shadow transition flex items-center gap-2 uppercase tracking-wider">
+                <i class="fa-solid fa-table"></i> Ver Stock Actual
+            </a>
+        </div>
+    </div>
+
+    <!-- Formato Esperado -->
+    <div class="bg-amber-50 border border-amber-200 rounded-2xl p-4">
+        <div class="font-bold text-amber-800 text-sm flex items-center gap-2 mb-2">
+            <i class="fa-solid fa-circle-info"></i> Columnas requeridas en el Excel SAP:
+        </div>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs font-mono">
+            <span class="bg-white border border-amber-200 px-2 py-1 rounded font-bold text-amber-900">Codigo</span>
+            <span class="bg-white border border-amber-200 px-2 py-1 rounded font-bold text-amber-900">Descripcion</span>
+            <span class="bg-white border border-amber-200 px-2 py-1 rounded font-bold text-amber-900">Cod.Bodega</span>
+            <span class="bg-white border border-amber-200 px-2 py-1 rounded font-bold text-amber-900">Descripcion Bodega</span>
+            <span class="bg-white border border-slate-200 px-2 py-1 rounded text-slate-600">Stock</span>
+            <span class="bg-white border border-slate-200 px-2 py-1 rounded text-slate-600">Stock Reservado</span>
+            <span class="bg-emerald-50 border border-emerald-200 px-2 py-1 rounded text-emerald-700 font-bold">Precio $</span>
+            <span class="bg-emerald-50 border border-emerald-200 px-2 py-1 rounded text-emerald-700 font-bold">Total $</span>
+        </div>
+    </div>
+
+    <!-- KPIs de estado actual -->
+    {% if stats.total_skus %}
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 text-center shadow-sm">
+            <div class="text-xs font-bold text-slate-500 uppercase tracking-wider">SKUs Cargados</div>
+            <div class="text-2xl font-black text-pesco-cyan mt-1">{{ stats.total_skus }}</div>
+        </div>
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 text-center shadow-sm">
+            <div class="text-xs font-bold text-slate-500 uppercase tracking-wider">Bodegas</div>
+            <div class="text-2xl font-black text-slate-800 mt-1">{{ stats.total_bodegas }}</div>
+        </div>
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 text-center shadow-sm">
+            <div class="text-xs font-bold text-slate-500 uppercase tracking-wider">Unidades en Stock</div>
+            <div class="text-2xl font-black text-slate-800 mt-1">{{ stats.total_stock|default:"—" }}</div>
+        </div>
+        <div class="bg-emerald-50 rounded-2xl border border-emerald-200 p-4 text-center shadow-sm">
+            <div class="text-xs font-bold text-emerald-700 uppercase tracking-wider">Valorización Total</div>
+            <div class="text-xl font-black text-emerald-700 mt-1">
+                ${% if stats.total_valor %}{{ stats.total_valor|floatformat:0 }}{% else %}—{% endif %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Zona de Carga -->
+    <div class="bg-white rounded-3xl shadow-sm border border-slate-200 p-6 space-y-4">
+        <h3 class="text-base font-bold text-slate-900 flex items-center gap-2 border-b border-slate-100 pb-3">
+            <i class="fa-solid fa-upload text-pesco-cyan"></i> Cargar Archivo de Stock SAP
+        </h3>
+
+        {% if messages %}
+        {% for msg in messages %}
+        <div class="{% if 'correctamente' in msg|lower or 'registros' in msg|lower or 'cargaron' in msg|lower %}bg-emerald-50 border border-emerald-200 text-emerald-800{% else %}bg-red-50 border border-red-200 text-red-800{% endif %} text-sm font-bold px-4 py-3 rounded-xl flex items-start gap-2">
+            <i class="fa-solid {% if 'error' in msg|lower %}fa-triangle-exclamation text-red-500{% else %}fa-circle-check text-emerald-500{% endif %} mt-0.5"></i>
+            <span>{{ msg }}</span>
+        </div>
+        {% endfor %}
+        {% endif %}
+
+        <form method="post" enctype="multipart/form-data" class="space-y-4">
+            {% csrf_token %}
+            <div>
+                <label class="text-xs font-bold text-slate-700 uppercase tracking-wide mb-1.5 block">
+                    Archivo Excel de Stock SAP (.xlsx / .xls)
+                </label>
+                <input type="file" name="archivo_stock" accept=".xlsx,.xls" required
+                    class="w-full text-sm text-slate-600 file:mr-4 file:py-2.5 file:px-5 file:rounded-full file:border-0 file:text-xs file:font-bold file:bg-pesco-cyan file:text-white hover:file:bg-pesco-darkcyan cursor-pointer border border-slate-200 rounded-2xl p-3 bg-white">
+                <p class="text-xs text-slate-400 mt-1.5">
+                    <i class="fa-solid fa-bolt text-amber-400"></i>
+                    El sistema usará <strong>itertuples()</strong> + <strong>bulk_create</strong> para máxima velocidad.
+                    100.000+ filas en segundos.
+                </p>
+            </div>
+            <button type="submit" class="bg-pesco-cyan hover:bg-pesco-darkcyan text-white text-sm font-bold px-8 py-3.5 rounded-full shadow-md transition flex items-center gap-2">
+                <i class="fa-solid fa-database"></i> Procesar e Importar Stock SAP
+            </button>
+        </form>
+    </div>
+
+    <!-- Historial de Cargas -->
+    {% if historial %}
+    <div class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+        <div class="p-5 border-b border-slate-100">
+            <h3 class="text-base font-bold text-slate-900 flex items-center gap-2">
+                <i class="fa-solid fa-clock-rotate-left text-pesco-cyan"></i> Historial de Cargas (últimas 10)
+            </h3>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="w-full text-xs text-left font-medium">
+                <thead class="bg-slate-50 text-slate-500 uppercase tracking-wider text-[10px] border-b border-slate-200">
+                    <tr>
+                        <th class="py-3 px-4">#</th>
+                        <th class="py-3 px-4">Fecha</th>
+                        <th class="py-3 px-4">Archivo</th>
+                        <th class="py-3 px-4 text-center">Registros</th>
+                        <th class="py-3 px-4 text-center">SKUs</th>
+                        <th class="py-3 px-4 text-center">Bodegas</th>
+                        <th class="py-3 px-4 text-center">Tiempo</th>
+                        <th class="py-3 px-4 text-center">Estado</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100">
+                    {% for carga in historial %}
+                    <tr class="hover:bg-slate-50 transition">
+                        <td class="py-2.5 px-4 text-slate-500">#{{ carga.pk }}</td>
+                        <td class="py-2.5 px-4 text-slate-700 font-bold">{{ carga.fecha_carga|date:"d/m/Y H:i" }}</td>
+                        <td class="py-2.5 px-4 text-slate-600 max-w-[180px] truncate" title="{{ carga.nombre_archivo }}">{{ carga.nombre_archivo }}</td>
+                        <td class="py-2.5 px-4 text-center">{{ carga.total_registros|default:"—" }}</td>
+                        <td class="py-2.5 px-4 text-center">{{ carga.total_productos|default:"—" }}</td>
+                        <td class="py-2.5 px-4 text-center">{{ carga.total_bodegas|default:"—" }}</td>
+                        <td class="py-2.5 px-4 text-center">{% if carga.tiempo_proceso %}{{ carga.tiempo_proceso|floatformat:1 }}s{% else %}—{% endif %}</td>
+                        <td class="py-2.5 px-4 text-center">
+                            {% if carga.estado == 'completado' %}
+                            <span class="bg-emerald-100 text-emerald-800 border border-emerald-200 px-2 py-0.5 rounded-full font-black text-[10px]">OK</span>
+                            {% elif carga.estado == 'error' %}
+                            <span class="bg-red-100 text-red-800 border border-red-200 px-2 py-0.5 rounded-full font-black text-[10px]" title="{{ carga.mensaje_error }}">ERROR</span>
+                            {% else %}
+                            <span class="bg-amber-100 text-amber-800 border border-amber-200 px-2 py-0.5 rounded-full font-bold text-[10px]">PROC...</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

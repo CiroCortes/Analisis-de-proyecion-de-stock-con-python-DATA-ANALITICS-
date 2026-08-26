@@ -1,0 +1,491 @@
+{% extends 'base.html' %}
+{% load inventory_tags %}
+
+{% block title %}Recomendador de Compras S&amp;OP (Slim4 + REPO) | Pesco S.A.{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto space-y-6">
+
+    <!-- ═══════════════════════════════════════════════════════════
+         HEADER
+         ═══════════════════════════════════════════════════════════ -->
+    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-6 sm:p-7 rounded-3xl shadow-sm border border-slate-200 border-l-8 border-l-pesco-cyan">
+        <div>
+            <div class="flex items-center gap-2 flex-wrap">
+                <span class="text-xs font-bold text-pesco-cyan uppercase tracking-wider">Módulo de Aprovisionamiento S&amp;OP</span>
+                <span class="bg-indigo-100 text-indigo-800 text-[10px] font-black uppercase px-3 py-0.5 rounded-full border border-indigo-200 shadow-sm">
+                    <i class="fa-solid fa-brain mr-1"></i> Motor Slim4 Integrado
+                </span>
+                <span class="bg-emerald-100 text-emerald-800 text-[10px] font-black uppercase px-3 py-0.5 rounded-full border border-emerald-200 shadow-sm">
+                    <i class="fa-solid fa-tags mr-1"></i> Clasificación REPO
+                </span>
+            </div>
+            <h1 class="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight mt-1">Recomendador de Compras &amp; Políticas de Stock</h1>
+            <p class="text-sm text-slate-500 mt-1">Sugerido inteligente con Slim4, clasificación REPO dinámica (R/E/P/O) y balanceo de traslados vs compras.</p>
+        </div>
+        <a href="{% url 'reports:export_excel' %}" class="bg-pesco-cyan hover:bg-pesco-darkcyan text-white text-xs font-bold px-6 py-3.5 rounded-full shadow-md transition flex items-center gap-2 uppercase tracking-wider whitespace-nowrap">
+            <i class="fa-solid fa-file-excel"></i> Descargar Excel Sugerido
+        </a>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════
+         KPI CARDS — FILA 1: KPIs estándar
+         ═══════════════════════════════════════════════════════════ -->
+    <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 text-center shadow-sm">
+            <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Registros Filtrados</div>
+            <div class="text-2xl sm:text-3xl font-black text-slate-900 mt-1 font-mono">{{ total_items|default:"0" }}</div>
+        </div>
+        <div class="bg-emerald-50 rounded-2xl border border-emerald-200 p-4 sm:p-5 text-center shadow-sm">
+            <div class="text-[10px] font-bold text-emerald-700 uppercase tracking-wider">Política SÍ STOCK</div>
+            <div class="text-2xl sm:text-3xl font-black text-emerald-700 mt-1 font-mono">{{ si_stock_count|default:"0" }}</div>
+        </div>
+        <div class="bg-red-50 rounded-2xl border border-red-200 p-4 sm:p-5 text-center shadow-sm">
+            <div class="text-[10px] font-bold text-red-600 uppercase tracking-wider">SKUs en Crítico</div>
+            <div class="text-2xl sm:text-3xl font-black text-red-600 mt-1 font-mono">{{ criticos_count|default:"0" }}</div>
+        </div>
+        <div class="bg-indigo-50 rounded-2xl border border-indigo-200 p-4 sm:p-5 text-center shadow-sm">
+            <div class="text-[10px] font-bold text-indigo-700 uppercase tracking-wider">Total Sugerido (u)</div>
+            <div class="text-2xl sm:text-3xl font-black text-indigo-700 mt-1 font-mono">{{ total_suggested_units|default:"0" }}</div>
+        </div>
+        <div class="bg-slate-900 rounded-2xl border border-slate-700 p-4 sm:p-5 text-center shadow-sm" title="Total Exacto: {{ total_shortage_usd|full_usd }} USD">
+            <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Monto Total USD</div>
+            <div class="text-xl sm:text-2xl font-black text-white mt-1 font-mono">{{ total_shortage_usd|compact_usd }}</div>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════
+         KPI CARDS — FILA 2: REPO + Acciones DRP
+         ═══════════════════════════════════════════════════════════ -->
+    <div class="grid grid-cols-2 md:grid-cols-7 gap-3">
+        <!-- REPO Pills -->
+        <div class="md:col-span-4 grid grid-cols-4 gap-3">
+            <a href="?repo=R&{{ request.GET.urlencode }}" title="Ver solo materiales R (Rotación - VB)"
+               class="bg-blue-50 border border-blue-200 rounded-2xl p-3 text-center shadow-sm hover:shadow-md hover:border-blue-400 transition cursor-pointer group">
+                <div class="text-[10px] font-black text-blue-700 uppercase tracking-wider">[ R ] Rotación</div>
+                <div class="text-xl font-black text-blue-800 mt-0.5 font-mono">{{ repo_r_count|default:"0" }}</div>
+                <div class="text-[9px] text-blue-500 mt-0.5">VB · ROP estadístico</div>
+            </a>
+            <a href="?repo=E&{{ request.GET.urlencode }}" title="Ver solo materiales E (Estratégico - V1)"
+               class="bg-purple-50 border border-purple-200 rounded-2xl p-3 text-center shadow-sm hover:shadow-md hover:border-purple-400 transition cursor-pointer">
+                <div class="text-[10px] font-black text-purple-700 uppercase tracking-wider">[ E ] Estratégico</div>
+                <div class="text-xl font-black text-purple-800 mt-0.5 font-mono">{{ repo_e_count|default:"0" }}</div>
+                <div class="text-[9px] text-purple-500 mt-0.5">V1 · Stock mínimo</div>
+            </a>
+            <a href="?repo=P&{{ request.GET.urlencode }}" title="Ver solo materiales P (A Pedido - PD)"
+               class="bg-amber-50 border border-amber-200 rounded-2xl p-3 text-center shadow-sm hover:shadow-md hover:border-amber-400 transition cursor-pointer">
+                <div class="text-[10px] font-black text-amber-700 uppercase tracking-wider">[ P ] A Pedido</div>
+                <div class="text-xl font-black text-amber-800 mt-0.5 font-mono">{{ repo_p_count|default:"0" }}</div>
+                <div class="text-[9px] text-amber-500 mt-0.5">PD · Solo OF/PC</div>
+            </a>
+            <a href="?repo=O&{{ request.GET.urlencode }}" title="Ver solo materiales O (Obsoleto - ND)"
+               class="bg-rose-50 border border-rose-200 rounded-2xl p-3 text-center shadow-sm hover:shadow-md hover:border-rose-400 transition cursor-pointer">
+                <div class="text-[10px] font-black text-rose-700 uppercase tracking-wider">[ O ] Obsoleto</div>
+                <div class="text-xl font-black text-rose-800 mt-0.5 font-mono">{{ repo_o_count|default:"0" }}</div>
+                <div class="text-[9px] text-rose-500 mt-0.5">ND · Sin movimiento</div>
+            </a>
+        </div>
+        <!-- Acciones DRP Pills -->
+        <div class="md:col-span-3 grid grid-cols-3 gap-3">
+            <a href="?action=COMPRAR&{{ request.GET.urlencode }}" title="Ver solo recomendaciones de Compra a Proveedor"
+               class="bg-green-50 border border-green-200 rounded-2xl p-3 text-center shadow-sm hover:shadow-md hover:border-green-400 transition cursor-pointer">
+                <div class="text-[10px] font-black text-green-700 uppercase tracking-wider">🛒 Comprar</div>
+                <div class="text-xl font-black text-green-800 mt-0.5 font-mono">{{ action_comprar_count|default:"0" }}</div>
+                <div class="text-[9px] text-green-500 mt-0.5">a proveedor</div>
+            </a>
+            <a href="?action=TRASLADAR&{{ request.GET.urlencode }}" title="Ver solo recomendaciones de Traslado Interno"
+               class="bg-cyan-50 border border-cyan-200 rounded-2xl p-3 text-center shadow-sm hover:shadow-md hover:border-cyan-400 transition cursor-pointer">
+                <div class="text-[10px] font-black text-cyan-700 uppercase tracking-wider">🚚 Trasladar</div>
+                <div class="text-xl font-black text-cyan-800 mt-0.5 font-mono">{{ action_trasladar_count|default:"0" }}</div>
+                <div class="text-[9px] text-cyan-500 mt-0.5">desde Santiago</div>
+            </a>
+            <a href="?action=MIXTO&{{ request.GET.urlencode }}" title="Ver recomendaciones mixtas (Traslado + Compra)"
+               class="bg-orange-50 border border-orange-200 rounded-2xl p-3 text-center shadow-sm hover:shadow-md hover:border-orange-400 transition cursor-pointer">
+                <div class="text-[10px] font-black text-orange-700 uppercase tracking-wider">🔀 Mixto</div>
+                <div class="text-xl font-black text-orange-800 mt-0.5 font-mono">{{ action_mixto_count|default:"0" }}</div>
+                <div class="text-[9px] text-orange-500 mt-0.5">traslado + compra</div>
+            </a>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════
+         BARRA DE FILTROS AVANZADA
+         ═══════════════════════════════════════════════════════════ -->
+    <div class="bg-white p-5 sm:p-6 rounded-3xl shadow-sm border border-slate-200">
+        <form method="GET" action="{% url 'purchasing:list' %}" class="space-y-4">
+
+            <!-- Fila 1: Búsqueda, Grupo, Bodega, Urgencia -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div>
+                    <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                        <i class="fa-solid fa-magnifying-glass text-pesco-cyan mr-1"></i> Buscar SKU / Repuesto
+                    </label>
+                    <input type="text" name="search" value="{{ search_query }}" placeholder="Ej: 30202554 o Perno..."
+                           class="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-pesco-cyan focus:border-pesco-cyan outline-none transition">
+                </div>
+
+                <div>
+                    <div class="flex justify-between items-center mb-1">
+                        <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                            <i class="fa-solid fa-tags text-pesco-cyan mr-1"></i> Grupo de Materiales
+                        </label>
+                        <a href="{% url 'inventory:configurar_grupos' %}" class="text-[10px] font-bold text-pesco-cyan hover:underline">
+                            <i class="fa-solid fa-gear"></i> Configurar
+                        </a>
+                    </div>
+                    <select name="category" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-pesco-cyan focus:border-pesco-cyan outline-none transition">
+                        <option value="">-- {% if inactive_groups_count > 0 %}Grupos Activos S&amp;OP ({{ categories.count }} total){% else %}Todos los Grupos ({{ categories.count }}){% endif %} --</option>
+                        {% for cat in categories %}
+                        <option value="{{ cat.code }}" {% if selected_category == cat.code %}selected{% endif %}>
+                            {% if not cat.is_active %}⚪ [Excluido] {% endif %}{{ cat.name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div>
+                    <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                        <i class="fa-solid fa-warehouse text-pesco-cyan mr-1"></i> Bodega / Sucursal
+                    </label>
+                    <select name="warehouse" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-pesco-cyan focus:border-pesco-cyan outline-none transition">
+                        <option value="">-- Todas las Bodegas ({{ warehouses.count }}) --</option>
+                        {% for wh in warehouses %}
+                        <option value="{{ wh.code }}" {% if selected_wh == wh.code %}selected{% endif %}>
+                            {{ wh.code }} - {{ wh.name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div>
+                    <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                        <i class="fa-solid fa-triangle-exclamation text-pesco-cyan mr-1"></i> Nivel de Urgencia
+                    </label>
+                    <select name="urgency" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-pesco-cyan focus:border-pesco-cyan outline-none transition">
+                        <option value="">-- Todos los Niveles --</option>
+                        <option value="CRITICO" {% if selected_urgency == 'CRITICO' %}selected{% endif %}>🔴 CRÍTICO (Stock ≤ 0)</option>
+                        <option value="MEDIO" {% if selected_urgency == 'MEDIO' %}selected{% endif %}>🟡 MEDIO (Bajo ROP)</option>
+                        <option value="NORMAL" {% if selected_urgency == 'NORMAL' %}selected{% endif %}>🟢 NORMAL (Stock Seguro)</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Fila 2: Slim4 -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-3 border-t border-slate-100">
+                <div>
+                    <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                        <i class="fa-solid fa-layer-group text-pesco-cyan mr-1"></i> Segmento Negocio (Slim4)
+                    </label>
+                    <select name="segment" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-pesco-cyan focus:border-pesco-cyan outline-none transition">
+                        <option value="">-- Todos los Segmentos --</option>
+                        <option value="PANOL" {% if selected_segment == 'PANOL' %}selected{% endif %}>🛠️ Pañol (Nivel Servicio 95%)</option>
+                        <option value="REPUESTOS" {% if selected_segment == 'REPUESTOS' %}selected{% endif %}>⚙️ Repuestos y Accesorios</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                        <i class="fa-solid fa-chart-pie text-pesco-cyan mr-1"></i> Clasificación ABC (Año Móvil)
+                    </label>
+                    <select name="abc" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-pesco-cyan focus:border-pesco-cyan outline-none transition">
+                        <option value="">-- Todas las Clases ABC --</option>
+                        <option value="A" {% if selected_abc == 'A' %}selected{% endif %}>⭐ Clase A (9 a 12 meses activos)</option>
+                        <option value="B" {% if selected_abc == 'B' %}selected{% endif %}>🔹 Clase B (5 a 8 meses activos)</option>
+                        <option value="C" {% if selected_abc == 'C' %}selected{% endif %}>🔸 Clase C (1 a 4 meses activos)</option>
+                        <option value="D" {% if selected_abc == 'D' %}selected{% endif %}>⚪ Clase D (Sin movimiento 1 año)</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                        <i class="fa-solid fa-sliders text-pesco-cyan mr-1"></i> Política de Stock (Slim4)
+                    </label>
+                    <select name="policy" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-pesco-cyan focus:border-pesco-cyan outline-none transition">
+                        <option value="">-- Todas las Políticas --</option>
+                        <option value="SI_STOCK" {% if selected_policy == 'SI_STOCK' %}selected{% endif %}>🟢 SÍ STOCK (Reorden &amp; Seguridad)</option>
+                        <option value="NO_STOCK" {% if selected_policy == 'NO_STOCK' %}selected{% endif %}>⚪ NO STOCK (A Pedido / Apagado)</option>
+                    </select>
+                </div>
+
+                <div class="flex items-center gap-4 pt-4">
+                    <label class="inline-flex items-center gap-1.5 cursor-pointer text-xs font-bold text-slate-700">
+                        <input type="checkbox" name="inmovilizado" value="1" {% if filter_inmovilizado == '1' %}checked{% endif %} class="rounded text-pesco-cyan focus:ring-pesco-cyan">
+                        <span>⚠️ Inmovilizados</span>
+                    </label>
+                    <label class="inline-flex items-center gap-1.5 cursor-pointer text-xs font-bold text-slate-700">
+                        <input type="checkbox" name="nuevo" value="1" {% if filter_nuevo == '1' %}checked{% endif %} class="rounded text-pesco-cyan focus:ring-pesco-cyan">
+                        <span>🆕 Nuevos</span>
+                    </label>
+                </div>
+            </div>
+
+            <!-- Fila 3: Filtros REPO + Acción DRP (nuevos) -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-3 border-t border-slate-100">
+                <div>
+                    <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                        <i class="fa-solid fa-tags text-pesco-cyan mr-1"></i> Clasificación REPO (Dinámica Mensual)
+                    </label>
+                    <select name="repo" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-pesco-cyan focus:border-pesco-cyan outline-none transition">
+                        <option value="">-- Todas las Categorías REPO --</option>
+                        <option value="R" {% if selected_repo == 'R' %}selected{% endif %}>🔵 [ R ] Rotación (VB) — 2+ meses con movimiento</option>
+                        <option value="E" {% if selected_repo == 'E' %}selected{% endif %}>🟣 [ E ] Estratégico (V1) — Parte crítica</option>
+                        <option value="P" {% if selected_repo == 'P' %}selected{% endif %}>🟡 [ P ] A Pedido (PD) — Con OF o PC activa</option>
+                        <option value="O" {% if selected_repo == 'O' %}selected{% endif %}>🔴 [ O ] Obsoleto (ND) — Sin movimiento +12m</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                        <i class="fa-solid fa-route text-pesco-cyan mr-1"></i> Acción Sugerida (Balanceo DRP)
+                    </label>
+                    <select name="action" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-pesco-cyan focus:border-pesco-cyan outline-none transition">
+                        <option value="">-- Todas las Acciones --</option>
+                        <option value="COMPRAR"   {% if selected_action == 'COMPRAR' %}selected{% endif %}>🛒 COMPRAR — Ir a proveedor externo</option>
+                        <option value="TRASLADAR" {% if selected_action == 'TRASLADAR' %}selected{% endif %}>🚚 TRASLADAR — Mover desde bodega central</option>
+                        <option value="MIXTO"     {% if selected_action == 'MIXTO' %}selected{% endif %}>🔀 MIXTO — Traslado + Compra parcial</option>
+                        <option value="NINGUNA"   {% if selected_action == 'NINGUNA' %}selected{% endif %}>✅ NINGUNA — Sin acción requerida</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Botones -->
+            <div class="flex items-center justify-between pt-2 border-t border-slate-100">
+                <div class="flex flex-wrap items-center gap-2">
+                    <button type="submit" class="bg-pesco-cyan hover:bg-pesco-darkcyan text-white text-xs font-bold px-6 py-2.5 rounded-xl shadow transition flex items-center gap-2">
+                        <i class="fa-solid fa-filter"></i> Aplicar Filtros S&amp;OP
+                    </button>
+                    {% if selected_category or selected_wh or selected_urgency or search_query or selected_segment or selected_abc or selected_policy or filter_inmovilizado or filter_nuevo or selected_repo or selected_action %}
+                    <a href="{% url 'purchasing:list' %}" class="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold px-4 py-2.5 rounded-xl transition flex items-center gap-1.5" title="Limpiar todos los filtros">
+                        <i class="fa-solid fa-xmark"></i> Limpiar Filtros
+                    </a>
+                    {% endif %}
+                    {% if inactive_groups_count > 0 and not selected_category and not include_all_groups %}
+                    <a href="{% url 'inventory:configurar_grupos' %}" class="bg-rose-50 text-rose-800 border border-rose-200 font-bold px-3 py-1.5 rounded-xl text-xs shadow-sm hover:bg-rose-100 transition inline-flex items-center gap-1.5">
+                        <i class="fa-solid fa-sliders text-rose-600"></i> {{ inactive_groups_count }} grupos excluidos por defecto
+                    </a>
+                    {% endif %}
+                </div>
+                <span class="text-xs text-slate-400 font-medium hidden sm:inline">Mostrando página {{ page_obj.number }} de {{ page_obj.paginator.num_pages }}</span>
+            </div>
+        </form>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════
+         TABLA DE RECOMENDACIONES
+         ═══════════════════════════════════════════════════════════ -->
+    <div class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+        <div class="overflow-x-auto">
+            <table class="w-full text-left text-sm whitespace-nowrap min-w-[1350px]">
+                <thead class="bg-slate-100/80 text-slate-600 uppercase text-[11px] font-black tracking-wider border-b border-slate-200">
+                    <tr>
+                        <th class="py-4 px-5">Código SKU</th>
+                        <th class="py-4 px-5">Descripción Repuesto</th>
+                        <th class="py-4 px-4 text-center">Segmento</th>
+                        <th class="py-4 px-4 text-center">ABC</th>
+                        <th class="py-4 px-4 text-center">Política Stock</th>
+                        <!-- Nuevas columnas REPO y Acción -->
+                        <th class="py-4 px-4 text-center bg-blue-50 text-blue-700 border-l border-blue-200">REPO</th>
+                        <th class="py-4 px-4 text-center bg-teal-50 text-teal-700 border-r border-teal-200">Acción Sugerida</th>
+                        <th class="py-4 px-4 text-center">Bodega</th>
+                        <th class="py-4 px-4 text-center">Urgencia</th>
+                        <th class="py-4 px-4 text-center">Demanda (DPD)</th>
+                        <th class="py-4 px-5 text-center bg-pesco-lightcyan/40 font-black text-pesco-darkcyan">Sugerido</th>
+                        <th class="py-4 px-6 text-right">Quiebre (USD)</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100 font-medium text-xs">
+                    {% for proj in projections %}
+                    <tr class="hover:bg-pesco-lightcyan/20 transition group">
+
+                        <!-- SKU -->
+                        <td class="py-4 px-5 font-bold font-mono text-pesco-cyan text-sm">
+                            <a href="{% url 'inventory:sku_detail' proj.product.code %}" class="hover:underline inline-flex items-center gap-1.5">
+                                <i class="fa-solid fa-box-open text-xs"></i> {{ proj.product.code }}
+                            </a>
+                        </td>
+
+                        <!-- Descripción + Badges Nuevo/Inmovilizado -->
+                        <td class="py-4 px-5 text-slate-800 max-w-xs truncate font-medium">
+                            <span title="{{ proj.product.description }}">{{ proj.product.description }}</span>
+                            {% if proj.product.classification.is_new %}
+                            <span class="ml-1.5 bg-blue-100 text-blue-800 text-[9px] font-black px-2 py-0.5 rounded border border-blue-200">NUEVO</span>
+                            {% endif %}
+                            {% if proj.product.classification.is_inmovilizado %}
+                            <span class="ml-1.5 bg-rose-100 text-rose-800 text-[9px] font-black px-2 py-0.5 rounded border border-rose-200">INMOVILIZADO</span>
+                            {% endif %}
+                        </td>
+
+                        <!-- Segmento S&OP -->
+                        <td class="py-4 px-4 text-center">
+                            {% if proj.product.classification.segment == 'PANOL' %}
+                            <span class="inline-flex items-center justify-center px-3 py-1 bg-amber-100 text-amber-800 border border-amber-200 rounded-full text-[10px] font-black">🛠️ Pañol</span>
+                            {% else %}
+                            <span class="inline-flex items-center justify-center px-3 py-1 bg-blue-50 text-blue-800 border border-blue-200 rounded-full text-[10px] font-bold">⚙️ Repuestos</span>
+                            {% endif %}
+                        </td>
+
+                        <!-- Clase ABC -->
+                        <td class="py-4 px-4 text-center">
+                            {% if proj.product.classification.abc_class == 'A' %}
+                            <span class="inline-flex items-center justify-center min-w-[44px] px-2.5 py-1 bg-emerald-100 text-emerald-800 font-black rounded-full text-xs shadow-sm" title="9 a 12 meses activos">⭐ A</span>
+                            {% elif proj.product.classification.abc_class == 'B' %}
+                            <span class="inline-flex items-center justify-center min-w-[44px] px-2.5 py-1 bg-teal-100 text-teal-800 font-bold rounded-full text-xs shadow-sm" title="5 a 8 meses activos">🔹 B</span>
+                            {% elif proj.product.classification.abc_class == 'C' %}
+                            <span class="inline-flex items-center justify-center min-w-[44px] px-2.5 py-1 bg-slate-100 text-slate-700 font-bold rounded-full text-xs shadow-sm" title="1 a 4 meses activos">🔸 C</span>
+                            {% else %}
+                            <span class="inline-flex items-center justify-center min-w-[44px] px-2.5 py-1 bg-slate-100 text-slate-400 font-medium rounded-full text-xs shadow-sm" title="Sin ventas en el año">⚪ D</span>
+                            {% endif %}
+                        </td>
+
+                        <!-- Política Stock -->
+                        <td class="py-4 px-4 text-center">
+                            {% if proj.product.classification.stock_policy == 'SI_STOCK' %}
+                            <span class="inline-flex items-center justify-center px-3 py-1 bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-full text-[10px] font-black" title="{{ proj.product.classification.stock_policy_reason }}">🟢 SÍ STOCK</span>
+                            {% else %}
+                            <span class="inline-flex items-center justify-center px-3 py-1 bg-slate-100 text-slate-500 border border-slate-200 rounded-full text-[10px] font-semibold" title="{{ proj.product.classification.stock_policy_reason }}">⚪ A PEDIDO</span>
+                            {% endif %}
+                        </td>
+
+                        <!-- ══ NUEVA COLUMNA: Clasificación REPO ══ -->
+                        <td class="py-4 px-4 text-center bg-blue-50/30 border-l border-blue-100">
+                            {% with repo=proj.product.classification.repo_category %}
+                            {% if repo == 'R' %}
+                            <span class="inline-flex items-center justify-center gap-1 px-3 py-1.5 bg-blue-100 text-blue-800 border border-blue-300 rounded-full text-[11px] font-black shadow-sm"
+                                  title="Rotación (VB) — consumo en {{ proj.product.classification.consumption_freq_12m }} meses del año · ROP: {{ proj.product.classification.rop_statistical }} u">
+                                🔵 R
+                            </span>
+                            <div class="text-[9px] text-blue-500 mt-0.5">VB · {{ proj.product.classification.consumption_freq_12m }}m/año</div>
+                            {% elif repo == 'E' %}
+                            <span class="inline-flex items-center justify-center gap-1 px-3 py-1.5 bg-purple-100 text-purple-800 border border-purple-300 rounded-full text-[11px] font-black shadow-sm"
+                                  title="Estratégico (V1) — Parte crítica con stock mínimo fijado · SS: {{ proj.product.classification.safety_stock_statistical }} u">
+                                🟣 E
+                            </span>
+                            <div class="text-[9px] text-purple-500 mt-0.5">V1 · crítico</div>
+                            {% elif repo == 'P' %}
+                            <span class="inline-flex items-center justify-center gap-1 px-3 py-1.5 bg-amber-100 text-amber-800 border border-amber-300 rounded-full text-[11px] font-black shadow-sm"
+                                  title="A Pedido (PD) — Con OF o PC activa. Comprar solo lo pedido.">
+                                🟡 P
+                            </span>
+                            <div class="text-[9px] text-amber-500 mt-0.5">PD · con pedido</div>
+                            {% else %}
+                            <span class="inline-flex items-center justify-center gap-1 px-3 py-1.5 bg-rose-100 text-rose-700 border border-rose-200 rounded-full text-[11px] font-semibold shadow-sm"
+                                  title="Obsoleto (ND) — Sin movimiento en más de 12 meses, sin pedidos activos.">
+                                🔴 O
+                            </span>
+                            <div class="text-[9px] text-rose-400 mt-0.5">ND · sin movimiento</div>
+                            {% endif %}
+                            {% endwith %}
+                        </td>
+
+                        <!-- ══ NUEVA COLUMNA: Acción Sugerida DRP ══ -->
+                        <td class="py-4 px-4 text-center bg-teal-50/30 border-r border-teal-100">
+                            {% if proj.action_type == 'TRASLADAR' %}
+                            <span class="inline-flex items-center justify-center gap-1 px-3 py-1.5 bg-cyan-100 text-cyan-800 border border-cyan-300 rounded-full text-[11px] font-black shadow-sm"
+                                  title="Trasladar {{ proj.suggested_transfer_units }} u desde bodega {{ proj.transfer_source_warehouse.code|default:'Central' }} hacia {{ proj.warehouse.code }}">
+                                🚚 TRASLADAR
+                            </span>
+                            <div class="text-[10px] text-cyan-700 mt-1 font-semibold">
+                                <span class="font-bold text-slate-800">{{ proj.suggested_transfer_units }} u</span>
+                                <span class="text-cyan-600 font-mono">desde {{ proj.transfer_source_warehouse.code|default:"Stgo" }}</span>
+                                <span class="text-slate-400">➔</span>
+                                <span class="text-slate-900 font-mono font-bold">{{ proj.warehouse.code }}</span>
+                            </div>
+                            {% elif proj.action_type == 'COMPRAR' %}
+                            <span class="inline-flex items-center justify-center gap-1 px-3 py-1.5 bg-green-100 text-green-800 border border-green-300 rounded-full text-[11px] font-black shadow-sm"
+                                  title="Comprar {{ proj.suggested_buy_units }} u a proveedor externo para bodega {{ proj.warehouse.code }}">
+                                🛒 COMPRAR
+                            </span>
+                            <div class="text-[10px] text-green-700 mt-1 font-semibold">
+                                <span class="font-bold text-slate-900">{{ proj.suggested_buy_units }} u</span> a proveedor
+                                <span class="text-slate-400">➔</span>
+                                <span class="text-slate-900 font-mono font-bold">{{ proj.warehouse.code }}</span>
+                            </div>
+                            {% elif proj.action_type == 'MIXTO' %}
+                            <span class="inline-flex items-center justify-center gap-1 px-3 py-1.5 bg-orange-100 text-orange-800 border border-orange-300 rounded-full text-[11px] font-black shadow-sm"
+                                  title="Trasladar {{ proj.suggested_transfer_units }} u + Comprar {{ proj.suggested_buy_units }} u">
+                                🔀 MIXTO
+                            </span>
+                            <div class="text-[10px] text-orange-700 mt-1 font-semibold">
+                                🚚 {{ proj.suggested_transfer_units }}u desde {{ proj.transfer_source_warehouse.code|default:"Stgo" }} +
+                                🛒 {{ proj.suggested_buy_units }}u cmp
+                            </div>
+                            {% else %}
+                            <span class="inline-flex items-center justify-center gap-1 px-3 py-1.5 bg-slate-100 text-slate-500 border border-slate-200 rounded-full text-[11px] font-medium">
+                                ✅ Sin acción
+                            </span>
+                            {% endif %}
+                        </td>
+
+                        <!-- Bodega -->
+                        <td class="py-4 px-4 text-center">
+                            <span class="inline-flex items-center justify-center min-w-[70px] px-2.5 py-1 bg-slate-100 text-slate-800 font-mono font-bold rounded-lg border border-slate-200 text-xs">
+                                {{ proj.warehouse.code|default:"Global" }}
+                            </span>
+                        </td>
+
+                        <!-- Urgencia -->
+                        <td class="py-4 px-4 text-center">
+                            {% if proj.urgency_level == 'CRITICO' %}
+                            <span class="inline-flex items-center justify-center gap-1 px-3 py-1 bg-red-100 text-red-800 border border-red-200 rounded-full text-xs font-black shadow-sm">🔴 CRÍTICO</span>
+                            {% elif proj.urgency_level == 'MEDIO' %}
+                            <span class="inline-flex items-center justify-center gap-1 px-3 py-1 bg-amber-100 text-amber-800 border border-amber-200 rounded-full text-xs font-bold shadow-sm">🟡 MEDIO</span>
+                            {% else %}
+                            <span class="inline-flex items-center justify-center gap-1 px-3 py-1 bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-full text-xs font-bold shadow-sm">🟢 NORMAL</span>
+                            {% endif %}
+                        </td>
+
+                        <!-- Demanda Real (DPD) -->
+                        <td class="py-4 px-4 text-center text-xs font-mono font-bold text-slate-700">
+                            {{ proj.product.classification.avg_daily_demand|default:"0.0000" }} u/d
+                            <span class="block text-[10px] text-slate-400 font-normal">({{ proj.product.classification.annual_demand_units|default:"0" }} u/año)</span>
+                        </td>
+
+                        <!-- Sugerido Compra -->
+                        <td class="py-4 px-5 text-center font-black font-mono text-slate-900 text-base bg-pesco-lightcyan/40 border-l border-r border-pesco-cyan/10">
+                            {% if proj.suggested_buy_units > 0 %}
+                                {{ proj.suggested_buy_units }} u
+                            {% else %}
+                                <span class="text-slate-400 text-sm font-medium">—</span>
+                            {% endif %}
+                        </td>
+
+                        <!-- Quiebre USD -->
+                        <td class="py-4 px-6 text-right font-black font-mono text-sm {% if proj.shortage_usd > 0 %}text-red-600{% else %}text-slate-400{% endif %}" title="Valor Exacto: {{ proj.shortage_usd|full_usd }} USD">
+                            {{ proj.shortage_usd|compact_usd }}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="12" class="py-12 text-center text-slate-400 text-sm">
+                            <i class="fa-solid fa-inbox text-3xl mb-2 block"></i> No se encontraron productos con los filtros seleccionados.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Paginación -->
+        {% if page_obj.has_other_pages %}
+        <div class="bg-slate-50 px-6 py-4 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
+            <span class="text-slate-500">
+                Página <strong>{{ page_obj.number }}</strong> de <strong>{{ page_obj.paginator.num_pages }}</strong> (Total: {{ total_items }} sugeridos)
+            </span>
+            <div class="flex items-center gap-1">
+                {% if page_obj.has_previous %}
+                <a href="?page=1{% if search_query %}&search={{ search_query }}{% endif %}{% if selected_category %}&category={{ selected_category }}{% endif %}{% if selected_wh %}&warehouse={{ selected_wh }}{% endif %}{% if selected_urgency %}&urgency={{ selected_urgency }}{% endif %}{% if selected_segment %}&segment={{ selected_segment }}{% endif %}{% if selected_abc %}&abc={{ selected_abc }}{% endif %}{% if selected_policy %}&policy={{ selected_policy }}{% endif %}{% if filter_inmovilizado %}&inmovilizado={{ filter_inmovilizado }}{% endif %}{% if filter_nuevo %}&nuevo={{ filter_nuevo }}{% endif %}{% if selected_repo %}&repo={{ selected_repo }}{% endif %}{% if selected_action %}&action={{ selected_action }}{% endif %}" class="px-3 py-1.5 bg-white border border-slate-200 rounded-lg hover:bg-slate-100 font-bold">&laquo; Primera</a>
+                <a href="?page={{ page_obj.previous_page_number }}{% if search_query %}&search={{ search_query }}{% endif %}{% if selected_category %}&category={{ selected_category }}{% endif %}{% if selected_wh %}&warehouse={{ selected_wh }}{% endif %}{% if selected_urgency %}&urgency={{ selected_urgency }}{% endif %}{% if selected_segment %}&segment={{ selected_segment }}{% endif %}{% if selected_abc %}&abc={{ selected_abc }}{% endif %}{% if selected_policy %}&policy={{ selected_policy }}{% endif %}{% if filter_inmovilizado %}&inmovilizado={{ filter_inmovilizado }}{% endif %}{% if filter_nuevo %}&nuevo={{ filter_nuevo }}{% endif %}{% if selected_repo %}&repo={{ selected_repo }}{% endif %}{% if selected_action %}&action={{ selected_action }}{% endif %}" class="px-3 py-1.5 bg-white border border-slate-200 rounded-lg hover:bg-slate-100 font-bold">&lsaquo; Anterior</a>
+                {% endif %}
+
+                <span class="px-3 py-1.5 bg-pesco-cyan text-white rounded-lg font-black">{{ page_obj.number }}</span>
+
+                {% if page_obj.has_next %}
+                <a href="?page={{ page_obj.next_page_number }}{% if search_query %}&search={{ search_query }}{% endif %}{% if selected_category %}&category={{ selected_category }}{% endif %}{% if selected_wh %}&warehouse={{ selected_wh }}{% endif %}{% if selected_urgency %}&urgency={{ selected_urgency }}{% endif %}{% if selected_segment %}&segment={{ selected_segment }}{% endif %}{% if selected_abc %}&abc={{ selected_abc }}{% endif %}{% if selected_policy %}&policy={{ selected_policy }}{% endif %}{% if filter_inmovilizado %}&inmovilizado={{ filter_inmovilizado }}{% endif %}{% if filter_nuevo %}&nuevo={{ filter_nuevo }}{% endif %}{% if selected_repo %}&repo={{ selected_repo }}{% endif %}{% if selected_action %}&action={{ selected_action }}{% endif %}" class="px-3 py-1.5 bg-white border border-slate-200 rounded-lg hover:bg-slate-100 font-bold">Siguiente &rsaquo;</a>
+                <a href="?page={{ page_obj.paginator.num_pages }}{% if search_query %}&search={{ search_query }}{% endif %}{% if selected_category %}&category={{ selected_category }}{% endif %}{% if selected_wh %}&warehouse={{ selected_wh }}{% endif %}{% if selected_urgency %}&urgency={{ selected_urgency }}{% endif %}{% if selected_segment %}&segment={{ selected_segment }}{% endif %}{% if selected_abc %}&abc={{ selected_abc }}{% endif %}{% if selected_policy %}&policy={{ selected_policy }}{% endif %}{% if filter_inmovilizado %}&inmovilizado={{ filter_inmovilizado }}{% endif %}{% if filter_nuevo %}&nuevo={{ filter_nuevo }}{% endif %}{% if selected_repo %}&repo={{ selected_repo }}{% endif %}{% if selected_action %}&action={{ selected_action }}{% endif %}" class="px-3 py-1.5 bg-white border border-slate-200 rounded-lg hover:bg-slate-100 font-bold">Última &raquo;</a>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,130 @@
+{% extends 'base.html' %}
+
+{% block title %}Asistente IA S&OP RAG | Pesco S.A.{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto h-[80vh] flex flex-col bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+    
+    <!-- Chat Header -->
+    <div class="bg-pesco-dark text-white p-5 border-b-4 border-pesco-red flex items-center justify-between">
+        <div class="flex items-center space-x-3">
+            <div class="bg-pesco-red p-2.5 rounded-xl text-white">
+                <i class="fa-solid fa-robot text-xl"></i>
+            </div>
+            <div>
+                <h2 class="text-lg font-bold">Asistente IA S&OP Pesco (RAG Gemini Flash)</h2>
+                <p class="text-xs text-slate-400">Consultas inteligentes sobre quiebres, bodegas y recomendaciones en lenguaje natural.</p>
+            </div>
+        </div>
+        <span class="bg-emerald-500/20 text-emerald-300 text-xs px-3 py-1 rounded-full font-bold border border-emerald-500/30 flex items-center gap-1.5">
+            <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span> Online
+        </span>
+    </div>
+
+    <!-- Chat Messages Window -->
+    <div id="chatMessages" class="flex-1 p-6 overflow-y-auto space-y-4 bg-slate-50/50">
+        <!-- Initial Bot Welcome -->
+        <div class="flex items-start space-x-3">
+            <div class="bg-pesco-red text-white p-2 rounded-xl text-sm font-bold shadow">
+                <i class="fa-solid fa-robot"></i>
+            </div>
+            <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 text-sm max-w-xl text-slate-800 space-y-2">
+                <p class="font-bold text-pesco-red">¡Hola! Soy tu Asistente Senior S&OP de Pesco S.A.</p>
+                <p>Puedo ayudarte a analizar la base de datos de inventario. Prueba preguntarme:</p>
+                <ul class="list-disc pl-5 text-xs text-slate-600 space-y-1">
+                    <li><em>"¿Cuáles son los productos con mayor quiebre en USD?"</em></li>
+                    <li><em>"¿Qué bodegas tienen mayor riesgo de desabastecimiento?"</em></li>
+                    <li><em>"Genera un informe rápido de los 5 SKUs críticos."</em></li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <!-- Input Form Footer -->
+    <div class="p-4 bg-white border-t border-slate-200">
+        <form id="chatForm" class="flex gap-3">
+            {% csrf_token %}
+            <input type="text" id="userPrompt" required
+                   placeholder="Escribe tu consulta sobre el inventario aquí..."
+                   class="flex-1 px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-pesco-red">
+            <button type="submit" id="sendBtn"
+                    class="bg-pesco-red hover:bg-pesco-darkred text-white font-bold px-6 py-3 rounded-xl transition shadow flex items-center gap-2">
+                <span>Enviar</span> <i class="fa-solid fa-paper-plane"></i>
+            </button>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.getElementById('chatForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const promptInput = document.getElementById('userPrompt');
+        const prompt = promptInput.value.trim();
+        if (!prompt) return;
+
+        const chatMessages = document.getElementById('chatMessages');
+        const sendBtn = document.getElementById('sendBtn');
+
+        // Append User Message
+        const userDiv = document.createElement('div');
+        userDiv.className = 'flex items-start justify-end space-x-3';
+        userDiv.innerHTML = `
+            <div class="bg-pesco-red text-white p-4 rounded-2xl shadow-sm text-sm max-w-xl">
+                ${prompt}
+            </div>
+        `;
+        chatMessages.appendChild(userDiv);
+        promptInput.value = '';
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+
+        // Append Typing Indicator
+        const typingDiv = document.createElement('div');
+        typingDiv.className = 'flex items-start space-x-3 id-typing';
+        typingDiv.innerHTML = `
+            <div class="bg-pesco-red text-white p-2 rounded-xl text-sm font-bold shadow">
+                <i class="fa-solid fa-robot"></i>
+            </div>
+            <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 text-sm text-slate-500 italic">
+                Analizando base de datos con Gemini RAG...
+            </div>
+        `;
+        chatMessages.appendChild(typingDiv);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+
+        // Fetch API
+        const formData = new FormData();
+        formData.append('prompt', prompt);
+        formData.append('csrfmiddlewaretoken', document.querySelector('[name=csrfmiddlewaretoken]').value);
+
+        try {
+            const res = await fetch("{% url 'ai_assistant:query_api' %}", {
+                method: 'POST',
+                body: formData
+            });
+            const data = await res.json();
+            
+            // Remove typing indicator
+            typingDiv.remove();
+
+            // Append Bot Response
+            const botDiv = document.createElement('div');
+            botDiv.className = 'flex items-start space-x-3';
+            botDiv.innerHTML = `
+                <div class="bg-pesco-red text-white p-2 rounded-xl text-sm font-bold shadow">
+                    <i class="fa-solid fa-robot"></i>
+                </div>
+                <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 text-sm max-w-xl text-slate-800 whitespace-pre-wrap">
+                    ${data.reply || data.error}
+                </div>
+            `;
+            chatMessages.appendChild(botDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        } catch (err) {
+            typingDiv.remove();
+            alert("Error al comunicarse con la IA: " + err.message);
+        }
+    });
+</script>
+{% endblock %}

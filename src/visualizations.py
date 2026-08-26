@@ -35,22 +35,17 @@ plt.rcParams['axes.edgecolor'] = '#cccccc'
 plt.rcParams['axes.linewidth'] = 0.8
 
 # -----------------------------------------------------------------------------
-# GRÁFICO 1: Distribución de Stock Físico por Sucursal / Bodega
+# GRÁFICO 1: Distribución de Stock Físico por Grupo de Artículos
 # -----------------------------------------------------------------------------
-print("📈 Generando Gráfico 1: Stock por Bodega...")
+print("📈 Generando Gráfico 1: Stock por Grupo Artículo (013-PP)...")
 
-bodegas = [
-    'Stock Antofagasta', 'Stock Calama', 'Stock Copiapo', 'Stock Los Angeles', 
-    'Stock Puerto Montt', 'Stock 013-07', 'Stock 013-09', 'Stock 013-PS', 'Stock 013-PP'
-]
-
-df_bodegas = df[bodegas].sum().reset_index()
-df_bodegas.columns = ['Bodega', 'Unidades']
-df_bodegas['Bodega'] = df_bodegas['Bodega'].str.replace('Stock ', '')
-df_bodegas = df_bodegas.sort_values(by='Unidades', ascending=True)
+df_grupos = df.groupby('Grupo Articulo')['Stock Total'].sum().reset_index()
+df_grupos.columns = ['Grupo Articulo', 'Unidades']
+df_grupos = df_grupos[df_grupos['Unidades'] > 0]
+df_grupos = df_grupos.sort_values(by='Unidades', ascending=True).tail(15)
 
 fig, ax = plt.subplots(figsize=(10, 6))
-barras = ax.barh(df_bodegas['Bodega'], df_bodegas['Unidades'], color='#1f77b4', edgecolor='none', height=0.65)
+barras = ax.barh(df_grupos['Grupo Articulo'], df_grupos['Unidades'], color='#1f77b4', edgecolor='none', height=0.65)
 
 for barra in barras:
     ancho = barra.get_width()
@@ -63,13 +58,14 @@ for barra in barras:
         fontsize=10, fontweight='bold', color='#333333'
     )
 
-ax.set_title('Distribución de Stock Físico por Sucursal / Bodega (Unidades)', fontsize=14, fontweight='bold', pad=15)
+ax.set_title('Distribución de Stock Físico por Grupo de Artículo (Bodega 013-PP)', fontsize=14, fontweight='bold', pad=15)
 ax.set_xlabel('Unidades Físicas Almacenadas', fontsize=11, labelpad=10)
-ax.set_ylabel('Sucursal / Bodega', fontsize=11)
-ax.set_xlim(0, df_bodegas['Unidades'].max() * 1.15)
+ax.set_ylabel('Grupo Artículo', fontsize=11)
+if df_grupos['Unidades'].max() > 0:
+    ax.set_xlim(0, df_grupos['Unidades'].max() * 1.15)
 
 plt.tight_layout()
-ruta_grafico1 = os.path.join(carpeta_figuras, "stock_por_bodega.png")
+ruta_grafico1 = os.path.join(carpeta_figuras, "stock_por_grupo.png")
 plt.savefig(ruta_grafico1, dpi=300, bbox_inches='tight')
 plt.close()
 
@@ -97,10 +93,11 @@ for barra in barras:
         fontsize=10, fontweight='bold', color='#800000'
     )
 
-ax.set_title('Top 10 Categorías con Mayor Quiebre de Stock (SKUs en Déficit)', fontsize=14, fontweight='bold', pad=15)
+ax.set_title('Top 10 Categorías con Mayor Quiebre de Stock (Bodega 013-PP)', fontsize=14, fontweight='bold', pad=15)
 ax.set_xlabel('Cantidad de SKUs con Stockout (Disponible Hoy < 0)', fontsize=11, labelpad=10)
 ax.set_ylabel('Categoría / Grupo Artículo', fontsize=11)
-ax.set_xlim(0, df_quiebres['SKUs_Quiebre'].max() * 1.15)
+if df_quiebres['SKUs_Quiebre'].max() > 0:
+    ax.set_xlim(0, df_quiebres['SKUs_Quiebre'].max() * 1.15)
 
 plt.tight_layout()
 ruta_grafico2 = os.path.join(carpeta_figuras, "top_quiebres_categoria.png")
@@ -132,8 +129,10 @@ sns.scatterplot(
     ax=ax
 )
 
-max_val = max(df_matriz['Minimo'].max(), df_matriz['Disponible Hoy'].max())
-ax.plot([0, max_val], [0, max_val], color='#ff7f0e', linestyle='--', linewidth=2, label='Política Stock Mínimo (Y = X)')
+if not df_matriz.empty:
+    max_val = max(df_matriz['Minimo'].max(), df_matriz['Disponible Hoy'].max())
+    ax.plot([0, max_val], [0, max_val], color='#ff7f0e', linestyle='--', linewidth=2, label='Política Stock Mínimo (Y = X)')
+    
 ax.axhline(0, color='black', linewidth=1.2, linestyle='-')
 
 ax.text(
@@ -150,13 +149,14 @@ ax.text(
     bbox=dict(boxstyle="round,pad=0.5", fc="white", ec="#1e8449", lw=1.5)
 )
 
-ax.set_title('Matriz de Riesgo de Inventario: Disponible Hoy vs Stock Mínimo', fontsize=14, fontweight='bold', pad=15)
+ax.set_title('Matriz de Riesgo de Inventario (Bodega 013-PP): Disponible Hoy vs Stock Mínimo', fontsize=14, fontweight='bold', pad=15)
 ax.set_xlabel('Stock Mínimo Configurado en ERP (Unidades)', fontsize=11, labelpad=10)
 ax.set_ylabel('Disponible Hoy Real en Bodega (Unidades)', fontsize=11)
 ax.set_ylim(-320, 500)
 
 handles, labels = ax.get_legend_handles_labels()
-ax.legend(loc='upper right', frameon=True, facecolor='white', framealpha=0.9)
+if handles:
+    ax.legend(loc='upper right', frameon=True, facecolor='white', framealpha=0.9)
 
 plt.tight_layout()
 ruta_grafico3 = os.path.join(carpeta_figuras, "matriz_riesgo_stock.png")

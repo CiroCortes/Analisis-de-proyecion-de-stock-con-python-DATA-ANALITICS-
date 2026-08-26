@@ -1,0 +1,152 @@
+{% extends 'base.html' %}
+{% load inventory_tags %}
+
+{% block title %}Consulta Stock Actual SAP | Pesco S.A.{% endblock %}
+
+{% block content %}
+<div class="space-y-6 max-w-7xl mx-auto">
+
+    <!-- Header -->
+    <div class="bg-white p-6 sm:p-7 rounded-3xl shadow-sm border border-slate-200 border-l-8 border-l-pesco-cyan flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div>
+            <span class="text-xs font-bold text-pesco-cyan uppercase tracking-wider">Inventario Físico en Tiempo Real</span>
+            <h1 class="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight mt-1">Explorador de Stock Actual SAP</h1>
+            <p class="text-xs sm:text-sm text-slate-500 mt-1">{{ total_resultados|default:"0" }} registros disponibles en las 56 ubicaciones y bodegas de tránsito SAP.</p>
+        </div>
+        <a href="{% url 'data_ingestion:upload' %}" class="bg-pesco-cyan hover:bg-pesco-darkcyan text-white text-xs font-bold px-6 py-3.5 rounded-full shadow-md transition flex items-center gap-2 uppercase tracking-wider whitespace-nowrap">
+            <i class="fa-solid fa-arrows-rotate"></i> Sincronizar Datos
+        </a>
+    </div>
+
+    <!-- Filtros de Búsqueda -->
+    <form method="get" class="bg-white rounded-3xl shadow-sm border border-slate-200 p-5 sm:p-6 flex flex-col sm:flex-row gap-4">
+        <div class="flex-1 relative">
+            <i class="fa-solid fa-magnifying-glass absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-sm"></i>
+            <input type="text" name="q" value="{{ query }}" placeholder="Buscar por código SKU o descripción de repuesto/equipo..."
+                class="w-full pl-10 pr-4 py-3 border border-slate-300 rounded-2xl text-xs sm:text-sm font-medium focus:ring-2 focus:ring-pesco-cyan focus:border-pesco-cyan bg-slate-50 outline-none transition">
+        </div>
+        <div class="sm:w-64">
+            <select name="bodega" class="w-full border border-slate-300 rounded-2xl text-xs sm:text-sm font-semibold px-4 py-3 focus:ring-2 focus:ring-pesco-cyan bg-slate-50 outline-none transition text-slate-800">
+                <option value="">-- Todas las Bodegas --</option>
+                {% for cod, nombre in bodegas %}
+                <option value="{{ cod }}" {% if bodega_seleccionada == cod %}selected{% endif %}>{{ cod }} — {{ nombre|truncatechars:22 }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="flex items-center gap-2">
+            <button type="submit" class="bg-pesco-cyan hover:bg-pesco-darkcyan text-white text-xs font-bold px-6 py-3 rounded-2xl shadow transition flex items-center gap-2 whitespace-nowrap">
+                <i class="fa-solid fa-filter"></i> Filtrar Stock
+            </button>
+            {% if query or bodega_seleccionada %}
+            <a href="{% url 'inventory:consultar_stock_actual' %}" class="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-4 py-3 rounded-2xl text-xs transition flex items-center gap-1.5 whitespace-nowrap" title="Quitar filtros">
+                <i class="fa-solid fa-xmark"></i> Limpiar
+            </a>
+            {% endif %}
+        </div>
+    </form>
+
+    <!-- Tabla de Resultados -->
+    <div class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+        <div class="overflow-x-auto">
+            <table class="w-full text-left text-sm whitespace-nowrap min-w-[950px]">
+                <thead class="bg-slate-100/80 text-slate-600 uppercase text-[11px] font-black tracking-wider border-b border-slate-200">
+                    <tr>
+                        <th class="py-4 px-5">Código SKU</th>
+                        <th class="py-4 px-5">Descripción Repuesto</th>
+                        <th class="py-4 px-4">Grupo Artículo</th>
+                        <th class="py-4 px-4 text-center">Bodega SAP</th>
+                        <th class="py-4 px-4 text-center">Stock Disp.</th>
+                        <th class="py-4 px-4 text-center">Stock Res.</th>
+                        <th class="py-4 px-4 text-center">Ubicación</th>
+                        <th class="py-4 px-5 text-right">Precio Unit. $</th>
+                        <th class="py-4 px-6 text-right">Total Valorizado $</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100 font-medium text-xs">
+                    {% for item in page_obj %}
+                    <tr class="hover:bg-pesco-lightcyan/20 transition">
+                        <!-- Código -->
+                        <td class="py-3.5 px-5 font-bold font-mono text-pesco-cyan text-sm">
+                            <a href="{% url 'inventory:sku_detail' item.codigo %}" class="hover:underline inline-flex items-center gap-1.5">
+                                <i class="fa-solid fa-box-open text-xs"></i> {{ item.codigo }}
+                            </a>
+                        </td>
+
+                        <!-- Descripción -->
+                        <td class="py-3.5 px-5 text-slate-700 max-w-xs truncate font-medium" title="{{ item.descripcion }}">
+                            {{ item.descripcion|default:"-" }}
+                        </td>
+
+                        <!-- Grupo -->
+                        <td class="py-3.5 px-4 text-slate-500 max-w-[140px] truncate">
+                            {{ item.descripcion_grupo|default:"-" }}
+                        </td>
+
+                        <!-- Bodega -->
+                        <td class="py-3.5 px-4 text-center">
+                            <span class="inline-flex items-center justify-center min-w-[70px] px-2.5 py-1 bg-slate-100 text-slate-800 border border-slate-200 rounded-lg font-mono font-bold text-xs">
+                                {{ item.bodega }}
+                            </span>
+                        </td>
+
+                        <!-- Stock Disponible -->
+                        <td class="py-3.5 px-4 text-center font-black font-mono text-sm {% if item.stock_disponible <= 0 %}text-red-600{% else %}text-slate-900{% endif %}">
+                            {{ item.stock_disponible }}
+                        </td>
+
+                        <!-- Stock Reservado -->
+                        <td class="py-3.5 px-4 text-center font-bold font-mono text-amber-700">
+                            {{ item.stock_reservado }}
+                        </td>
+
+                        <!-- Ubicación -->
+                        <td class="py-3.5 px-4 text-center text-slate-400 font-mono">
+                            {{ item.ubicacion|default:"—" }}
+                        </td>
+
+                        <!-- Precio -->
+                        <td class="py-3.5 px-5 text-right font-mono font-bold {% if item.precio %}text-slate-900{% else %}text-slate-300{% endif %}">
+                            {% if item.precio %}${{ item.precio|floatformat:2 }}{% else %}—{% endif %}
+                        </td>
+
+                        <!-- Total Valorizado Abreviado -->
+                        <td class="py-3.5 px-6 text-right font-black font-mono text-sm {% if item.total %}text-emerald-700{% else %}text-slate-300{% endif %}" title="Valor Exacto: {{ item.total|full_usd }} USD">
+                            {% if item.total %}{{ item.total|compact_usd }}{% else %}—{% endif %}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="9" class="py-12 text-center text-slate-400 text-sm">
+                            <i class="fa-solid fa-boxes-stacked text-3xl mb-2 block"></i>
+                            <div>No se encontraron registros de stock con los filtros seleccionados.</div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Paginación -->
+        {% if page_obj.has_other_pages %}
+        <div class="bg-slate-50 px-6 py-4 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
+            <span class="text-slate-500">
+                Página <strong>{{ page_obj.number }}</strong> de <strong>{{ page_obj.paginator.num_pages }}</strong> (Total: {{ total_resultados }} registros)
+            </span>
+            <div class="flex items-center gap-1">
+                {% if page_obj.has_previous %}
+                <a href="?page=1{% if query %}&q={{ query }}{% endif %}{% if bodega_seleccionada %}&bodega={{ bodega_seleccionada }}{% endif %}" class="px-3 py-1.5 bg-white border border-slate-200 rounded-lg hover:bg-slate-100 font-bold">&laquo; Primera</a>
+                <a href="?page={{ page_obj.previous_page_number }}{% if query %}&q={{ query }}{% endif %}{% if bodega_seleccionada %}&bodega={{ bodega_seleccionada }}{% endif %}" class="px-3 py-1.5 bg-white border border-slate-200 rounded-lg hover:bg-slate-100 font-bold">&lsaquo; Anterior</a>
+                {% endif %}
+
+                <span class="px-3 py-1.5 bg-pesco-cyan text-white rounded-lg font-black">{{ page_obj.number }}</span>
+
+                {% if page_obj.has_next %}
+                <a href="?page={{ page_obj.next_page_number }}{% if query %}&q={{ query }}{% endif %}{% if bodega_seleccionada %}&bodega={{ bodega_seleccionada }}{% endif %}" class="px-3 py-1.5 bg-white border border-slate-200 rounded-lg hover:bg-slate-100 font-bold">Siguiente &rsaquo;</a>
+                <a href="?page={{ page_obj.paginator.num_pages }}{% if query %}&q={{ query }}{% endif %}{% if bodega_seleccionada %}&bodega={{ bodega_seleccionada }}{% endif %}" class="px-3 py-1.5 bg-white border border-slate-200 rounded-lg hover:bg-slate-100 font-bold">Última &raquo;</a>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

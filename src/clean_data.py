@@ -67,6 +67,62 @@ df['Lead Time'] = df['Lead Time'].fillna(mediana_global_leadtime)
 if 'Punto de Reorden' in df.columns:
     df['Punto de Reorden'] = df['Punto de Reorden'].fillna(0.0)
 
+# 5.5 Recálculo de Disponibilidad enfocado solo en Bodega 013-PP
+print("\n🔄 Recalculando disponibilidad exclusiva para Bodega 013-PP...")
+df['En_Transito'] = df['SC'].fillna(0) + df['OC - PO'].fillna(0)
+df['Stock Total'] = df['Stock 013-PP'].fillna(0)
+df['Disponible Hoy'] = df['Stock 013-PP'].fillna(0) - (df['Comp.PC'].fillna(0) + df['Comp.OF'].fillna(0))
+df['Disponible Futuro'] = df['Disponible Hoy'] + df['En_Transito']
+
+# 5.6 Incorporar stock en tránsito inter-sucursal (bodegas T* del archivo de Stock Actual)
+# Las bodegas T013-022, T022-013, etc. representan material en camino entre sucursales.
+# Se detecta el archivo de stock actual automáticamente por nombre.
+RUTA_STOCK_ACTUAL = "00.- Stock.xlsx"
+if os.path.exists(RUTA_STOCK_ACTUAL):
+    print("\n🚚 Incorporando stock en tránsito inter-sucursal desde archivo de stock...")
+    try:
+        df_stock = pd.read_excel(RUTA_STOCK_ACTUAL)
+
+        # Identificar columnas necesarias
+        col_bodega = next((c for c in df_stock.columns if 'Cod.Bodega' in str(c) or str(c).strip() == 'Bodega'), None)
+        col_codigo = next((c for c in df_stock.columns if str(c).strip() in ['Codigo', 'Código']), None)
+        col_stock  = next((c for c in df_stock.columns if str(c).strip() == 'Stock'), None)
+
+        if col_bodega and col_codigo and col_stock:
+            # Filtrar solo bodegas de tránsito (prefijo 'T')
+            mask_transito = df_stock[col_bodega].astype(str).str.startswith('T', na=False)
+            df_transit = df_stock[mask_transito].copy()
+            df_transit[col_stock] = pd.to_numeric(df_transit[col_stock], errors='coerce').fillna(0)
+
+            # Agrupar por código SKU y sumar unidades en tránsito
+            transit_sum = (
+                df_transit.groupby(col_codigo)[col_stock]
+                .sum()
+                .rename('Stock_Transito_Inter')
+            )
+
+            # Incorporar al dataframe principal
+            df = df.merge(transit_sum, left_on='Codigo', right_index=True, how='left')
+            df['Stock_Transito_Inter'] = df['Stock_Transito_Inter'].fillna(0)
+            df['Disponible Futuro'] = df['Disponible Futuro'] + df['Stock_Transito_Inter']
+
+            skus_con_transito = (df['Stock_Transito_Inter'] > 0).sum()
+            total_unidades_transito = df['Stock_Transito_Inter'].sum()
+            print(f"   • SKUs con stock en tránsito:  {skus_con_transito:>10,d}")
+            print(f"   • Unidades totales en tránsito: {total_unidades_transito:>10,.0f} u")
+            print("   ✅ Disponible Futuro actualizado con tránsito inter-sucursal.")
+        else:
+            df['Stock_Transito_Inter'] = 0
+            print(f"   ⚠️  No se encontraron columnas esperadas en '{RUTA_STOCK_ACTUAL}'. Sin tránsito incorporado.")
+            print(f"      Columnas detectadas: {list(df_stock.columns[:10])}")
+    except Exception as e:
+        df['Stock_Transito_Inter'] = 0
+        print(f"   ⚠️  Error al leer archivo de stock: {e}")
+else:
+    df['Stock_Transito_Inter'] = 0
+    print(f"\n⚠️  Archivo '{RUTA_STOCK_ACTUAL}' no encontrado. Sin tránsito inter-sucursal.")
+    print("   Ejecute primero la carga del archivo de stock actualizado.")
+
 # 6. Creación de Columnas Calculadas de Alerta de Negocio
 print("\n🚨 Creando columnas calculadas de alerta...")
 df['Estado_Stockout'] = df['Disponible Hoy'] < 0

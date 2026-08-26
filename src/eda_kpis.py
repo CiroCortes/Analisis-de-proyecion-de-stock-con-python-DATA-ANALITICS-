@@ -57,21 +57,16 @@ print(f"  • Órdenes de Compra en Tránsito (PO):    {ordenes_compra_po:>15,.0
 print("="*65)
 
 # 5. Distribución de Stock Físico por Sucursal / Bodega
-print("\n🏢 DISTRIBUCIÓN DE STOCK POR BODEGA / SUCURSAL:")
-
-bodegas = [
-    'Stock Antofagasta', 'Stock Calama', 'Stock Copiapo', 'Stock Los Angeles', 
-    'Stock Puerto Montt', 'Stock 013-07', 'Stock 013-09', 'Stock 013-PS', 'Stock 013-PP'
-]
-
-stock_por_bodega = df[bodegas].sum().reset_index()
-stock_por_bodega.columns = ['Bodega', 'Stock_Unidades']
-stock_por_bodega['Bodega'] = stock_por_bodega['Bodega'].str.replace('Stock ', '')
-stock_por_bodega['%_del_Total'] = (stock_por_bodega['Stock_Unidades'] / total_stock_fisico) * 100
-stock_por_bodega = stock_por_bodega.sort_values(by='Stock_Unidades', ascending=False)
-
-for _, fila in stock_por_bodega.iterrows():
-    print(f"  • {fila['Bodega']:<20}: {fila['Stock_Unidades']:>12,.0f} u  ({fila['%_del_Total']:>5.1f}%)")
+# (Desactivado para enfocarse únicamente en 013-PP)
+# print("\n🏢 DISTRIBUCIÓN DE STOCK POR BODEGA / SUCURSAL:")
+# bodegas = ['Stock Antofagasta', 'Stock Calama', 'Stock Copiapo', 'Stock Los Angeles', 'Stock Puerto Montt', 'Stock 013-07', 'Stock 013-09', 'Stock 013-PS', 'Stock 013-PP']
+# stock_por_bodega = df[bodegas].sum().reset_index()
+# stock_por_bodega.columns = ['Bodega', 'Stock_Unidades']
+# stock_por_bodega['Bodega'] = stock_por_bodega['Bodega'].str.replace('Stock ', '')
+# stock_por_bodega['%_del_Total'] = (stock_por_bodega['Stock_Unidades'] / total_stock_fisico) * 100
+# stock_por_bodega = stock_por_bodega.sort_values(by='Stock_Unidades', ascending=False)
+# for _, fila in stock_por_bodega.iterrows():
+#     print(f"  • {fila['Bodega']:<20}: {fila['Stock_Unidades']:>12,.0f} u  ({fila['%_del_Total']:>5.1f}%)")
 
 # 6. Top 10 Categorías de Productos con Mayor Cantidad de Quiebres
 print("\n⚠️ TOP 10 CATEGORÍAS CON MAYOR QUIEBRE DE STOCK (ALERTA ROJA):")

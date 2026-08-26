@@ -27,6 +27,8 @@ venv/
 ENV/
 env/
 .pytest_cache/
+db.sqlite3
+media/
 
 # 4. Archivos de configuración de editores y sistema operativo
 .vscode/

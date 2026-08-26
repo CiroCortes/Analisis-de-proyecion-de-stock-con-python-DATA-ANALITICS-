@@ -1,0 +1,332 @@
+{% extends 'base.html' %}
+{% load inventory_tags %}
+
+{% block title %}Reporte Ejecutivo Gerencial S&OP | Pesco S.A.{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto space-y-8">
+
+    <!-- ═══ HEADER ═══ -->
+    <div class="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 p-7 rounded-3xl shadow-lg border border-slate-700 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+            <div class="flex items-center gap-2 flex-wrap mb-2">
+                <span class="text-xs font-black text-pesco-cyan uppercase tracking-wider">Gerencia S&amp;OP</span>
+                <span class="bg-pesco-cyan/20 text-pesco-cyan text-[10px] font-black px-3 py-0.5 rounded-full border border-pesco-cyan/30">
+                    <i class="fa-solid fa-chart-line mr-1"></i> Reporte Ejecutivo
+                </span>
+            </div>
+            <h1 class="text-2xl sm:text-3xl font-black text-white tracking-tight">Panel Gerencial de Inventario</h1>
+            <p class="text-sm text-slate-400 mt-1">Disponibilidad · Inventario por Sucursal · Quiebres · Materiales a Pedido</p>
+        </div>
+        <div class="flex items-center gap-3">
+            <a href="{% url 'dashboard:analytics' %}" class="bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs font-bold px-4 py-2.5 rounded-xl transition flex items-center gap-2">
+                <i class="fa-solid fa-chart-bar"></i> Analytics Slim4
+            </a>
+            <a href="{% url 'purchasing:list' %}" class="bg-pesco-cyan hover:bg-pesco-darkcyan text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow transition flex items-center gap-2">
+                <i class="fa-solid fa-cart-shopping"></i> Recomendador
+            </a>
+        </div>
+    </div>
+
+    <!-- ═══ KPI CARDS ═══ -->
+    <div class="grid grid-cols-2 md:grid-cols-6 gap-4">
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 text-center shadow-sm">
+            <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">SKUs Críticos</div>
+            <div class="text-2xl font-black text-red-600 mt-1 font-mono">{{ total_skus_criticos|default:"0" }}</div>
+        </div>
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 text-center shadow-sm">
+            <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Quiebre Total USD</div>
+            <div class="text-xl font-black text-slate-900 mt-1 font-mono">{{ total_quiebre_usd|compact_usd }}</div>
+        </div>
+        <div class="bg-blue-50 rounded-2xl border border-blue-200 p-4 text-center shadow-sm">
+            <div class="text-[10px] font-black text-blue-700 uppercase tracking-wider">[ R ] Rotación</div>
+            <div class="text-2xl font-black text-blue-800 mt-1 font-mono">{{ total_repo_r|default:"0" }}</div>
+            <div class="text-[9px] text-blue-500">VB · Tienen ROP</div>
+        </div>
+        <div class="bg-amber-50 rounded-2xl border border-amber-200 p-4 text-center shadow-sm">
+            <div class="text-[10px] font-black text-amber-700 uppercase tracking-wider">[ P ] A Pedido</div>
+            <div class="text-2xl font-black text-amber-800 mt-1 font-mono">{{ total_repo_p|default:"0" }}</div>
+            <div class="text-[9px] text-amber-500">PD · Solo OF/PC</div>
+        </div>
+        <div class="bg-rose-50 rounded-2xl border border-rose-200 p-4 text-center shadow-sm">
+            <div class="text-[10px] font-black text-rose-700 uppercase tracking-wider">[ O ] Obsoleto</div>
+            <div class="text-2xl font-black text-rose-700 mt-1 font-mono">{{ total_repo_o|default:"0" }}</div>
+            <div class="text-[9px] text-rose-400">ND · Sin movimiento</div>
+        </div>
+        <div class="bg-slate-900 rounded-2xl border border-slate-700 p-4 text-center shadow-sm">
+            <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Inv. Pedido (USD)</div>
+            <div class="text-xl font-black text-white mt-1 font-mono">{{ valor_inventario_pedido|compact_usd }}</div>
+        </div>
+    </div>
+
+    <!-- ═══ GRÁFICOS 1 y 2: LADO A LADO ═══ -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+        <!-- Gráfico 1: % Disponibilidad Histórica -->
+        <div class="bg-white rounded-3xl shadow-sm border border-slate-200 p-6">
+            <div class="flex items-center justify-between mb-4">
+                <div>
+                    <div class="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-0.5">Gráfico 1</div>
+                    <h2 class="text-base font-black text-slate-900">% Disponibilidad por Sucursal</h2>
+                    <p class="text-xs text-slate-400 mt-0.5">Líneas por sucursal · Año/mes en eje X</p>
+                </div>
+                <span class="bg-blue-100 text-blue-800 text-[10px] font-black px-2 py-1 rounded-lg">OF Cerradas / Mes</span>
+            </div>
+            <div style="position:relative; height:280px;">
+                <canvas id="chartDisponibilidad"></canvas>
+            </div>
+        </div>
+
+        <!-- Gráfico 2: Monto Total Inventario -->
+        <div class="bg-white rounded-3xl shadow-sm border border-slate-200 p-6">
+            <div class="flex items-center justify-between mb-4">
+                <div>
+                    <div class="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-0.5">Gráfico 2</div>
+                    <h2 class="text-base font-black text-slate-900">Inventario Total por Sucursal (Unidades)</h2>
+                    <p class="text-xs text-slate-400 mt-0.5">Snapshot actual · Líneas por sucursal</p>
+                </div>
+                <span class="bg-emerald-100 text-emerald-800 text-[10px] font-black px-2 py-1 rounded-lg">Stock Físico</span>
+            </div>
+            <div style="position:relative; height:280px;">
+                <canvas id="chartInventario"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══ MÓDULO 3: SKUs EN QUIEBRE POR DÍAS ═══ -->
+    <div class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+        <div class="p-6 border-b border-slate-100 flex items-center justify-between">
+            <div>
+                <div class="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-0.5">Módulo 3</div>
+                <h2 class="text-lg font-black text-slate-900">SKUs en Quiebre Activo — Ordenados por Días de Quiebre</h2>
+                <p class="text-xs text-slate-400 mt-0.5">Mayor a menor. Días estimados = Unidades en quiebre ÷ Demanda diaria real.</p>
+            </div>
+            <span class="bg-red-100 text-red-700 text-xs font-black px-4 py-2 rounded-xl">{{ quiebre_list|length }} SKUs en quiebre</span>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="w-full text-left text-xs whitespace-nowrap min-w-[900px]">
+                <thead class="bg-red-50 text-red-800 uppercase text-[10px] font-black tracking-wider border-b border-red-100">
+                    <tr>
+                        <th class="py-3 px-5">#</th>
+                        <th class="py-3 px-5">SKU</th>
+                        <th class="py-3 px-5">Descripción</th>
+                        <th class="py-3 px-4 text-center">REPO</th>
+                        <th class="py-3 px-4 text-center">Bodega</th>
+                        <th class="py-3 px-4 text-center">Urgencia</th>
+                        <th class="py-3 px-4 text-right font-black text-red-900">Días Quiebre ↓</th>
+                        <th class="py-3 px-4 text-right">Unidades</th>
+                        <th class="py-3 px-5 text-right">Quiebre USD</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100 font-medium">
+                    {% for item in quiebre_list %}
+                    <tr class="hover:bg-red-50/40 transition">
+                        <td class="py-3 px-5 text-slate-400 font-mono">{{ forloop.counter }}</td>
+                        <td class="py-3 px-5 font-mono font-bold text-pesco-cyan">
+                            <a href="{% url 'inventory:sku_detail' item.sku %}" class="hover:underline">{{ item.sku }}</a>
+                        </td>
+                        <td class="py-3 px-5 text-slate-700 max-w-xs truncate" title="{{ item.desc }}">{{ item.desc }}</td>
+                        <td class="py-3 px-4 text-center">
+                            {% if item.repo == 'R' %}<span class="px-2 py-0.5 bg-blue-100 text-blue-800 rounded-full text-[10px] font-black">🔵 R</span>
+                            {% elif item.repo == 'E' %}<span class="px-2 py-0.5 bg-purple-100 text-purple-800 rounded-full text-[10px] font-black">🟣 E</span>
+                            {% elif item.repo == 'P' %}<span class="px-2 py-0.5 bg-amber-100 text-amber-800 rounded-full text-[10px] font-black">🟡 P</span>
+                            {% else %}<span class="px-2 py-0.5 bg-rose-100 text-rose-700 rounded-full text-[10px] font-semibold">🔴 O</span>{% endif %}
+                        </td>
+                        <td class="py-3 px-4 text-center">
+                            <span class="font-mono bg-slate-100 px-2 py-0.5 rounded text-slate-700">{{ item.bodega }}</span>
+                        </td>
+                        <td class="py-3 px-4 text-center">
+                            {% if item.urgency == 'CRITICO' %}
+                            <span class="px-2 py-0.5 bg-red-100 text-red-800 rounded-full text-[10px] font-black">🔴 CRÍTICO</span>
+                            {% else %}
+                            <span class="px-2 py-0.5 bg-amber-100 text-amber-800 rounded-full text-[10px] font-bold">🟡 MEDIO</span>
+                            {% endif %}
+                        </td>
+                        <td class="py-3 px-4 text-right font-black font-mono text-red-700 text-sm">
+                            {% if item.dias_quiebre > 0 %}{{ item.dias_quiebre }} d{% else %}<span class="text-slate-400 font-normal">— d</span>{% endif %}
+                        </td>
+                        <td class="py-3 px-4 text-right font-mono font-bold text-slate-800">{{ item.shortage_units }} u</td>
+                        <td class="py-3 px-5 text-right font-black font-mono text-red-600">{{ item.shortage_usd|compact_usd }}</td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="9" class="py-10 text-center text-slate-400"><i class="fa-solid fa-circle-check text-2xl text-emerald-400 mb-2 block"></i> Sin quiebres activos. ¡Stock saludable!</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- ═══ GRÁFICO 4: EVOLUCIÓN MATERIALES A PEDIDO ═══ -->
+    <div class="bg-white rounded-3xl shadow-sm border border-slate-200 p-6">
+        <div class="flex items-center justify-between mb-4">
+            <div>
+                <div class="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-0.5">Gráfico 4</div>
+                <h2 class="text-base font-black text-slate-900">Evolución de Materiales a Pedido (OF + PC)</h2>
+                <p class="text-xs text-slate-400 mt-0.5">Consumo mensual en unidades · Órdenes de Fabricación y Pedidos de Clientes cerrados</p>
+            </div>
+            <span class="bg-purple-100 text-purple-800 text-[10px] font-black px-2 py-1 rounded-lg">Últimos 12 meses</span>
+        </div>
+        <div style="position:relative; height:280px;">
+            <canvas id="chartPedidoTendencia"></canvas>
+        </div>
+    </div>
+
+    <!-- ═══ MÓDULO 5: RANKING MATERIALES A PEDIDO ═══ -->
+    <div class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+        <div class="p-6 border-b border-slate-100 flex items-center justify-between">
+            <div>
+                <div class="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-0.5">Módulo 5</div>
+                <h2 class="text-lg font-black text-slate-900">Materiales a Pedido [ P ] — Del Más Caro al Más Barato</h2>
+                <p class="text-xs text-slate-400 mt-0.5">Ranking por valor total de inventario (Stock × Costo Unitario USD).</p>
+            </div>
+            <div class="text-right">
+                <div class="text-xs text-slate-400">Valor Total Inventario P</div>
+                <div class="text-lg font-black text-slate-900 font-mono">{{ valor_inventario_pedido|compact_usd }} USD</div>
+            </div>
+        </div>
+        {% if pedido_ranking %}
+        <div class="overflow-x-auto">
+            <table class="w-full text-left text-xs whitespace-nowrap min-w-[800px]">
+                <thead class="bg-amber-50 text-amber-800 uppercase text-[10px] font-black tracking-wider border-b border-amber-100">
+                    <tr>
+                        <th class="py-3 px-5">#</th>
+                        <th class="py-3 px-5">SKU</th>
+                        <th class="py-3 px-5">Descripción</th>
+                        <th class="py-3 px-4">Categoría</th>
+                        <th class="py-3 px-4 text-right">Costo Unit. (USD)</th>
+                        <th class="py-3 px-4 text-right">Stock Total (u)</th>
+                        <th class="py-3 px-5 text-right font-black text-amber-900">Valor Total USD ↓</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100 font-medium">
+                    {% for item in pedido_ranking %}
+                    <tr class="hover:bg-amber-50/30 transition">
+                        <td class="py-3 px-5 text-slate-400 font-mono">{{ forloop.counter }}</td>
+                        <td class="py-3 px-5 font-mono font-bold text-pesco-cyan">
+                            <a href="{% url 'inventory:sku_detail' item.sku %}" class="hover:underline">{{ item.sku }}</a>
+                        </td>
+                        <td class="py-3 px-5 text-slate-700 max-w-xs truncate" title="{{ item.desc }}">{{ item.desc }}</td>
+                        <td class="py-3 px-4 text-slate-500 text-[11px]">{{ item.categoria|truncatechars:30 }}</td>
+                        <td class="py-3 px-4 text-right font-mono font-bold text-slate-800">${{ item.costo_usd|floatformat:2 }}</td>
+                        <td class="py-3 px-4 text-right font-mono text-slate-600">{{ item.stock_total }} u</td>
+                        <td class="py-3 px-5 text-right font-black font-mono text-amber-700">${{ item.valor_total|floatformat:0 }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="py-12 text-center text-slate-400">
+            <i class="fa-solid fa-inbox text-3xl mb-2 block"></i>
+            <p>No hay materiales clasificados como <strong>[ P ] A Pedido</strong> en este momento.</p>
+            <p class="text-xs mt-1">Ejecute el Motor de Clasificación S&amp;OP para actualizar la clasificación REPO.</p>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- ═══ MÓDULO 6: AVISO — DATOS DE SOLICITANTE PENDIENTES ═══ -->
+    <div class="bg-slate-50 rounded-3xl border border-dashed border-slate-300 p-8 text-center">
+        <i class="fa-solid fa-user-clock text-3xl text-slate-400 mb-3 block"></i>
+        <h3 class="text-base font-black text-slate-700">Módulo 6 — Ranking de Solicitantes por Inventario a Pedido</h3>
+        <p class="text-sm text-slate-500 mt-2 max-w-xl mx-auto">
+            Este módulo requiere que las Solpeds incluyan el <strong>nombre del solicitante y N° de OF</strong> (según minuta: "Nacho pondrá el número de OF en cada Solped").
+            Una vez que ese campo esté disponible en los datos de ingesta, el ranking se calculará automáticamente aquí.
+        </p>
+        <div class="mt-4 flex items-center justify-center gap-3">
+            <span class="bg-amber-100 text-amber-800 text-xs font-black px-4 py-2 rounded-xl border border-amber-200">
+                <i class="fa-solid fa-clock-rotate-left mr-1"></i> Pendiente de datos: N° OF en Solped
+            </span>
+        </div>
+    </div>
+
+</div>
+
+<!-- ═══ Chart.js Scripts ═══ -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+const defaultLineOptions = (title) => ({
+    responsive: true,
+    maintainAspectRatio: false,
+    interaction: { mode: 'index', intersect: false },
+    plugins: {
+        legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } },
+        title: { display: false },
+        tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y}` } }
+    },
+    scales: {
+        x: { grid: { display: false }, ticks: { font: { size: 10 } } },
+        y: { beginAtZero: true, ticks: { font: { size: 10 } } }
+    }
+});
+
+// ── Gráfico 1: % Disponibilidad ───────────────────────────────────────────────
+fetch("{% url 'dashboard:api_disponibilidad' %}")
+    .then(r => r.json())
+    .then(data => {
+        const ctx = document.getElementById('chartDisponibilidad');
+        new Chart(ctx, {
+            type: 'line',
+            data: { labels: data.labels, datasets: data.datasets },
+            options: {
+                ...defaultLineOptions('Disponibilidad'),
+                scales: {
+                    x: { grid: { display: false }, ticks: { font: { size: 10 } } },
+                    y: {
+                        beginAtZero: true,
+                        max: 100,
+                        ticks: {
+                            font: { size: 10 },
+                            callback: v => v + '%'
+                        }
+                    }
+                }
+            }
+        });
+    });
+
+// ── Gráfico 2: Inventario por bodega ─────────────────────────────────────────
+fetch("{% url 'dashboard:api_inventario' %}")
+    .then(r => r.json())
+    .then(data => {
+        const ctx = document.getElementById('chartInventario');
+        new Chart(ctx, {
+            type: 'line',
+            data: { labels: data.labels, datasets: data.datasets },
+            options: {
+                ...defaultLineOptions('Inventario'),
+                scales: {
+                    x: { grid: { display: false }, ticks: { font: { size: 10 } } },
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            font: { size: 10 },
+                            callback: v => v.toLocaleString() + ' u'
+                        }
+                    }
+                }
+            }
+        });
+    });
+
+// ── Gráfico 4: Evolución materiales a pedido ──────────────────────────────────
+fetch("{% url 'dashboard:api_pedido_tendencia' %}")
+    .then(r => r.json())
+    .then(data => {
+        const ctx = document.getElementById('chartPedidoTendencia');
+        new Chart(ctx, {
+            type: 'line',
+            data: { labels: data.labels, datasets: data.datasets },
+            options: {
+                ...defaultLineOptions('A Pedido'),
+                scales: {
+                    x: { grid: { display: false }, ticks: { font: { size: 10 } } },
+                    y: {
+                        beginAtZero: true,
+                        ticks: { font: { size: 10 }, callback: v => v.toLocaleString() + ' u' }
+                    }
+                }
+            }
+        });
+    });
+</script>
+{% endblock %}
