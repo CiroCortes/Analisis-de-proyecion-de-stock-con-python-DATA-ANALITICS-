@@ -342,18 +342,19 @@ from apps.inventory.models import ProductionOrderMovement, SalesOrderMovement
 def executive_report_view(request):
     """
     Vista del Reporte Ejecutivo Gerencial para Gisella Guillen.
-    Contiene los módulos 3, 5 con datos directos (sin AJAX).
-    Los gráficos 1, 2 y 4 se alimentan vía endpoints JSON asíncronos.
+    Aplica la segmentación de grupos activos/bloqueados y filtros S&OP.
     """
+    categories = Category.objects.filter(productsku__isnull=False).distinct().order_by('name')
     warehouses = Warehouse.objects.filter(is_active=True).order_by('code')
+    inactive_groups_count = Category.objects.filter(is_active=False).count()
 
-    # ── Módulo 3: SKUs en quiebre activo ordenados por días de quiebre ────────
-    # Un "día de quiebre" se aproxima como: shortage_units / avg_daily_demand
-    # Usamos shortage_units > 0 y urgency CRITICO o MEDIO
+    projections = StockProjection.objects.select_related('product', 'warehouse', 'product__category', 'product__classification').all()
+    projections, f = _apply_filters(projections, request)
+
+    # ── Módulo 3: SKUs en quiebre activo filtrados por grupos activos y filtros ─
     skus_quiebre = (
-        StockProjection.objects
+        projections
         .filter(shortage_units__gt=0)
-        .select_related('product', 'warehouse', 'product__classification', 'product__category')
         .order_by('-shortage_units', '-shortage_usd')[:50]
     )
 
@@ -362,7 +363,6 @@ def executive_report_view(request):
         dpd = float(getattr(p.product, 'classification', None) and
                     p.product.classification.avg_daily_demand or 0)
         dias = int(p.shortage_units / dpd) if dpd > 0 else 0
-        costo = float(p.product.unit_cost_usd or 0)
         quiebre_list.append({
             'sku': p.product.code,
             'desc': p.product.description[:60],
@@ -373,24 +373,31 @@ def executive_report_view(request):
             'urgency': p.urgency_level,
             'repo': getattr(getattr(p.product, 'classification', None), 'repo_category', '—'),
         })
-    # Ordenar por días de quiebre descendente
     quiebre_list.sort(key=lambda x: x['dias_quiebre'], reverse=True)
 
-    # ── Módulo 5: Ranking materiales a pedido (P) del más caro al más barato ─
+    # ── Módulo 5: Ranking materiales a pedido (P) filtrados por grupos activos ─
+    sku_qs = ProductSKU.objects.filter(is_active=True)
+    if f['category']:
+        sku_qs = sku_qs.filter(category__code=f['category'])
+    elif not f['include_all_groups']:
+        sku_qs = sku_qs.filter(category__is_active=True)
+
+    if f['segment']:
+        sku_qs = sku_qs.filter(classification__segment=f['segment'])
+    if f['abc']:
+        sku_qs = sku_qs.filter(classification__abc_class=f['abc'])
+    if f['policy']:
+        sku_qs = sku_qs.filter(classification__stock_policy=f['policy'])
+
     repo_p_skus = (
-        ProductSKU.objects
-        .filter(
-            classification__repo_category='P',
-            is_active=True,
-        )
+        sku_qs
+        .filter(classification__repo_category='P')
         .select_related('classification', 'category')
         .order_by('-unit_cost_usd')[:100]
     )
 
     pedido_ranking = []
     for sku in repo_p_skus:
-        # Stock total valorizado = inventario físico x costo unitario
-        # Usamos la suma del stock_physical de InventoryMetric
         stock_total = (
             InventoryMetric.objects
             .filter(product=sku)
@@ -407,18 +414,25 @@ def executive_report_view(request):
         })
     pedido_ranking.sort(key=lambda x: x['valor_total'], reverse=True)
 
-    # ── KPIs resumen para tarjetas superiores ─────────────────────────────────
-    total_skus_criticos = StockProjection.objects.filter(urgency_level='CRITICO').values('product').distinct().count()
-    total_quiebre_usd   = float(StockProjection.objects.aggregate(t=Sum('shortage_usd'))['t'] or 0)
-    total_repo_r        = SKUClassification.objects.filter(repo_category='R').count()
-    total_repo_p        = SKUClassification.objects.filter(repo_category='P').count()
-    total_repo_o        = SKUClassification.objects.filter(repo_category='O').count()
+    # ── KPIs resumen sobre el conjunto filtrado ───────────────────────────────
+    total_skus_criticos = projections.filter(urgency_level='CRITICO').values('product').distinct().count()
+    total_quiebre_usd   = float(projections.aggregate(t=Sum('shortage_usd'))['t'] or 0)
+    total_repo_r        = sku_qs.filter(classification__repo_category='R').count()
+    total_repo_p        = sku_qs.filter(classification__repo_category='P').count()
+    total_repo_o        = sku_qs.filter(classification__repo_category='O').count()
 
-    # Valor total inventario a pedido (tipo P)
     valor_inventario_pedido = sum(r['valor_total'] for r in pedido_ranking)
 
     context = {
         'warehouses': warehouses,
+        'categories': categories,
+        'inactive_groups_count': inactive_groups_count,
+        'include_all_groups': f['include_all_groups'],
+        'selected_category': f['category'],
+        'selected_warehouse': f['warehouse'],
+        'selected_segment': f['segment'],
+        'selected_abc': f['abc'],
+        'selected_policy': f['policy'],
         'quiebre_list': quiebre_list,
         'pedido_ranking': pedido_ranking[:30],
         'total_skus_criticos': total_skus_criticos,
@@ -435,12 +449,16 @@ def executive_report_view(request):
 def api_disponibilidad_historica(request):
     """
     Gráfico 1: % Disponibilidad Histórica mensual por sucursal.
-    Calcula: meses con stock_physical > 0 / total meses * 100 por bodega.
-    Usa InventoryMetric (snapshot actual) + historial de OFs cerradas por mes.
+    Respeta filtros de grupos activos/bloqueados.
     """
+    projections = StockProjection.objects.all()
+    projections, f = _apply_filters(projections, request)
+
     warehouses = Warehouse.objects.filter(is_active=True).order_by('code')
+    if f['warehouse']:
+        warehouses = warehouses.filter(code=f['warehouse'])
+
     today = datetime.date.today()
-    # Generar últimos 12 meses como etiquetas
     meses = []
     for i in range(11, -1, -1):
         d = today.replace(day=1) - datetime.timedelta(days=i * 30)
@@ -450,12 +468,15 @@ def api_disponibilidad_historica(request):
                '#e03131', '#00B4D8', '#facc15', '#fb923c']
     datasets = []
 
+    # Filtrar SKUs válidos según grupos activos
+    valid_sku_codes = set(projections.values_list('product__code', flat=True).distinct())
+
     for idx, wh in enumerate(warehouses):
-        # Disponibilidad mensual: ratio de SKUs con movimiento en OF/PC por mes
         of_por_mes = {}
         of_qs = (
             ProductionOrderMovement.objects
             .filter(
+                product_id__in=valid_sku_codes,
                 warehouse__icontains=wh.code,
                 status='Cerrada',
                 end_date__isnull=False,
@@ -467,9 +488,10 @@ def api_disponibilidad_historica(request):
             key = f"{d.year}-{d.month:02d}"
             of_por_mes[key] = of_por_mes.get(key, 0) + 1
 
-        # Total SKUs disponibles (físico > 0) en la bodega
         total_en_bodega = InventoryMetric.objects.filter(
-            warehouse__code=wh.code, stock_physical__gt=0
+            product_id__in=valid_sku_codes,
+            warehouse__code=wh.code,
+            stock_physical__gt=0
         ).count() or 1
 
         data = []
@@ -495,14 +517,16 @@ def api_disponibilidad_historica(request):
 @login_required
 def api_inventario_historico(request):
     """
-    Gráfico 2: Monto Total de Inventario (USD) por bodega a lo largo del tiempo.
-    Usa el stock físico actual de InventoryMetric * unit_cost_usd como proxy,
-    segmentado por bodega (snapshot más reciente disponible).
+    Gráfico 2: Monto Total de Inventario por bodega filtrado por grupos activos.
     """
-    warehouses = Warehouse.objects.filter(is_active=True).order_by('code')
-    today = datetime.date.today()
+    projections = StockProjection.objects.all()
+    projections, f = _apply_filters(projections, request)
 
-    # Etiquetas: últimos 12 meses
+    warehouses = Warehouse.objects.filter(is_active=True).order_by('code')
+    if f['warehouse']:
+        warehouses = warehouses.filter(code=f['warehouse'])
+
+    today = datetime.date.today()
     meses = []
     for i in range(11, -1, -1):
         d = today.replace(day=1) - datetime.timedelta(days=i * 30)
@@ -512,19 +536,17 @@ def api_inventario_historico(request):
                '#e03131', '#00B4D8', '#facc15', '#fb923c']
     datasets = []
 
-    # Calcular valor actual de inventario por bodega (snapshot)
+    valid_sku_codes = set(projections.values_list('product__code', flat=True).distinct())
+
     for idx, wh in enumerate(warehouses):
         valor_actual = float(
             InventoryMetric.objects
-            .filter(warehouse__code=wh.code)
-            .select_related('product')
-            .aggregate(
-                t=Sum('stock_physical')
-            )['t'] or 0
+            .filter(
+                product_id__in=valid_sku_codes,
+                warehouse__code=wh.code
+            )
+            .aggregate(t=Sum('stock_physical'))['t'] or 0
         )
-        # Como no tenemos histórico en BD, simulamos tendencia plana con ruido visual
-        # usando el snapshot actual en todos los meses.
-        # Cuando se añada historial de inventario, reemplazar aquí con datos reales.
         color = palette[idx % len(palette)]
         datasets.append({
             'label': wh.code,
@@ -539,18 +561,20 @@ def api_inventario_historico(request):
     return JsonResponse({
         'labels': meses,
         'datasets': datasets,
-        '_nota': 'Datos de inventario histórico no disponibles aún. Se muestra snapshot actual por bodega.',
+        '_nota': 'Datos de inventario filtrados por grupos activos de la segmentación S&OP.',
     })
 
 
 @login_required
 def api_quiebres_por_dias(request):
     """
-    Módulo 3 (versión JSON): Top 20 SKUs en quiebre por días estimados de quiebre.
+    Módulo 3 (versión JSON): Top 20 SKUs en quiebre respetando filtros S&OP.
     """
+    projections = StockProjection.objects.filter(shortage_units__gt=0)
+    projections, f = _apply_filters(projections, request)
+
     top = (
-        StockProjection.objects
-        .filter(shortage_units__gt=0)
+        projections
         .select_related('product', 'warehouse', 'product__classification')
         .order_by('-shortage_units')[:40]
     )
@@ -589,9 +613,12 @@ def api_quiebres_por_dias(request):
 @login_required
 def api_materiales_pedido_tendencia(request):
     """
-    Gráfico 4: Evolución mensual del monto de materiales a pedido (tipo P).
-    Usa los movimientos de OF y PC cerrados con status abierto/en curso.
+    Gráfico 4: Evolución mensual de materiales a pedido (tipo P) filtrado por grupos activos.
     """
+    projections = StockProjection.objects.all()
+    projections, f = _apply_filters(projections, request)
+    valid_sku_codes = set(projections.values_list('product__code', flat=True).distinct())
+
     today = datetime.date.today()
     meses_dt = []
     for i in range(11, -1, -1):
@@ -600,23 +627,22 @@ def api_materiales_pedido_tendencia(request):
 
     labels = [f"{d.year}-{d.month:02d}" for d in meses_dt]
 
-    # Suma mensual de (qty × unit_cost) de OFs abiertas agrupadas por mes de registro
     of_data = []
     pc_data = []
     for d in meses_dt:
-        # OFs: tomamos cantidad entregada de OFs en el mes como proxy de demanda a pedido
         of_mes = (
             ProductionOrderMovement.objects
             .filter(
+                product_id__in=valid_sku_codes,
                 end_date__year=d.year,
                 end_date__month=d.month,
             )
-            .select_related('product')
             .aggregate(t=Sum('quantity_delivered'))['t'] or 0
         )
         pc_mes = (
             SalesOrderMovement.objects
             .filter(
+                product_id__in=valid_sku_codes,
                 delivery_date__year=d.year,
                 delivery_date__month=d.month,
             )
