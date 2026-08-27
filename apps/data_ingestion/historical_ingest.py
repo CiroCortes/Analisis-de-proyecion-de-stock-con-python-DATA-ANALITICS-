@@ -158,8 +158,7 @@ def ingest_detalle_ofs(file_path):
     for row in ws.iter_rows(min_row=2, values_only=True):
         total_processed += 1
         st = str(row[status_idx] or '').strip()
-        if st.lower() != 'cerrada':
-            continue
+
 
         raw_comp = str(row[comp_idx] or '').strip()
         if not raw_comp or raw_comp not in existing_skus:
@@ -175,9 +174,6 @@ def ingest_detalle_ofs(file_path):
                 cant_ent = float(row[cant_ent_idx])
         except (ValueError, TypeError):
             cant_ent = 0.0
-
-        if cant_ent <= 0:
-            continue
 
         # Costo real
         cost_real = 0.0
@@ -207,7 +203,7 @@ def ingest_detalle_ofs(file_path):
             warehouse=wh,
             start_date=f_start,
             end_date=f_end,
-            status='Cerrada',
+            status=st,
             costo_real=Decimal(str(cost_real))
         ))
 
@@ -263,8 +259,7 @@ def ingest_detalle_pedidos(file_path):
     for row in ws.iter_rows(min_row=2, values_only=True):
         total_processed += 1
         st = str(row[status_idx] or '').strip()
-        if st.lower() != 'cerrado':
-            continue
+
 
         canc = str(row[canc_idx] or '').strip().lower()
         if canc in ['si', 'y', 'yes', 'true', '1']:
@@ -286,9 +281,6 @@ def ingest_detalle_pedidos(file_path):
         except (ValueError, TypeError):
             cant = 0.0
 
-        if cant <= 0:
-            continue
-
         # Fechas
         f_emi = None
         if f_emi_idx is not None and row[f_emi_idx] is not None:
@@ -309,7 +301,7 @@ def ingest_detalle_pedidos(file_path):
             warehouse=wh,
             emission_date=f_emi,
             delivery_date=f_ent,
-            status='Cerrado',
+            status=st,
             client_name=client
         ))
 
@@ -329,3 +321,90 @@ def ingest_detalle_pedidos(file_path):
     print(f"[ETL S&OP] Pedidos Clientes finalizado: {total_saved:,} movimientos guardados (de {total_processed:,} filas leidas)", flush=True)
     return total_saved
 
+
+def ingest_entradas_mercancias(file_path):
+    """
+    Ingesta los movimientos de Entrada de Mercancías (Ingresos Nacionales/Importaciones).
+    """
+    from apps.inventory.models import GoodsReceipt
+    print(f"\n[ETL S&OP] Iniciando ingesta de Entradas de Mercancía: {file_path}", flush=True)
+    wb = openpyxl.load_workbook(file_path, read_only=True, data_only=True)
+    ws = wb.active
+
+    headers = [str(c.value).strip() if c.value is not None else '' for c in next(ws.iter_rows(max_row=1))]
+    col_map = {h: idx for idx, h in enumerate(headers)}
+
+    doc_num_idx = col_map.get('Número de documento')
+    prod_idx    = col_map.get('Número de artículo')
+    qty_idx     = col_map.get('Cantidad')
+    date_idx    = col_map.get('Fecha de contabilización')
+    supp_idx    = col_map.get('Nombre de cliente/proveedor')
+    cost_idx    = col_map.get('Total líneas')
+
+    existing_skus = set(ProductSKU.objects.values_list('code', flat=True))
+
+    with transaction.atomic():
+        GoodsReceipt.objects.all().delete()
+
+    records = []
+    batch_size = 10000
+    total_saved = 0
+    total_processed = 0
+
+    for row in ws.iter_rows(min_row=2, values_only=True):
+        total_processed += 1
+
+        raw_prod = str(row[prod_idx] or '').strip()
+        if not raw_prod or raw_prod not in existing_skus:
+            continue
+
+        doc_num = str(row[doc_num_idx] or '').strip()[:50]
+        supplier = str(row[supp_idx] or '').strip()[:200]
+
+        qty = 0.0
+        try:
+            if qty_idx is not None and row[qty_idx] is not None:
+                qty = float(row[qty_idx])
+        except (ValueError, TypeError):
+            qty = 0.0
+
+        if qty <= 0:
+            continue
+
+        cost = 0.0
+        try:
+            if cost_idx is not None and row[cost_idx] is not None:
+                cost = float(row[cost_idx])
+        except (ValueError, TypeError):
+            cost = 0.0
+
+        f_date = None
+        if date_idx is not None and row[date_idx] is not None:
+            raw_d = row[date_idx]
+            if isinstance(raw_d, (datetime.date, datetime.datetime)):
+                f_date = raw_d.date() if isinstance(raw_d, datetime.datetime) else raw_d
+
+        records.append(GoodsReceipt(
+            document_number=doc_num,
+            product_id=raw_prod,
+            quantity=Decimal(str(qty)),
+            posting_date=f_date,
+            supplier_name=supplier,
+            total_lines_cost=Decimal(str(cost))
+        ))
+
+        if len(records) >= batch_size:
+            with transaction.atomic():
+                GoodsReceipt.objects.bulk_create(records, batch_size=5000)
+            total_saved += len(records)
+            print(f"[ETL S&OP] Entradas guardadas: {total_saved:,} registros...", flush=True)
+            records = []
+
+    if records:
+        with transaction.atomic():
+            GoodsReceipt.objects.bulk_create(records, batch_size=5000)
+        total_saved += len(records)
+
+    wb.close()
+    print(f"[ETL S&OP] Entradas finalizadas: {total_saved:,} movimientos guardados (de {total_processed:,} filas leidas)", flush=True)
+    return total_saved

@@ -109,6 +109,25 @@ class SalesOrderMovement(models.Model):
     def __str__(self):
         return f"PC {self.order_number} - SKU {self.product_id} ({self.quantity} u)"
 
+class GoodsReceipt(models.Model):
+    """Movimientos de entrada de mercancías (Ingresos Nacionales/Importaciones)."""
+    document_number = models.CharField(max_length=50, db_index=True, verbose_name="Nro. Documento")
+    product = models.ForeignKey(ProductSKU, on_delete=models.CASCADE, related_name='goods_receipts', verbose_name="Producto")
+    quantity = models.DecimalField(max_digits=12, decimal_places=2, default=0.00, verbose_name="Cantidad")
+    posting_date = models.DateField(null=True, blank=True, db_index=True, verbose_name="Fecha Contabilización")
+    supplier_name = models.CharField(max_length=200, blank=True, default='', verbose_name="Nombre Proveedor")
+    total_lines_cost = models.DecimalField(max_digits=14, decimal_places=2, default=0.00, verbose_name="Total Líneas (Costo)")
+
+    class Meta:
+        verbose_name = "Entrada de Mercancía"
+        verbose_name_plural = "Entradas de Mercancías"
+        indexes = [
+            models.Index(fields=['product', 'posting_date']),
+        ]
+
+    def __str__(self):
+        return f"EM {self.document_number} - SKU {self.product_id} ({self.quantity} u)"
+
 
 class SKUClassification(models.Model):
     """Matriz de Clasificación S&OP y Políticas de Inventario (Reemplazo Slim4).

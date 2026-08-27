@@ -2,10 +2,10 @@ import os
 import json
 from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
-from django.db.models import Sum, Count, Q, Avg, Max
+from django.db.models import Sum, Count, Q, Avg, Max, F
 from django.http import JsonResponse
 from django.conf import settings
-from apps.inventory.models import ProductSKU, StockProjection, Warehouse, InventoryMetric, Category, SKUClassification
+from apps.inventory.models import ProductSKU, StockProjection, Warehouse, InventoryMetric, Category, SKUClassification, GoodsReceipt
 
 
 def _apply_filters(queryset, request):
@@ -449,11 +449,14 @@ def executive_report_view(request):
     return render(request, 'dashboard/executive_report.html', context)
 
 
+from django.db.models.functions import TruncMonth
+
 @login_required
 def api_disponibilidad_historica(request):
     """
-    Gráfico 1: % Disponibilidad Histórica mensual por sucursal.
-    Respeta filtros de grupos activos/bloqueados.
+    Gráfico 1: % Nivel de Servicio (Fill Rate) Mensual por Sucursal.
+    Fórmula: (OF + PC Cerradas) / (OF + PC Totales) * 100
+    Optimizada con TruncMonth para cargar en milisegundos.
     """
     projections = StockProjection.objects.all()
     projections, f = _apply_filters(projections, request)
@@ -463,109 +466,217 @@ def api_disponibilidad_historica(request):
         warehouses = warehouses.filter(code=f['warehouse'])
 
     today = datetime.date.today()
-    meses = []
-    for i in range(11, -1, -1):
-        d = today.replace(day=1) - datetime.timedelta(days=i * 30)
-        meses.append(f"{d.year}-{d.month:02d}")
+    meses_dt = [today.replace(day=1) - datetime.timedelta(days=i * 30) for i in range(11, -1, -1)]
+    meses_dt = [d.replace(day=1) for d in meses_dt] # Normalizar al primer día
+    meses_str = [f"{d.year}-{d.month:02d}" for d in meses_dt]
 
     palette = ['#0099DE', '#ef4444', '#f59e0b', '#10b981', '#7c3aed',
                '#e03131', '#00B4D8', '#facc15', '#fb923c']
     datasets = []
 
-    # Filtrar SKUs válidos según grupos activos
     valid_sku_codes = set(projections.values_list('product__code', flat=True).distinct())
 
-    for idx, wh in enumerate(warehouses):
-        of_por_mes = {}
-        of_qs = (
-            ProductionOrderMovement.objects
-            .filter(
-                product_id__in=valid_sku_codes,
-                warehouse__icontains=wh.code,
-                status='Cerrada',
-                end_date__isnull=False,
-                end_date__gte=today - datetime.timedelta(days=365),
-            )
-            .values_list('end_date', flat=True)
-        )
-        for d in of_qs:
-            key = f"{d.year}-{d.month:02d}"
-            of_por_mes[key] = of_por_mes.get(key, 0) + 1
+    # Pre-calcular agregaciones globales por bodega y mes
+    # OFs
+    of_agg = ProductionOrderMovement.objects.filter(
+        product_id__in=valid_sku_codes,
+        start_date__gte=today - datetime.timedelta(days=365)
+    ).annotate(
+        month=TruncMonth('start_date')
+    ).values('warehouse', 'month').annotate(
+        total=Count('id'),
+        cerradas=Count('id', filter=Q(status__icontains='cerrad'))
+    )
 
-        total_en_bodega = InventoryMetric.objects.filter(
-            product_id__in=valid_sku_codes,
-            warehouse__code=wh.code,
-            stock_physical__gt=0
-        ).count() or 1
+    # PCs
+    pc_agg = SalesOrderMovement.objects.filter(
+        product_id__in=valid_sku_codes,
+        emission_date__gte=today - datetime.timedelta(days=365)
+    ).annotate(
+        month=TruncMonth('emission_date')
+    ).values('warehouse', 'month').annotate(
+        total=Count('id'),
+        cerradas=Count('id', filter=Q(status__icontains='cerrad'))
+    )
 
+    # Preparamos las llaves de agrupación. Si es 013-*, va a "Santiago (013)". Si no, va por su código.
+    group_keys = set()
+    for w in warehouses:
+        if w.code.startswith('013'):
+            group_keys.add('Santiago (013)')
+        else:
+            group_keys.add(w.code)
+
+    # Organizar en memoria por Grupos
+    data_by_group = {g: {m: {'t': 0, 'c': 0} for m in meses_str} for g in group_keys}
+
+    def get_group(wh_code):
+        wh_code = wh_code.upper()
+        if wh_code.startswith('013') or wh_code.startswith('13') or 'T013' in wh_code:
+            return 'Santiago (013)'
+            
+        best_match = None
+        for w in warehouses:
+            w_norm = w.code.lstrip('0') or '0'
+            wh_norm = wh_code.lstrip('0') or '0'
+            
+            if wh_code == w.code or wh_norm == w_norm:
+                return w.code
+                
+            if w.code in wh_code:
+                if not best_match or len(w.code) > len(best_match):
+                    best_match = w.code
+        return best_match
+
+    for item in of_agg:
+        wh_code = item['warehouse'].strip()
+        month_dt = item['month']
+        if month_dt and wh_code:
+            group = get_group(wh_code)
+            if group:
+                m_str = f"{month_dt.year}-{month_dt.month:02d}"
+                if m_str in data_by_group[group]:
+                    data_by_group[group][m_str]['t'] += item['total']
+                    data_by_group[group][m_str]['c'] += item['cerradas']
+
+    for item in pc_agg:
+        wh_code = item['warehouse'].strip()
+        month_dt = item['month']
+        if month_dt and wh_code:
+            group = get_group(wh_code)
+            if group:
+                m_str = f"{month_dt.year}-{month_dt.month:02d}"
+                if m_str in data_by_group[group]:
+                    data_by_group[group][m_str]['t'] += item['total']
+                    data_by_group[group][m_str]['c'] += item['cerradas']
+
+    for idx, (group_name, meses_data) in enumerate(data_by_group.items()):
         data = []
-        for mes in meses:
-            mov = of_por_mes.get(mes, 0)
-            pct = round(min(100.0, (mov / total_en_bodega) * 100), 1)
-            data.append(pct)
+        has_any_data = False
+        for mes in meses_str:
+            t = meses_data[mes]['t']
+            c = meses_data[mes]['c']
+            if t > 0:
+                data.append(round((c / t * 100), 1))
+                has_any_data = True
+            else:
+                data.append(None)
+
+        if not has_any_data:
+            continue
 
         color = palette[idx % len(palette)]
         datasets.append({
-            'label': wh.code,
+            'label': group_name,
             'data': data,
             'borderColor': color,
             'backgroundColor': color + '22',
             'tension': 0.3,
             'fill': False,
             'pointRadius': 4,
+            'spanGaps': True,
         })
 
-    return JsonResponse({'labels': meses, 'datasets': datasets})
-
+    return JsonResponse({'labels': meses_str, 'datasets': datasets})
 
 @login_required
 def api_inventario_historico(request):
     """
-    Gráfico 2: Monto Total de Inventario por bodega filtrado por grupos activos.
+    Gráfico 2: Monto Total de Inventario (USD) global de la compañía reconstruido hacia atrás.
+    Inventario(Mes Anterior) = Inventario(Mes Actual) - Ingresos(Mes Actual) + Salidas(Mes Actual)
     """
     projections = StockProjection.objects.all()
     projections, f = _apply_filters(projections, request)
 
-    warehouses = Warehouse.objects.filter(is_active=True).order_by('code')
-    if f['warehouse']:
-        warehouses = warehouses.filter(code=f['warehouse'])
+    # Solo usaremos códigos válidos para mantener congruencia de filtros
+    valid_sku_codes = set(projections.values_list('product__code', flat=True).distinct())
+
+    # 1. Obtener la foto actual de inventario (Gran Total Compañía filtrado)
+    inventario_actual_usd = float(
+        InventoryMetric.objects
+        .filter(product_id__in=valid_sku_codes)
+        .aggregate(t=Sum(F('stock_physical') * F('product__unit_cost_usd')))['t'] or 0
+    )
 
     today = datetime.date.today()
     meses = []
+    # Generamos la lista de meses (del más antiguo al más reciente)
     for i in range(11, -1, -1):
         d = today.replace(day=1) - datetime.timedelta(days=i * 30)
         meses.append(f"{d.year}-{d.month:02d}")
+        
+    # Inicializamos diccionarios para agrupar Ingresos y Salidas por mes
+    ingresos_por_mes = {mes: 0.0 for mes in meses}
+    salidas_por_mes = {mes: 0.0 for mes in meses}
 
-    palette = ['#0099DE', '#ef4444', '#f59e0b', '#10b981', '#7c3aed',
-               '#e03131', '#00B4D8', '#facc15', '#fb923c']
-    datasets = []
+    # -- Agrupar Entradas (GoodsReceipt) --
+    entradas = GoodsReceipt.objects.filter(
+        product_id__in=valid_sku_codes,
+        posting_date__gte=today - datetime.timedelta(days=365)
+    ).values('posting_date').annotate(
+        total_usd=Sum(F('quantity') * F('product__unit_cost_usd'))
+    )
+    
+    for e in entradas:
+        if e['posting_date']:
+            key = f"{e['posting_date'].year}-{e['posting_date'].month:02d}"
+            if key in ingresos_por_mes:
+                ingresos_por_mes[key] += float(e['total_usd'] or 0)
 
-    valid_sku_codes = set(projections.values_list('product__code', flat=True).distinct())
+    # -- Agrupar Salidas OF --
+    ofs = ProductionOrderMovement.objects.filter(
+        product_id__in=valid_sku_codes,
+        status__icontains='cerrada',
+        start_date__gte=today - datetime.timedelta(days=365)
+    ).values('start_date').annotate(
+        total_usd=Sum(F('quantity_delivered') * F('product__unit_cost_usd'))
+    )
+    for of in ofs:
+        if of['start_date']:
+            key = f"{of['start_date'].year}-{of['start_date'].month:02d}"
+            if key in salidas_por_mes:
+                salidas_por_mes[key] += float(of['total_usd'] or 0)
 
-    for idx, wh in enumerate(warehouses):
-        valor_actual = float(
-            InventoryMetric.objects
-            .filter(
-                product_id__in=valid_sku_codes,
-                warehouse__code=wh.code
-            )
-            .aggregate(t=Sum('stock_physical'))['t'] or 0
-        )
-        color = palette[idx % len(palette)]
-        datasets.append({
-            'label': wh.code,
-            'data': [round(valor_actual, 0)] * len(meses),
-            'borderColor': color,
-            'backgroundColor': color + '22',
-            'tension': 0.3,
-            'fill': False,
-            'pointRadius': 4,
-        })
+    # -- Agrupar Salidas PC --
+    pcs = SalesOrderMovement.objects.filter(
+        product_id__in=valid_sku_codes,
+        status__icontains='cerrado',
+        emission_date__gte=today - datetime.timedelta(days=365)
+    ).values('emission_date').annotate(
+        total_usd=Sum(F('quantity') * F('product__unit_cost_usd'))
+    )
+    for pc in pcs:
+        if pc['emission_date']:
+            key = f"{pc['emission_date'].year}-{pc['emission_date'].month:02d}"
+            if key in salidas_por_mes:
+                salidas_por_mes[key] += float(pc['total_usd'] or 0)
+
+    # 2. Reconstruir hacia atrás
+    valores_reconstruidos = []
+    valor_acumulado = inventario_actual_usd
+    
+    # Recorremos de derecha a izquierda (del presente al pasado)
+    for mes in reversed(meses):
+        valores_reconstruidos.insert(0, round(valor_acumulado, 2))
+        # Para el mes anterior: Valor Anterior = Valor Actual - Entradas(mes) + Salidas(mes)
+        valor_acumulado = valor_acumulado - ingresos_por_mes[mes] + salidas_por_mes[mes]
+        if valor_acumulado < 0:
+            valor_acumulado = 0.0
+
+    datasets = [{
+        'label': 'Total Compañía (USD)',
+        'data': valores_reconstruidos,
+        'borderColor': '#10b981',
+        'backgroundColor': '#10b98122',
+        'tension': 0.3,
+        'fill': True,
+        'pointRadius': 4,
+    }]
 
     return JsonResponse({
         'labels': meses,
         'datasets': datasets,
-        '_nota': 'Datos de inventario filtrados por grupos activos de la segmentación S&OP.',
+        '_nota': 'Curva reconstruida matemáticamente usando Inventario Actual - Entradas + Salidas.',
     })
 
 
