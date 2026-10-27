@@ -1,0 +1,67 @@
+"""Glosario en lenguaje simple (SPEC-19 §7). Una sola fuente para la Guia y para la ayuda
+(?) de cada pantalla: clave -> (termino, definicion corta, ejemplo, que hacer)."""
+
+GLOSARIO = {
+    # Clasificacion
+    'letra_R': ('R · Reposición', 'Artículo que se consume en 3 o más de los últimos 12 meses. Se repone solo.',
+                'Un filtro que sale casi todos los meses.', 'Revisar la compra sugerida y aprobarla.'),
+    'letra_E': ('E · Estratégico', 'Artículo que Abastecimiento decide tener siempre, aunque se mueva poco. Lleva un mínimo declarado.',
+                'Un repuesto crítico de una grúa que no puede faltar.', 'Marcarlo en el detalle del artículo y declarar su mínimo.'),
+    'letra_P': ('P · A pedido', 'No rota regularmente y tiene un pedido de cliente u OF abierto. Solo se compra lo comprometido.',
+                'Un repuesto especial pedido por un cliente.', 'Comprar lo que falta para cumplir el pedido.'),
+    'letra_O': ('O · No se recompra', 'Sin consumo regular y sin pedidos abiertos. No se compra.',
+                'Un repuesto de un equipo que ya no se vende.', 'Revisar si es inmovilizado y evaluar su liquidación.'),
+    'abc': ('ABC', 'Importancia por plata: A = artículos que suman el 80% del valor consumido en el año, B = siguiente 15%, C = el resto.',
+            'Pocos artículos A explican casi todo el gasto.', 'Dedicar más tiempo de revisión a los A.'),
+    'xyz': ('XYZ', 'Qué tan parejo es el consumo: X estable, Y variable, Z errático o esporádico.',
+            'X: sale 10 todos los meses. Z: sale 0, 0, 40, 0…', 'Automatizar los X; revisar a mano los Z.'),
+    'subclase': ('Regular / Intermitente', 'Regular: consumo en 9 o más meses del año. Intermitente: en 3 a 8 meses; se calcula por el tamaño de cada salida.',
+                 'Intermitente: sale poco pero en cantidades grandes.', 'Nada: el sistema aplica la regla que corresponde.'),
+    # Calculo
+    'consumo_promedio': ('Consumo promedio mensual', 'Lo que sale en un mes normal: total de los últimos 12 meses cerrados ÷ 12.',
+                         '120 unidades en el año → 10 por mes.', ''),
+    'variacion': ('Variación del consumo', 'Cuánto sube y baja el consumo de un mes a otro (desviación estándar).',
+                  'Promedio 10 con variación 2: casi siempre entre 8 y 12.', ''),
+    'plazo': ('Plazo de entrega', 'Días desde que se emite la OC hasta que el material está disponible (incluye 2 días de recepción). Real si hay 3 o más OC recibidas; si no, el del maestro de SAP.',
+              '45 días del proveedor + 2 de recepción = 47 días.', 'Si dice "maestro", el plazo puede no ser real: revisarlo.'),
+    'stock_seguridad': ('Stock de seguridad', 'Colchón para que no falte si se consume más de lo normal o el proveedor se atrasa. Nunca menos de 2 meses de consumo (4 si el plazo es largo).',
+                        'Consumo 10/mes y plazo corto → al menos 20 unidades.', ''),
+    'punto_pedido': ('Punto de pedido', 'Nivel de stock en que hay que comprar: lo que se consume mientras llega la compra (más los 15 días hasta la próxima compra) más el stock de seguridad.',
+                     'Si el disponible baja de 33, toca comprar.', ''),
+    'stock_maximo': ('Stock máximo', 'Hasta dónde se compra: el punto de pedido más 3 meses de consumo. Se compra hasta aquí, no hasta el punto de pedido, para no comprar a cada rato.',
+                     'Punto de pedido 33 + 3 × 11,5 = 68.', ''),
+    'disponible': ('Disponible a futuro', 'Lo que realmente se tendrá: stock físico + lo que viene en camino (OC, solicitudes, traslados) − lo prometido a clientes y OF. Si es negativo, ya hay más compromisos que stock.',
+                   '12 en bodega + 0 en camino − 9 comprometidos = 3.', ''),
+    'cobertura': ('Cobertura', 'Para cuántos días alcanza el disponible al ritmo de consumo normal.', '30 disponibles y consumo 1 diario → 30 días.',
+                  'Menos que el plazo de entrega = riesgo de quiebre.'),
+    'cantidad_sugerida': ('Cantidad a comprar', 'Lo que falta para llegar al máximo, con un mínimo de 1 mes de consumo y redondeado al mínimo y múltiplo de compra de SAP.',
+                          'Máximo 68 − disponible 3 = 65.', 'Revisar y aprobar en la solicitud del proveedor.'),
+    'urgencia': ('Urgencia', 'URGENTE: el disponible es 0 o negativo. MEDIO: es positivo pero bajo el stock de seguridad. NORMAL: el resto.',
+                 '', 'Atender primero los urgentes.'),
+    # Red y calendario
+    'compra_red': ('Compra de la red', 'Se compra una sola vez por artículo para todas las bodegas y se recibe en 013-PP. Las demás bodegas se abastecen por traslado.',
+                   '', 'Las sucursales nunca generan compras propias.'),
+    'traslado': ('Trasladar', 'La bodega se cubre con stock que sobra en otra bodega de Santiago o con el stock libre de 013-PP. Lo comprometido en 013-PP nunca se traslada.',
+                 '013-03 tiene 2 sin usar → se mandan a Calama.', 'Generar la solicitud de traslado en SAP.'),
+    'traslado_parcial': ('Trasladar parcial', 'Santiago cubre solo una parte; el resto llega con la compra de la red.', '', 'Trasladar lo disponible ahora.'),
+    'espera_compra': ('Espera compra', 'Santiago no tiene stock libre: la bodega espera la compra de la red, que ya incluye su necesidad.',
+                      '', 'Si es urgente, mirar la excepción o un traslado entre sucursales.'),
+    'dia_compra': ('Día de compra', 'Cada proveedor se compra en días fijos, cada 15 días. Ese día entra todo lo que el proveedor tiene que entregar hasta la siguiente compra.',
+                   '', 'Revisar las solicitudes del día.'),
+    'excepcion': ('Compra fuera de calendario', 'El sistema proyecta un quiebre antes de que pueda llegar la próxima compra normal y sugiere comprar hoy.',
+                  'Hoy no toca comprar, pero se acaba en 5 días y la compra normal llega en 24.', 'Revisar la causa (OC atrasada, pedido grande, alza) y aprobar si corresponde.'),
+    'quiebre_inevitable': ('Quiebre inevitable', 'Días sin stock aunque se compre hoy, porque el plazo del proveedor es más largo que lo que dura el stock.',
+                           '', 'Buscar traslado o compra urgente con otro proveedor.'),
+    'quiebre_real': ('Quiebre real', 'Unidades que faltan hoy para cumplir lo comprometido (disponible negativo), valorizadas al costo.',
+                     '', 'Es el número que importa para el servicio al cliente.'),
+    'brecha': ('Brecha contra objetivo', 'Lo que falta para llegar al stock máximo. No es un quiebre: es lo que se compraría para quedar cubierto.',
+               '', 'No sumarla como "quiebre".'),
+    'escenario_actual': ('Escenario anterior', 'Lo que habría hecho el motor anterior: comprar por bodega hasta el punto de pedido, sin calendario.',
+                         '', 'Sirve para comparar y medir la mejora.'),
+    'nuevo': ('Nuevo', 'Creado hace menos de 8 meses (4 en pañol). No tiene historia suficiente: usa un mínimo manual.', '', 'Declarar el mínimo en el detalle del artículo.'),
+    'inmovilizado': ('Inmovilizado', 'Sin movimiento en 24 meses (12 en pañol).', '', 'Evaluar liquidación.'),
+}
+
+
+def termino(clave):
+    return GLOSARIO.get(clave, (clave, '', '', ''))

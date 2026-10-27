@@ -646,7 +646,11 @@ def run_full_datalake_pipeline():
     #    anterior queda como "escenario actual" del panel de indicadores.
     print("\n[DATALAKE] Ejecutando Calculadora de Compras...", flush=True)
     from apps.calculadora.cargadores import cargar_todo
+    from apps.calculadora.publicacion import capturar_escenario_actual
     from apps.calculadora.servicio import ejecutar_corrida
+    # El motor anterior acaba de escribir StockProjection: se guarda como escenario actual
+    # antes de que la Calculadora publique encima (SPEC-19 §2.1)
+    print(f"  [OK] Escenario actual (motor anterior) capturado: {capturar_escenario_actual()} filas", flush=True)
     print(f"  [OK] Carga Calculadora: {cargar_todo()}", flush=True)
     corrida = ejecutar_corrida()
     print(f"  [OK] Corrida {corrida.pk}: {corrida.resumen}", flush=True)

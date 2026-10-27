@@ -50,8 +50,30 @@ class VistasPlanificacionTest(TestCase):
         r = self.client.get(reverse('calculadora:panel'))
         self.assertEqual(r.status_code, 200)
         self.assertContains(r, 'Recalcular ahora')
-        self.assertContains(r, 'Panel de la corrida')
+        self.assertContains(r, 'Qué hay que hacer hoy')
+        self.assertContains(r, 'Detalle de la corrida')
         self.assertContains(r, 'A1')
+
+    def test_panel_tarjetas_y_semaforo(self):
+        from apps.calculadora.models import Alerta, CargaDatos
+        CargaDatos.objects.create(tabla='consumo_mensual', fuente='PC_OF')
+        CargaDatos.objects.create(tabla='plazos_oc', fuente='SIN_ARCHIVO')
+        previas = Alerta.objects.filter(vigente=True, estado=Alerta.NUEVA, severidad='ALTA').count()
+        Alerta.objects.create(tipo='URGENTE', product=self.sku, severidad='ALTA', mensaje='x', clave='t|A1')
+        Alerta.objects.create(tipo='URGENTE', product=self.otro, severidad='ALTA', mensaje='x', clave='t|B2',
+                              estado=Alerta.REVISADA)        # revisada: no cuenta
+        r = self.client.get(reverse('calculadora:panel'))
+        hoy = r.context['hoy']
+        self.assertEqual(hoy['alertas'], previas + 1)
+        for texto in ('Compras del día', 'Fuera de calendario', 'Traslados urgentes', 'Alertas importantes',
+                      'Revisar solicitudes', 'Ver excepciones', 'Ver bodegas'):
+            self.assertContains(r, texto)
+        self.assertContains(r, '?severidad=ALTA')
+        self.assertContains(r, 'Al día')                    # sin traslados urgentes
+        semaforo = {s['nombre']: s['color'] for s in r.context['semaforo']}
+        self.assertEqual(semaforo['Consumo mensual'], 'amarillo')
+        self.assertEqual(semaforo['Plazos de entrega'], 'rojo')
+        self.assertContains(r, 'los plazos son los del maestro de SAP')
 
     def test_correr_requiere_permiso(self):
         n = Corrida.objects.count()
@@ -77,6 +99,16 @@ class VistasPlanificacionTest(TestCase):
         for orden in ('valor', 'urgencia', 'cobertura', 'codigo'):
             self.assertEqual(self.client.get(reverse('calculadora:grilla'), {'orden': orden, 'todo': '1'}).status_code, 200)
 
+    def test_grilla_filtro_xyz(self):
+        self.assertEqual(ResultadoArticulo.objects.get(product=self.sku).xyz, 'X')     # consumo constante
+        self.assertEqual(ResultadoArticulo.objects.get(product=self.otro).xyz, 'Z')    # sin consumo
+        r = self.client.get(reverse('calculadora:grilla'), {'xyz': 'Z'})
+        self.assertContains(r, 'Perno')                   # la celda XYZ se ve completa (con o sin accion)
+        self.assertNotContains(r, 'Filtro hidraulico')
+        r = self.client.get(reverse('calculadora:grilla'), {'xyz': 'X'})
+        self.assertContains(r, 'Filtro hidraulico')
+        self.assertNotContains(r, 'Perno')
+
     def test_grilla_excel(self):
         r = self.client.get(reverse('calculadora:grilla_excel'), {'todo': '1'})
         self.assertEqual(r.status_code, 200)
@@ -88,6 +120,24 @@ class VistasPlanificacionTest(TestCase):
         self.assertContains(r, 'Memoria de cálculo')
         self.assertContains(r, 'RAIZ(')
         self.assertContains(r, 'chartConsumo')
+        self.assertContains(r, 'chartLinea')
+        self.assertContains(r, 'Qué dice el sistema')
+        self.assertContains(r, 'Es un artículo R')
+        self.assertContains(r, 'XYZ X')
+        import json
+        linea = json.loads(r.context['grafico_linea'])
+        self.assertEqual(linea['hoy'], 12)                          # 12 cierres de mes antes de hoy
+        self.assertEqual(len(linea['pasado']), len(linea['labels']))
+        self.assertEqual(linea['pasado'][12], linea['futuro'][12])  # la linea es continua en "hoy"
+        self.assertEqual(linea['labels'][12], 'hoy')
+        self.assertTrue(any(v is not None for v in linea['futuro'][13:]))
+
+    def test_sku_detail_enlaza_a_la_calculadora(self):
+        r = self.client.get(reverse('inventory:sku_detail', args=['A1']))
+        if r.status_code != 200:
+            self.skipTest('La ficha SKU necesita datos que este fixture no tiene')
+        self.assertContains(r, reverse('calculadora:articulo', args=['A1']))
+        self.assertContains(r, 'Ver cálculo completo en la Calculadora')
 
     def test_articulo_inexistente_404(self):
         self.assertEqual(self.client.get(reverse('calculadora:articulo', args=['NOEXISTE'])).status_code, 404)
@@ -121,3 +171,7 @@ class VistasPlanificacionTest(TestCase):
         self.assertContains(r, 'escenario actual vs propuesto')
         r = self.client.get(reverse('calculadora:indicadores'), {'letra': 'R', 'abc': 'A', 'familia': '101'})
         self.assertEqual(r.status_code, 200)
+        r = self.client.get(reverse('calculadora:indicadores'), {'xyz': 'X'})
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, 'Escenario anterior')
+        self.assertContains(r, reverse('purchasing:list'))

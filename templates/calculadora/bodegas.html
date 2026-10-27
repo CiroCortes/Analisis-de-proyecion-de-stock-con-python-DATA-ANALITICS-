@@ -1,0 +1,190 @@
+{% extends 'base.html' %}
+{% load inventory_tags calculadora_tags %}
+
+{% block title %}Bodegas y zonas | Calculadora Pesco{% endblock %}
+
+{% block content %}
+<div class="w-full space-y-6">
+    {% include 'calculadora/_subnav.html' %}
+
+    <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 bg-white p-6 sm:p-7 rounded-3xl shadow-sm border border-slate-200 border-l-8 border-l-pesco-cyan">
+        <div>
+            <span class="text-xs font-bold text-pesco-cyan uppercase tracking-wider">Calculadora de compras · Bodegas</span>
+            <h1 class="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight mt-1">¿Qué bodega está en riesgo y qué se mueve?</h1>
+            <p class="text-sm text-slate-500 mt-1 max-w-3xl">
+                Las bodegas no compran: se cubren por traslado o esperan la compra de la red {% ayuda 'compra_red' %}.
+                Lo comprometido en 013-PP nunca se traslada.
+            </p>
+        </div>
+        <a href="{% url 'calculadora:bodegas_excel' %}?{{ request.GET.urlencode }}" class="bg-pesco-cyan hover:bg-pesco-darkcyan text-white text-xs font-bold px-5 py-3 rounded-full shadow-md uppercase tracking-wider whitespace-nowrap"><i class="fa-solid fa-file-excel mr-1"></i> Descargar Excel</a>
+    </div>
+
+    <!-- Zona -->
+    <div class="flex flex-wrap gap-2 text-xs font-bold uppercase tracking-wider">
+        <a href="?{% if f.todo %}todo=1{% endif %}" class="px-4 py-2 rounded-full border {% if not f.zona %}bg-slate-900 text-white border-slate-900{% else %}bg-white text-slate-600 border-slate-200 hover:border-pesco-cyan{% endif %}">Toda la red</a>
+        <a href="?zona=SANTIAGO{% if f.todo %}&todo=1{% endif %}" class="px-4 py-2 rounded-full border {% if f.zona == 'SANTIAGO' %}bg-pesco-cyan text-white border-pesco-cyan{% else %}bg-white text-slate-600 border-slate-200 hover:border-pesco-cyan{% endif %}"><i class="fa-solid fa-city mr-1"></i> Santiago</a>
+        <a href="?zona=SUCURSAL{% if f.todo %}&todo=1{% endif %}" class="px-4 py-2 rounded-full border {% if f.zona == 'SUCURSAL' %}bg-pesco-cyan text-white border-pesco-cyan{% else %}bg-white text-slate-600 border-slate-200 hover:border-pesco-cyan{% endif %}"><i class="fa-solid fa-map-location-dot mr-1"></i> Sucursales</a>
+    </div>
+
+    <!-- Tarjetas por bodega -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+        {% for t in tarjetas %}
+        <a href="?bodega={{ t.code }}{% if f.todo %}&todo=1{% endif %}" class="bg-white rounded-3xl border {% if f.bodega == t.code %}border-pesco-cyan ring-2 ring-pesco-lightcyan{% else %}border-slate-200{% endif %} p-5 shadow-sm hover:shadow-md hover:border-pesco-cyan transition block">
+            <div class="flex justify-between items-start gap-2">
+                <div>
+                    <div class="font-mono font-black text-slate-900">{{ t.code }}</div>
+                    <div class="text-[11px] text-slate-500 leading-tight">{{ t.nombre }}</div>
+                </div>
+                <span class="text-[9px] font-black uppercase px-2 py-0.5 rounded-full {% if t.zona == 'SANTIAGO' %}bg-pesco-lightcyan text-pesco-darkcyan{% else %}bg-slate-100 text-slate-600{% endif %}">{% if t.zona == 'SANTIAGO' %}Santiago{% else %}Sucursal{% endif %}</span>
+            </div>
+            <div class="grid grid-cols-2 gap-3 mt-4 text-center">
+                <div>
+                    <div class="text-[9px] font-bold text-slate-400 uppercase tracking-wider">En riesgo</div>
+                    <div class="text-xl font-black font-mono {% if t.riesgo %}text-amber-600{% else %}text-slate-300{% endif %}">{{ t.riesgo }}</div>
+                </div>
+                <div>
+                    <div class="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Quiebre real {% ayuda 'quiebre_real' %}</div>
+                    <div class="text-xl font-black font-mono {% if t.quiebre_usd %}text-red-600{% else %}text-slate-300{% endif %}">{{ t.quiebre_usd|compact_usd }}</div>
+                </div>
+                <div>
+                    <div class="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Recibe</div>
+                    <div class="text-sm font-black font-mono text-pesco-darkcyan">{{ t.entran }} <span class="text-[10px] text-slate-400 font-medium">({{ t.entran_u|floatformat:"-1" }} u)</span></div>
+                </div>
+                <div>
+                    <div class="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Envía</div>
+                    <div class="text-sm font-black font-mono text-slate-700">{{ t.salen }} <span class="text-[10px] text-slate-400 font-medium">({{ t.salen_u|floatformat:"-1" }} u)</span></div>
+                </div>
+                <div>
+                    <div class="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Espera compra {% ayuda 'espera_compra' %}</div>
+                    <div class="text-sm font-black font-mono text-slate-700">{{ t.espera }}</div>
+                </div>
+                <div>
+                    <div class="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Cobertura típica {% ayuda 'cobertura' %}</div>
+                    <div class="text-sm font-black font-mono text-slate-700">{% if t.cobertura_mediana is not None %}{{ t.cobertura_mediana|floatformat:0 }} días{% else %}—{% endif %}</div>
+                </div>
+            </div>
+        </a>
+        {% empty %}
+        <div class="col-span-full bg-white rounded-3xl border border-slate-200 p-8 text-center text-slate-500 text-sm">Todavía no hay resultados por bodega. Ejecuta el cálculo desde <a class="text-pesco-cyan font-bold" href="{% url 'calculadora:panel' %}">Hoy</a>.</div>
+        {% endfor %}
+    </div>
+
+    <!-- Pastillas por accion -->
+    <div class="flex flex-wrap gap-3">
+        {% for valor, nombre, n in pills %}
+        <a href="?{% if qs_sin_accion %}{{ qs_sin_accion }}&{% endif %}accion={{ valor }}"
+           class="rounded-2xl border px-4 py-3 shadow-sm transition text-center min-w-[150px] {% if f.accion == valor %}bg-pesco-cyan border-pesco-cyan text-white{% else %}bg-white border-slate-200 hover:border-pesco-cyan{% endif %}">
+            <div class="text-[10px] font-black uppercase tracking-wider {% if f.accion != valor %}text-slate-500{% endif %}">
+                {% if valor == 'TRASLADAR' %}<i class="fa-solid fa-truck-arrow-right mr-1"></i>{% elif valor == 'TRASLADAR_PARCIAL' %}<i class="fa-solid fa-truck-ramp-box mr-1"></i>{% else %}<i class="fa-solid fa-hourglass-half mr-1"></i>{% endif %}{{ nombre }}
+                {% if valor == 'TRASLADAR' %}{% ayuda 'traslado' %}{% elif valor == 'TRASLADAR_PARCIAL' %}{% ayuda 'traslado_parcial' %}{% else %}{% ayuda 'espera_compra' %}{% endif %}
+            </div>
+            <div class="text-2xl font-black font-mono">{{ n }}</div>
+        </a>
+        {% endfor %}
+        {% if f.accion %}<a href="?{{ qs_sin_accion }}" class="self-center text-xs font-bold text-slate-500 px-3">Quitar filtro de acción</a>{% endif %}
+    </div>
+
+    <!-- Filtros -->
+    <form method="get" class="bg-white p-5 rounded-3xl shadow-sm border border-slate-200 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4 items-end">
+        <div>
+            <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Zona</label>
+            <select name="zona" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm">
+                <option value="">Toda la red</option>
+                <option value="SANTIAGO" {% if f.zona == 'SANTIAGO' %}selected{% endif %}>Santiago</option>
+                <option value="SUCURSAL" {% if f.zona == 'SUCURSAL' %}selected{% endif %}>Sucursales</option>
+            </select>
+        </div>
+        <div>
+            <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Bodega</label>
+            <select name="bodega" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm">
+                <option value="">Todas</option>{% for b in bodegas_lista %}<option {% if f.bodega == b %}selected{% endif %}>{{ b }}</option>{% endfor %}
+            </select>
+        </div>
+        <div>
+            <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Acción</label>
+            <select name="accion" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm">
+                <option value="">Todas</option>{% for v, n in acciones %}<option value="{{ v }}" {% if f.accion == v %}selected{% endif %}>{{ n }}</option>{% endfor %}
+            </select>
+        </div>
+        <div>
+            <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Urgencia {% ayuda 'urgencia' %}</label>
+            <select name="urgencia" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm">
+                <option value="">Todas</option>{% for v, n in urgencias %}<option value="{{ v }}" {% if f.urgencia == v %}selected{% endif %}>{{ n }}</option>{% endfor %}
+            </select>
+        </div>
+        <div>
+            <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Artículo</label>
+            <input name="search" value="{{ f.search }}" placeholder="Código o descripción" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm">
+        </div>
+        <div class="space-y-2">
+            <label class="flex items-center gap-2 text-xs text-slate-600"><input type="checkbox" name="todo" value="1" {% if f.todo %}checked{% endif %}> Ver también las bodegas sin acción</label>
+            <div class="flex gap-2">
+                <button class="bg-pesco-cyan text-white text-xs font-bold px-5 py-2.5 rounded-full uppercase tracking-wider">Filtrar</button>
+                <a href="{% url 'calculadora:bodegas' %}" class="text-xs font-bold text-slate-500 px-3 py-2.5">Limpiar</a>
+            </div>
+        </div>
+    </form>
+
+    <!-- Tabla -->
+    <div class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+        <div class="px-6 py-4 border-b border-slate-100 flex flex-wrap justify-between gap-2 items-center">
+            <h2 class="font-black text-slate-800">Artículos por bodega <span class="text-slate-400 font-mono text-sm">({{ total }})</span></h2>
+            <span class="text-xs text-slate-500">Santiago primero; dentro de cada bodega, lo más urgente y lo que se acaba antes.</span>
+        </div>
+        <div class="overflow-x-auto">
+        <table class="min-w-full text-xs">
+            <thead><tr class="text-[10px] uppercase tracking-wider text-slate-400 border-b border-slate-100 bg-slate-50">
+                <th class="text-left py-2 px-4">Bodega</th>
+                <th class="text-left py-2 px-3">Artículo</th>
+                <th class="text-center py-2 px-2">Letra</th>
+                <th class="text-right py-2 px-3">Disponible {% ayuda 'disponible' %}</th>
+                <th class="text-right py-2 px-3" title="Lo comprometido localmente (pedidos y OF de la bodega)">Objetivo</th>
+                <th class="text-right py-2 px-3">Faltante</th>
+                <th class="text-right py-2 px-3">Cobertura {% ayuda 'cobertura' %}</th>
+                <th class="text-left py-2 px-3">Acción</th>
+                <th class="text-left py-2 px-3">Desde</th>
+                <th class="text-left py-2 px-3">Urgencia {% ayuda 'urgencia' %}</th>
+            </tr></thead>
+            <tbody>
+            {% for b in filas %}
+            <tr class="border-b border-slate-50 hover:bg-slate-50">
+                <td class="py-2 px-4 font-mono font-bold text-slate-700 whitespace-nowrap">{{ b.warehouse.code }}</td>
+                <td class="py-2 px-3">
+                    <a href="{% url 'calculadora:articulo' b.resultado.product_id %}" class="font-mono font-bold text-pesco-darkcyan hover:underline">{{ b.resultado.product_id }}</a>
+                    <div class="text-[11px] text-slate-500 truncate max-w-[280px]">{{ b.resultado.product.description }}</div>
+                </td>
+                <td class="py-2 px-2 text-center"><span class="font-black text-slate-700">{{ b.resultado.letra }}</span></td>
+                <td class="py-2 px-3 text-right font-mono {% if b.disponible_futuro < 0 %}text-red-600 font-bold{% endif %}">{{ b.disponible_futuro|floatformat:"-1" }}</td>
+                <td class="py-2 px-3 text-right font-mono">{{ b.objetivo|floatformat:"-1" }}</td>
+                <td class="py-2 px-3 text-right font-mono {% if b.faltante > 0 %}text-amber-700 font-bold{% else %}text-slate-300{% endif %}">{{ b.faltante|floatformat:"-1" }}</td>
+                <td class="py-2 px-3 text-right font-mono whitespace-nowrap {% if b.cobertura_corta %}text-red-600 font-bold{% endif %}" {% if b.cobertura_corta %}title="Se acaba antes de lo que demora una compra ({{ b.resultado.plazo_total_dias|floatformat:0 }} días)"{% endif %}>
+                    {% if b.cobertura_dias is not None %}{{ b.cobertura_dias|floatformat:0 }} d{% else %}<span class="text-slate-300" title="Sin consumo en esta bodega">—</span>{% endif %}
+                </td>
+                <td class="py-2 px-3 whitespace-nowrap">
+                    <span class="text-[10px] font-black uppercase px-2 py-0.5 rounded-full
+                        {% if b.accion == 'TRASLADAR' %}bg-cyan-100 text-cyan-800{% elif b.accion == 'TRASLADAR_PARCIAL' %}bg-indigo-100 text-indigo-800{% elif b.accion == 'ESPERA_COMPRA' %}bg-amber-100 text-amber-800{% else %}bg-slate-100 text-slate-500{% endif %}">{{ b.accion_txt }}</span>
+                    {% if b.espera_compra and b.accion != 'ESPERA_COMPRA' %}<div class="text-[10px] text-slate-500 mt-0.5">{{ b.espera_compra|floatformat:"-1" }} esperan compra</div>{% endif %}
+                </td>
+                <td class="py-2 px-3 text-slate-600">{{ b.origenes_txt|default:"—" }}{% if b.sucursales_con_stock %}<div class="text-[10px] text-indigo-600">Hay stock en {{ b.sucursales_con_stock|join:", " }}</div>{% endif %}</td>
+                <td class="py-2 px-3">
+                    <span class="text-[10px] font-black uppercase px-2 py-0.5 rounded-full {% if b.urgencia == 'URGENTE' %}bg-red-100 text-red-700{% elif b.urgencia == 'MEDIO' %}bg-amber-100 text-amber-700{% else %}bg-emerald-50 text-emerald-700{% endif %}">{{ b.urgencia|title }}</span>
+                </td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="10" class="py-10 text-center text-slate-500">No hay bodegas con acciones para este filtro. {% if not f.todo %}<a class="text-pesco-cyan font-bold" href="?{{ qs_sin_pagina }}&todo=1">Ver todo</a>{% endif %}</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        </div>
+        {% if page_obj.has_other_pages %}
+        <div class="px-6 py-4 border-t border-slate-100 flex justify-between items-center text-xs">
+            <span class="text-slate-500">Página {{ page_obj.number }} de {{ page_obj.paginator.num_pages }}</span>
+            <div class="flex gap-2">
+                {% if page_obj.has_previous %}<a class="px-3 py-1.5 rounded-full border border-slate-200 font-bold" href="?{{ qs_sin_pagina }}&page={{ page_obj.previous_page_number }}">Anterior</a>{% endif %}
+                {% if page_obj.has_next %}<a class="px-3 py-1.5 rounded-full border border-slate-200 font-bold" href="?{{ qs_sin_pagina }}&page={{ page_obj.next_page_number }}">Siguiente</a>{% endif %}
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

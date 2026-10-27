@@ -31,6 +31,7 @@ G = general, F = familia, P = proveedor, A = artículo, B = bodega.
 | inmovilizado_meses_repuestos / _panol | Meses para Inmovilizado | 24 / 12 | 6–60 | G |
 | corte_abc_a / corte_abc_b | Cortes ABC | 0,80 / 0,15 | 0,5–0,95 / 0,01–0,45 | G |
 | p_solo_con_compromiso | P exige PC u OF abierto | Sí | sí/no | G |
+| corte_xyz_x / corte_xyz_y | Cortes XYZ (coef. de variación) — SPEC-19 | 0,5 / 1,0 | 0,05–3 / 0,1–5 | G |
 | horizonte_proyeccion_dias | Horizonte proyección | 120 | 30–365 | G |
 | alerta_bajo_ss_dias | Alerta bajo SS proyectado | 15 | 1–90 | G |
 | alerta_contrato_vence_dias | Alerta contrato por vencer | 60 | 1–365 | G |

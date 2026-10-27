@@ -85,6 +85,18 @@ def clases_abc(valores, params):
     return resultado
 
 
+def clase_xyz(consumo_promedio, variacion, params):
+    """Variabilidad del consumo (SPEC-19 §3.1): X estable, Y variable, Z erratico o sin consumo."""
+    if consumo_promedio <= 0:
+        return 'Z'
+    cv = variacion / consumo_promedio
+    if cv <= params.corte_xyz_x:
+        return 'X'
+    if cv <= params.corte_xyz_y:
+        return 'Y'
+    return 'Z'
+
+
 def nivel_servicio(abc, es_critico, segmento, params):
     nivel = {'A': params.nivel_servicio_a, 'B': params.nivel_servicio_b}.get(abc, params.nivel_servicio_c)
     if es_critico or segmento == PANOL:

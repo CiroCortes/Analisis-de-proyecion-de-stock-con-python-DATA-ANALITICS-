@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% load inventory_tags %}
+{% load inventory_tags calculadora_tags %}
 
 {% block title %}{{ p.code }} · Memoria de cálculo | Calculadora Pesco{% endblock %}
 
@@ -18,7 +18,8 @@
                     · Próxima compra: <span class="font-bold">{{ proxima|date:"d-m-Y" }}</span>{% if e.es_dia_compra %} <span class="text-emerald-600 font-bold">(hoy)</span>{% endif %}</p>
                 <div class="flex flex-wrap gap-2 mt-3">
                     <span class="px-3 py-1 rounded-full text-xs font-black {% if r.letra == 'R' %}bg-blue-100 text-blue-800{% elif r.letra == 'E' %}bg-purple-100 text-purple-800{% elif r.letra == 'P' %}bg-amber-100 text-amber-800{% else %}bg-rose-100 text-rose-800{% endif %}">{{ r.letra }}{% if r.clasificacion.subclase %} · {{ r.clasificacion.subclase|title }}{% endif %}</span>
-                    <span class="px-3 py-1 rounded-full text-xs font-black bg-slate-100 text-slate-700">ABC {{ e.abc }}</span>
+                    <span class="px-3 py-1 rounded-full text-xs font-black bg-slate-100 text-slate-700">ABC {{ e.abc }} {% ayuda 'abc' %}</span>
+                    <span class="px-3 py-1 rounded-full text-xs font-black {% if r.xyz == 'X' %}bg-emerald-100 text-emerald-700{% elif r.xyz == 'Y' %}bg-amber-100 text-amber-700{% else %}bg-rose-100 text-rose-700{% endif %}">XYZ {{ r.xyz }} {% ayuda 'xyz' %}</span>
                     <span class="px-3 py-1 rounded-full text-xs font-black bg-slate-100 text-slate-700">Servicio {{ r.nivel_servicio|floatformat:"-3" }}</span>
                     {% if e.es_critico %}<span class="px-3 py-1 rounded-full text-xs font-black bg-red-100 text-red-700">Crítico</span>{% endif %}
                     {% if r.es_nuevo %}<span class="px-3 py-1 rounded-full text-xs font-black bg-sky-100 text-sky-700">Nuevo</span>{% endif %}
@@ -45,20 +46,36 @@
         {% endif %}
     </div>
 
-    <!-- Graficos -->
-    <div class="grid grid-cols-1 xl:grid-cols-2 gap-6">
-        <div class="bg-white rounded-3xl border border-slate-200 shadow-sm p-5">
-            <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Consumo mensual de la red (meses cerrados)</div>
-            <div class="h-72 mt-2"><canvas id="chartConsumo"></canvas></div>
+    <!-- Qué dice el sistema (SPEC-19 §5) -->
+    <div class="bg-pesco-lightcyan border border-pesco-cyan/30 rounded-3xl p-5 flex gap-4" id="que-dice">
+        <div class="w-10 h-10 rounded-2xl bg-pesco-cyan text-white flex items-center justify-center shrink-0"><i class="fa-solid fa-comment-dots"></i></div>
+        <div>
+            <div class="text-[10px] font-black text-pesco-darkcyan uppercase tracking-wider">Qué dice el sistema</div>
+            <div class="text-sm text-slate-800 mt-1 space-y-1 leading-relaxed">
+                {% for frase in que_dice %}<p>{{ frase }}</p>{% endfor %}
+            </div>
         </div>
-        <div class="bg-white rounded-3xl border border-slate-200 shadow-sm p-5">
-            <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Stock proyectado {{ r.serie|length }} días con llegadas de OC</div>
-            {% if grafico_proyeccion %}
-            <div class="h-72 mt-2"><canvas id="chartProyeccion"></canvas></div>
-            {% else %}
-            <p class="text-sm text-slate-500 mt-6">No se proyecta: el artículo no se repone por fórmula (método {{ r.politica.metodo }}) o no tiene consumo ni compromisos.</p>
-            {% endif %}
+    </div>
+
+    <!-- Pasado y futuro en un gráfico -->
+    <div class="bg-white rounded-3xl border border-slate-200 shadow-sm p-5">
+        <div class="flex flex-wrap justify-between items-baseline gap-2">
+            <div>
+                <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Stock de la red: últimos 12 meses y próximos {{ r.serie|length }} días</div>
+                <div class="text-xs text-slate-500">A la izquierda del "hoy", el stock al cierre de cada mes (reconstruido con entradas y consumos). A la derecha, lo que se espera con el consumo normal, los compromisos y las OC por llegar.
+                    Líneas: stock de seguridad {% ayuda 'stock_seguridad' %}, punto de pedido {% ayuda 'punto_pedido' %} y máximo {% ayuda 'stock_maximo' %}.</div>
+            </div>
+            {% if hay_inconsistencia %}<span class="text-[11px] px-3 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-800"><i class="fa-regular fa-circle"></i> Puntos huecos: falta algún movimiento en ese mes</span>{% endif %}
         </div>
+        <div class="h-80 mt-3"><canvas id="chartLinea"></canvas></div>
+        {% if not r.serie %}
+        <p class="text-xs text-slate-500 mt-2">Sin proyección futura: el artículo no se repone por fórmula (método {{ r.politica.metodo }}) o no tiene consumo ni compromisos.</p>
+        {% endif %}
+    </div>
+
+    <div class="bg-white rounded-3xl border border-slate-200 shadow-sm p-5">
+        <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Consumo mensual de la red (meses cerrados) {% ayuda 'consumo_promedio' %}</div>
+        <div class="h-64 mt-2"><canvas id="chartConsumo"></canvas></div>
     </div>
 
     <!-- Memoria de calculo -->
@@ -234,14 +251,30 @@
                    plugins: { legend: { labels: { filter: function (i) { return i.text !== ''; }, boxWidth: 12, font: { size: 10 } } } } }
     });
 
-    {% if grafico_proyeccion %}
-    var p = {{ grafico_proyeccion|safe }};
+    var p = {{ grafico_linea|safe }};
     var m = p.labels.length;
     function linea(v) { var a = []; for (var i = 0; i < m; i++) a.push(v); return a; }
-    new Chart(document.getElementById('chartProyeccion'), {
+    // Divisor vertical "hoy"
+    var divisorHoy = {
+        id: 'divisorHoy',
+        afterDatasetsDraw: function (chart) {
+            var x = chart.scales.x.getPixelForValue(p.hoy), area = chart.chartArea, ctx = chart.ctx;
+            ctx.save();
+            ctx.strokeStyle = '#1E293B'; ctx.setLineDash([3, 3]); ctx.lineWidth = 1;
+            ctx.beginPath(); ctx.moveTo(x, area.top); ctx.lineTo(x, area.bottom); ctx.stroke();
+            ctx.setLineDash([]); ctx.fillStyle = '#1E293B'; ctx.font = 'bold 10px sans-serif';
+            ctx.fillText('HOY', x + 4, area.top + 10);
+            ctx.restore();
+        }
+    };
+    new Chart(document.getElementById('chartLinea'), {
         type: 'line',
         data: { labels: p.labels, datasets: [
-            { label: 'Stock proyectado', data: p.serie, borderColor: '#0099DE', backgroundColor: 'rgba(0,153,222,0.08)', fill: true, pointRadius: 0, borderWidth: 2 },
+            { label: 'Stock real (cierre de mes)', data: p.pasado, borderColor: '#334155', backgroundColor: 'rgba(51,65,85,0.06)', fill: true, borderWidth: 2,
+              pointRadius: function (c) { return c.dataIndex <= p.hoy ? 4 : 0; },
+              pointBackgroundColor: function (c) { return p.inconsistente[c.dataIndex] ? '#FFFFFF' : '#334155'; },
+              pointBorderColor: function (c) { return p.inconsistente[c.dataIndex] ? '#F59E0B' : '#334155'; } },
+            { label: 'Stock proyectado', data: p.futuro, borderColor: '#0099DE', backgroundColor: 'rgba(0,153,222,0.08)', fill: true, pointRadius: 0, borderWidth: 2 },
             { label: 'Stock máximo', data: linea(p.max), borderColor: '#10B981', borderDash: [6, 4], pointRadius: 0, borderWidth: 1.5 },
             { label: 'Punto de pedido', data: linea(p.rop), borderColor: '#F59E0B', borderDash: [6, 4], pointRadius: 0, borderWidth: 1.5 },
             { label: 'Stock de seguridad', data: linea(p.ss), borderColor: '#EF4444', borderDash: [6, 4], pointRadius: 0, borderWidth: 1.5 },
@@ -249,10 +282,15 @@
             { label: 'Quiebre', data: p.quiebre, showLine: false, pointRadius: 7, pointStyle: 'crossRot', borderColor: '#DC2626', borderWidth: 3 }
         ] },
         options: { maintainAspectRatio: false, spanGaps: false, interaction: { mode: 'index', intersect: false },
-                   scales: { x: { ticks: { maxTicksLimit: 12 } } },
-                   plugins: { legend: { labels: { boxWidth: 12, font: { size: 10 } } } } }
+                   scales: { x: { ticks: { maxTicksLimit: 16, autoSkip: true } } },
+                   plugins: {
+                       legend: { labels: { boxWidth: 12, font: { size: 10 } } },
+                       tooltip: { callbacks: { afterLabel: function (c) {
+                           return (c.datasetIndex === 0 && p.inconsistente[c.dataIndex]) ? 'Falta algún movimiento en este mes' : '';
+                       } } }
+                   } },
+        plugins: [divisorHoy]
     });
-    {% endif %}
 })();
 </script>
 {% endblock %}

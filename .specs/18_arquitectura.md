@@ -68,9 +68,23 @@ y la serie diaria de 120 días.
 | `parametros/`, `parametros/simular/`, `parametros/historial/excel/` | Parámetros (SPEC-14) |
 | `proveedores/` | Calendario de compra por proveedor (SPEC-12) |
 
+### 4.3 Fusión del Recomendador (`views_fusion.py`, SPEC-19)
+
+| URL | Contenido |
+|---|---|
+| `bodegas/`, `bodegas/excel/` | Vista por bodega y zona: riesgo, quiebre real, traslados, espera compra, cobertura |
+| `segmentacion/` | Matriz ABC × XYZ con recomendación por celda |
+| `guia/` | Glosario en lenguaje simple (`glosario.py`) y uso en 5 pasos |
+
 Subnavegación común: `templates/calculadora/_subnav.html` con `calc_subnav` del context processor
 `apps.calculadora.context_processors.calculadora`. Enlace "Calculadora" en `base.html`.
-El **Recomendador** (`/purchasing/`) sigue usando el motor anterior hasta la marcha blanca.
+Ayuda en contexto: `{% load calculadora_tags %}{% ayuda 'clave' %}`.
+
+**Fuente única (SPEC-19 §2):** al final de cada corrida `publicacion.publicar()` reescribe
+`StockProjection` y `SKUClassification`, así el Dashboard, el Reporte Gerencial, el Asistente
+IA, el detalle de SKU y el Recomendador (`/purchasing/`, fuera del menú) muestran los números
+de la Calculadora. El motor anterior se ejecuta antes en el pipeline y su resultado se guarda en
+`EscenarioActual` (`capturar_escenario_actual()`), que alimenta el panel actual vs propuesto.
 
 ## 5. Roles
 
@@ -90,6 +104,10 @@ bodegas con movimiento. La migración a PostgreSQL sigue pendiente (decisión ab
 | `tests/test_calc_golden.py` | Casos 1–5 del documento (SPEC-17) |
 | `tests/test_calc_reglas.py` | Redondeo, clasificación, ABC, consumo y atípicos, plazo, compra, red, calendario, motor, parámetros |
 | `tests/test_ingestion_and_rop.py` | Pipeline actual (SC, DRP, bodegas) |
+| `tests/test_calculadora_servicio.py` | Cargadores, corrida, historial, alertas, simulación |
+| `tests/test_calculadora_vistas_*.py`, `tests/test_vistas_fusion.py` | Pantallas |
+| `tests/test_fusion.py` | XYZ, histórico, cobertura por bodega, escenario actual y publicación (SPEC-19) |
+| `tests/conftest.py` | Parche del test client para Django 5.1 + Python 3.14 |
 
 ## 8. Fuera de alcance (por ahora)
 

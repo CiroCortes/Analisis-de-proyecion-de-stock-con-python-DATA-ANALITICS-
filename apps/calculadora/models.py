@@ -236,6 +236,7 @@ class ResultadoArticulo(models.Model):
     subclase = models.CharField(max_length=12, blank=True, default='')
     motivo_clasificacion = models.CharField(max_length=150, blank=True, default='')
     abc = models.CharField(max_length=1, db_index=True, default='C')
+    xyz = models.CharField(max_length=1, db_index=True, default='Z', help_text='Variabilidad: X estable, Y variable, Z erratico')
     segmento = models.CharField(max_length=10, default='REPUESTOS')
     es_nuevo = models.BooleanField(default=False)
     es_inmovilizado = models.BooleanField(default=False)
@@ -335,6 +336,9 @@ class ResultadoBodega(models.Model):
     origenes = models.JSONField(default=list)
     sucursales_con_stock = models.JSONField(default=list)
     urgencia = models.CharField(max_length=10, default='NORMAL')
+    # Consumo y cobertura de la bodega (SPEC-19 §3.2): informan donde se acaba primero el stock
+    consumo_diario = models.FloatField(default=0)
+    cobertura_dias = models.FloatField(null=True, blank=True)
 
 
 class TrasladoSugerido(models.Model):
@@ -355,6 +359,7 @@ class HistorialMensual(models.Model):
     letra = models.CharField(max_length=1)
     subclase = models.CharField(max_length=12, blank=True, default='')
     abc = models.CharField(max_length=1, default='C')
+    xyz = models.CharField(max_length=1, default='Z')
     letra_anterior = models.CharField(max_length=1, blank=True, default='')
     motivo = models.CharField(max_length=150, blank=True, default='')
     valor_stock_maximo = models.FloatField(default=0)
@@ -364,6 +369,21 @@ class HistorialMensual(models.Model):
 
     class Meta:
         unique_together = ('product', 'mes')
+
+
+class EscenarioActual(models.Model):
+    """Resultado del motor anterior, guardado antes de que la Calculadora publique en
+    StockProjection (SPEC-19 §2.1). Solo alimenta el panel "actual vs propuesto"."""
+    product = models.ForeignKey(ProductSKU, on_delete=models.CASCADE, related_name='escenario_actual')
+    bodega = models.CharField(max_length=20)
+    rop = models.IntegerField(default=0)
+    sugerido_compra = models.IntegerField(default=0)
+    accion = models.CharField(max_length=15, default='NINGUNA')
+    letra = models.CharField(max_length=1, blank=True, default='')
+    capturado_en = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        indexes = [models.Index(fields=['product', 'bodega'])]
 
 
 # ── Solicitudes de compra (§6) ───────────────────────────────────────────────

@@ -23,14 +23,14 @@ from apps.calc.proyeccion import dia_llegada_oc
 from apps.calc.red import Bodega
 from apps.calc.simulacion import Escenario, simular
 from apps.data_ingestion.datalake_ingest import find_data_file
-from apps.data_ingestion.warehouses import SANTIAGO
+from apps.data_ingestion.warehouses import SANTIAGO, commitment_bodega
 from apps.inventory.group_types import PANOL as TIPO_PANOL
-from apps.inventory.models import InventoryMetric, ProductSKU, SKUClassification, StockProjection, Warehouse
+from apps.inventory.models import InventoryMetric, ProductSKU, StockProjection, Warehouse
 
-from . import alertas
+from . import alertas, publicacion
 from .models import (ArticuloConfig, CargaDatos, CompromisoAbierto, ConsumoMensual, Corrida, Equivalencia,
-                     EventoComercial, HistorialMensual, LineaSolicitud, OCAbierta, ParametroCompra, PlazoOC,
-                     Proveedor, ResultadoArticulo, ResultadoBodega, SolicitudCompra, TrasladoSugerido)
+                     EscenarioActual, EventoComercial, HistorialMensual, LineaSolicitud, OCAbierta, ParametroCompra,
+                     PlazoOC, Proveedor, ResultadoArticulo, ResultadoBodega, SolicitudCompra, TrasladoSugerido)
 from .parametros import Resolutor
 
 CENTRAL = '013-PP'
@@ -80,14 +80,16 @@ class Datos:
             antiguos = [a for a, n in equiv.items() if n == producto.code]
             consumo_qs = consumo_qs.filter(product_id__in=[producto.code] + antiguos)
         self.consumo = defaultdict(lambda: [0.0] * len(self.meses))
+        self.consumo_bodega = defaultdict(float)     # (sku, bodega) -> consumo de 12 meses (SPEC-19 §3.2)
         self.ultimo_mov = {}
-        for sku, mes, q in consumo_qs.values_list('product_id', 'mes', 'cantidad'):
+        for sku, bodega, mes, q in consumo_qs.values_list('product_id', 'bodega', 'mes', 'cantidad'):
             sku = equiv.get(sku, sku)
             if q > 0 and (sku not in self.ultimo_mov or mes > self.ultimo_mov[sku]):
                 self.ultimo_mov[sku] = mes
             i = self.indice_mes.get(mes)
             if i is not None:
                 self.consumo[sku][i] += q
+                self.consumo_bodega[(sku, commitment_bodega(bodega))] += q
 
         self.metricas = defaultdict(list)
         for m in filtro(InventoryMetric.objects.select_related('warehouse')):
@@ -133,11 +135,22 @@ class Datos:
             elif ev.familia:
                 self.eventos_familia[ev.familia].append(ev)
 
-        # Escenario actual (motor anterior) para comparar
-        self.rop_actual = dict(filtro(SKUClassification.objects).values_list('product_id', 'rop_statistical'))
+        # Escenario actual (motor anterior) para comparar. Desde SPEC-19 StockProjection lo
+        # publica la Calculadora: el motor anterior queda en EscenarioActual. Solo si nunca se
+        # publico se lee StockProjection (primera corrida tras instalar SPEC-19).
+        self.rop_actual = {}
         self.sugerido_actual = defaultdict(int)
-        for sku, q in filtro(StockProjection.objects).values_list('product_id', 'suggested_buy_units'):
+        escenario = filtro(EscenarioActual.objects)
+        if escenario.exists():
+            filas = escenario.values_list('product_id', 'bodega', 'rop', 'sugerido_compra')
+        elif not Corrida.objects.filter(resumen__publicado=True).exists():
+            filas = filtro(StockProjection.objects).values_list('product_id', 'warehouse__code', 'rop', 'suggested_buy_units')
+        else:
+            filas = []
+        for sku, bodega, rop, q in filas:
             self.sugerido_actual[sku] += q or 0
+            if bodega == CENTRAL:
+                self.rop_actual[sku] = rop or 0
 
 
 def _segmento(p):
@@ -284,6 +297,8 @@ def ejecutar_corrida(usuario=None, hoy=None, guardar=True, extra_general=None):
             return resumen
         _guardar(corrida, datos, calculados, valor_anual)
         resumen['alertas'] = alertas.generar(corrida, hoy)
+        resumen['publicacion'] = publicacion.publicar(corrida)
+        resumen['publicado'] = True
         resumen['segundos'] = round(time.time() - t0, 1)
         corrida.estado = Corrida.OK
         corrida.resumen = resumen
@@ -308,6 +323,36 @@ def calcular_detalle(codigo, hoy=None):
     previo = ResultadoArticulo.objects.filter(product=p).values_list('abc', flat=True).first()
     e, prov, proxima = _entrada(datos, p, previo or 'C')
     return e, calcular_articulo(e), prov, proxima
+
+
+def historico_articulo(codigo, hoy=None, meses=12):
+    """Stock al cierre de los ultimos meses cerrados, reconstruido hacia atras desde el stock
+    fisico de hoy de la red (SPEC-19 §3.3). Devuelve [(mes, stock, inconsistente)]."""
+    from django.db.models import Sum
+
+    from apps.calc.historico import reconstruir
+    from apps.inventory.models import GoodsReceipt
+    hoy = hoy or timezone.localdate()
+    lista = meses_cerrados(hoy, meses)
+    inicio = lista[0]
+    bodegas = {w.code for w in Warehouse.objects.filter(is_active=True) if w.zone}
+    stock_hoy = InventoryMetric.objects.filter(product_id=codigo, warehouse__code__in=bodegas).aggregate(
+        s=Sum('stock_physical'))['s'] or 0
+
+    def por_mes(pares):
+        acumulado = defaultdict(float)
+        for fecha, q in pares:
+            if fecha:
+                acumulado[fecha.replace(day=1)] += float(q or 0)
+        return acumulado
+
+    entradas = por_mes(GoodsReceipt.objects.filter(product_id=codigo, posting_date__gte=inicio)
+                       .values_list('posting_date', 'quantity'))
+    consumo = por_mes(ConsumoMensual.objects.filter(product_id=codigo, mes__gte=inicio).values_list('mes', 'cantidad'))
+    actual = hoy.replace(day=1)
+    puntos = reconstruir(stock_hoy, [entradas.get(m, 0) for m in lista], [consumo.get(m, 0) for m in lista],
+                         entradas.get(actual, 0), consumo.get(actual, 0))
+    return [(m, pt.stock, pt.inconsistente) for m, pt in zip(lista, puntos)]
 
 
 def _resumen(calculados):
@@ -345,7 +390,7 @@ def _guardar(corrida, datos, calculados, valor_anual):
         objetos.append(ResultadoArticulo(
             corrida=corrida, product=p, proveedor_id=prov or None,
             letra=r.letra, subclase=r.clasificacion.subclase, motivo_clasificacion=r.clasificacion.motivo[:150],
-            abc=e.abc, segmento=e.segmento, es_nuevo=r.es_nuevo, es_inmovilizado=r.es_inmovilizado,
+            abc=e.abc, xyz=r.xyz, segmento=e.segmento, es_nuevo=r.es_nuevo, es_inmovilizado=r.es_inmovilizado,
             es_critico=e.es_critico, nivel_servicio=r.nivel_servicio, factor_servicio=po.factor_servicio,
             consumo_meses=[round(v, 2) for v in c.meses_originales], meses_con_consumo_12m=c.meses_con_consumo_12m,
             consumo_promedio_mes=c.consumo_promedio_mes,
@@ -385,7 +430,10 @@ def _guardar(corrida, datos, calculados, valor_anual):
             b, wh = posicion.get(a.codigo), datos.bodegas.get(a.codigo)
             if not wh or not b or not (b.stock_fisico or b.en_transito or b.comprometido or a.faltante):
                 continue
+            consumo_dia = datos.consumo_bodega.get((p.code, a.codigo), 0.0) / 365.0
             bodegas_obj.append(ResultadoBodega(
+                consumo_diario=consumo_dia,
+                cobertura_dias=a.disponible_futuro / consumo_dia if consumo_dia > 0 else None,
                 resultado=res, warehouse=wh, stock_fisico=b.stock_fisico, en_transito=b.en_transito,
                 comprometido=b.comprometido, disponible_futuro=a.disponible_futuro, objetivo=a.objetivo,
                 faltante=a.faltante, excedente=a.excedente, accion=a.accion, cantidad_trasladar=a.cantidad_trasladar,
@@ -418,7 +466,7 @@ def _historial(datos, calculados):
     for p, e, r, prov, proxima in calculados:
         anterior = anteriores.get(p.code, '')
         filas.append(HistorialMensual(
-            product=p, mes=mes, letra=r.letra, subclase=r.clasificacion.subclase, abc=e.abc,
+            product=p, mes=mes, letra=r.letra, subclase=r.clasificacion.subclase, abc=e.abc, xyz=r.xyz,
             letra_anterior=anterior, motivo=r.clasificacion.motivo[:150] if anterior and anterior != r.letra else '',
             valor_stock_maximo=r.compra.valor_stock_maximo, stock_maximo=r.politica.stock_maximo,
             consumo_promedio_mes=r.consumo.consumo_promedio_mes, variacion_consumo=r.consumo.variacion_consumo,

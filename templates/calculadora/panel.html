@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
-{% load inventory_tags %}
+{% load inventory_tags calculadora_tags %}
 
-{% block title %}Panel Calculadora de Compras | Pesco S.A.{% endblock %}
+{% block title %}Qué hay que hacer hoy · Calculadora | Pesco S.A.{% endblock %}
 
 {% block content %}
 <div class="w-full space-y-6">
@@ -10,8 +10,8 @@
     <!-- Encabezado -->
     <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 bg-white p-6 sm:p-7 rounded-3xl shadow-sm border border-slate-200 border-l-8 border-l-pesco-cyan">
         <div>
-            <span class="text-xs font-bold text-pesco-cyan uppercase tracking-wider">Calculadora de Compras · Compra única para la red</span>
-            <h1 class="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight mt-1">Panel de la corrida</h1>
+            <span class="text-xs font-bold text-pesco-cyan uppercase tracking-wider">Calculadora de Compras · Compra única para la red {% ayuda 'compra_red' %}</span>
+            <h1 class="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight mt-1">Qué hay que hacer hoy</h1>
             {% if ultima_ok %}
             <p class="text-sm text-slate-500 mt-1">
                 Último cálculo: <span class="font-bold text-slate-700">{{ ultima_ok.fecha_calculo|date:"d-m-Y" }}</span>
@@ -39,31 +39,108 @@
         </form>
     </div>
 
-    <!-- Avisos de datos -->
-    {% if fuente_provisional %}
-    <div class="bg-amber-50 border border-amber-300 text-amber-900 rounded-2xl p-4 text-sm flex gap-3">
-        <i class="fa-solid fa-triangle-exclamation text-amber-500 text-lg mt-0.5"></i>
-        <div>
-            <div class="font-black">Consumo provisional</div>
-            El consumo se reconstruyó con los PC y OF cerrados porque falta la consulta 8 (<span class="font-mono">Consumo Mensual.txt</span>, movimientos OINM).
-            Los resultados sirven para revisar la lógica, pero no para comprar a ciegas: no incluyen salidas de mercancía ni devoluciones.
+    <!-- ═══ 4 acciones del día (SPEC-19 §7.1) ═══ -->
+    <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4" id="acciones-hoy">
+        {% with d=hoy.dia %}
+        <div class="rounded-3xl border p-5 shadow-sm flex flex-col justify-between {% if d.n %}bg-white border-emerald-200{% else %}bg-emerald-50 border-emerald-200{% endif %}">
+            <div>
+                <div class="flex items-center gap-2 text-[10px] font-black uppercase tracking-wider text-emerald-700"><i class="fa-solid fa-cart-shopping"></i> Compras del día {% ayuda 'dia_compra' %}</div>
+                {% if d.n %}
+                <div class="text-3xl font-black text-slate-900 font-mono mt-2">{{ d.usd|compact_usd }}</div>
+                <p class="text-sm text-slate-600 mt-1">Hoy es día de compra de <b>{{ hoy.proveedores }} proveedor{{ hoy.proveedores|pluralize:"es" }}</b>: entran <b>{{ d.n }} artículo{{ d.n|pluralize }}</b> en sus solicitudes.</p>
+                {% else %}
+                <div class="text-lg font-black text-emerald-700 mt-2"><i class="fa-solid fa-circle-check"></i> Al día</div>
+                <p class="text-sm text-slate-600 mt-1">Hoy ningún proveedor tiene compras pendientes en su día de compra.</p>
+                {% endif %}
+            </div>
+            <a href="{% url 'calculadora:solicitudes' %}" class="mt-4 text-center bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-4 py-2.5 rounded-full uppercase tracking-wider">Revisar solicitudes</a>
+        </div>
+        {% endwith %}
+
+        {% with x=hoy.exc %}
+        <div class="rounded-3xl border p-5 shadow-sm flex flex-col justify-between {% if x.n %}bg-white border-orange-200{% else %}bg-emerald-50 border-emerald-200{% endif %}">
+            <div>
+                <div class="flex items-center gap-2 text-[10px] font-black uppercase tracking-wider text-orange-700"><i class="fa-solid fa-bolt"></i> Fuera de calendario {% ayuda 'excepcion' %}</div>
+                {% if x.n %}
+                <div class="text-3xl font-black text-slate-900 font-mono mt-2">{{ x.n }}</div>
+                <p class="text-sm text-slate-600 mt-1"><b>{{ x.n }} artículo{{ x.n|pluralize }}</b> se quiebra{{ x.n|pluralize:"n" }} antes de que llegue la próxima compra normal ({{ x.usd|compact_usd }} sugeridos).
+                    {% if x.inevitable %}En <b>{{ x.inevitable }}</b> el quiebre es inevitable aunque se compre hoy {% ayuda 'quiebre_inevitable' %}: buscar traslado o compra urgente.{% endif %}</p>
+                {% else %}
+                <div class="text-lg font-black text-emerald-700 mt-2"><i class="fa-solid fa-circle-check"></i> Al día</div>
+                <p class="text-sm text-slate-600 mt-1">Ningún artículo se quiebra antes de su próxima compra.</p>
+                {% endif %}
+            </div>
+            <a href="{% url 'calculadora:grilla' %}?compra=excepcion" class="mt-4 text-center bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold px-4 py-2.5 rounded-full uppercase tracking-wider">Ver excepciones</a>
+        </div>
+        {% endwith %}
+
+        {% with t=hoy.tras %}
+        <div class="rounded-3xl border p-5 shadow-sm flex flex-col justify-between {% if t.n %}bg-white border-cyan-200{% else %}bg-emerald-50 border-emerald-200{% endif %}">
+            <div>
+                <div class="flex items-center gap-2 text-[10px] font-black uppercase tracking-wider text-cyan-700"><i class="fa-solid fa-truck-fast"></i> Traslados urgentes {% ayuda 'traslado' %}</div>
+                {% if t.n %}
+                <div class="text-3xl font-black text-slate-900 font-mono mt-2">{{ t.n }}</div>
+                <p class="text-sm text-slate-600 mt-1">Hay que mover <b>{{ t.u|floatformat:"0g" }} unidades</b> a <b>{{ t.destinos }} bodega{{ t.destinos|pluralize }}</b> que ya no tiene{{ t.destinos|pluralize:"n" }} para cumplir lo comprometido.</p>
+                {% else %}
+                <div class="text-lg font-black text-emerald-700 mt-2"><i class="fa-solid fa-circle-check"></i> Al día</div>
+                <p class="text-sm text-slate-600 mt-1">Ninguna bodega necesita un traslado urgente.</p>
+                {% endif %}
+            </div>
+            <a href="{% url 'calculadora:bodegas' %}?accion=TRASLADAR" class="mt-4 text-center bg-cyan-600 hover:bg-cyan-700 text-white text-xs font-bold px-4 py-2.5 rounded-full uppercase tracking-wider">Ver bodegas</a>
+        </div>
+        {% endwith %}
+
+        <div class="rounded-3xl border p-5 shadow-sm flex flex-col justify-between {% if hoy.alertas %}bg-white border-red-200{% else %}bg-emerald-50 border-emerald-200{% endif %}">
+            <div>
+                <div class="flex items-center gap-2 text-[10px] font-black uppercase tracking-wider text-red-600"><i class="fa-solid fa-bell"></i> Alertas importantes</div>
+                {% if hoy.alertas %}
+                <div class="text-3xl font-black text-slate-900 font-mono mt-2">{{ hoy.alertas }}</div>
+                <p class="text-sm text-slate-600 mt-1"><b>{{ hoy.alertas }} alerta{{ hoy.alertas|pluralize }} de prioridad alta</b> sin revisar (quiebres, urgentes). Márcalas como revisadas al atenderlas.</p>
+                {% else %}
+                <div class="text-lg font-black text-emerald-700 mt-2"><i class="fa-solid fa-circle-check"></i> Al día</div>
+                <p class="text-sm text-slate-600 mt-1">No hay alertas de prioridad alta pendientes.</p>
+                {% endif %}
+            </div>
+            <a href="{% url 'calculadora:alertas' %}?severidad=ALTA" class="mt-4 text-center bg-red-600 hover:bg-red-700 text-white text-xs font-bold px-4 py-2.5 rounded-full uppercase tracking-wider">Ver alertas</a>
         </div>
     </div>
-    {% endif %}
-    {% if brechas %}
+
+    <!-- ═══ Semáforo de datos ═══ -->
+    {% if semaforo %}
     <div class="bg-white rounded-3xl border border-slate-200 shadow-sm p-5">
-        <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3">Datos que faltan o usan respaldo</div>
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-            {% for c in brechas %}
-            <div class="rounded-2xl border {% if c.fuente == 'SIN_ARCHIVO' %}border-red-200 bg-red-50{% else %}border-amber-200 bg-amber-50{% endif %} p-3 text-xs">
-                <div class="font-black text-slate-800 uppercase">{{ c.tabla }} <span class="font-mono text-[10px] ml-1 px-2 py-0.5 rounded-full bg-white border">{{ c.fuente }}</span></div>
-                <div class="text-slate-600 mt-1">{{ c.nota|default:"Sin nota" }}</div>
-                <div class="text-slate-400 mt-1">{{ c.cargado_en|date:"d-m-Y H:i" }} · {{ c.filas }} filas</div>
+        <div class="flex flex-wrap justify-between items-baseline gap-2 mb-3">
+            <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">¿Qué tan confiables son los datos de hoy?</div>
+            <div class="text-[11px] text-slate-500 flex gap-3">
+                <span><span class="inline-block w-2.5 h-2.5 rounded-full bg-emerald-500"></span> real</span>
+                <span><span class="inline-block w-2.5 h-2.5 rounded-full bg-amber-400"></span> provisional</span>
+                <span><span class="inline-block w-2.5 h-2.5 rounded-full bg-red-500"></span> falta</span>
+            </div>
+        </div>
+        {% if fuente_provisional %}
+        <p class="text-sm text-amber-900 bg-amber-50 border border-amber-200 rounded-2xl px-4 py-2 mb-3">
+            <i class="fa-solid fa-triangle-exclamation text-amber-500"></i>
+            El consumo es <b>provisional</b>: sirve para revisar la lógica, pero revisa cada compra antes de aprobarla.
+        </p>
+        {% endif %}
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+            {% for s in semaforo %}
+            <div class="rounded-2xl border p-3 text-xs flex gap-2 {% if s.color == 'rojo' %}border-red-200 bg-red-50{% elif s.color == 'amarillo' %}border-amber-200 bg-amber-50{% else %}border-emerald-200 bg-emerald-50{% endif %}"
+                 title="{{ s.carga.archivo|default:'sin archivo' }} · {{ s.carga.filas }} filas · {{ s.carga.cargado_en|date:'d-m-Y H:i' }}">
+                <span class="mt-1 inline-block w-2.5 h-2.5 rounded-full shrink-0 {% if s.color == 'rojo' %}bg-red-500{% elif s.color == 'amarillo' %}bg-amber-400{% else %}bg-emerald-500{% endif %}"></span>
+                <div><div class="font-black text-slate-800">{{ s.nombre }}</div><div class="text-slate-600">{{ s.texto }}</div></div>
             </div>
             {% endfor %}
         </div>
     </div>
     {% endif %}
+
+    <details class="group bg-white rounded-3xl border border-slate-200 shadow-sm">
+        <summary class="cursor-pointer list-none px-5 py-4 flex justify-between items-center">
+            <span class="font-black text-slate-900"><i class="fa-solid fa-chart-simple text-pesco-cyan mr-1"></i> Detalle de la corrida</span>
+            <span class="text-xs font-bold text-pesco-cyan group-open:hidden">Mostrar ▾</span>
+            <span class="text-xs font-bold text-pesco-cyan hidden group-open:inline">Ocultar ▴</span>
+        </summary>
+        <div class="px-5 pb-5 space-y-6">
 
     {% if resumen %}
     <!-- KPIs principales -->
@@ -88,7 +165,7 @@
             <div class="text-[10px] text-orange-600">quiebre antes de la próxima compra</div>
         </a>
         <a href="{% url 'calculadora:grilla' %}?urgencia=URGENTE" class="bg-red-50 rounded-2xl border border-red-200 p-4 text-center shadow-sm hover:shadow-md transition">
-            <div class="text-[10px] font-bold text-red-600 uppercase tracking-wider">Urgentes</div>
+            <div class="text-[10px] font-bold text-red-600 uppercase tracking-wider">Urgentes {% ayuda 'urgencia' %}</div>
             <div class="text-2xl font-black text-red-600 mt-1 font-mono">{{ resumen.urgentes|default:0 }}</div>
             <div class="text-[10px] text-red-500">disponible ≤ 0</div>
         </a>
@@ -112,12 +189,12 @@
             <div class="text-[11px] text-slate-500 mt-1">Plata que inmovilizaría tener todo al máximo</div>
         </div>
         <div class="bg-red-50 rounded-2xl border border-red-200 p-5 shadow-sm" title="{{ resumen.quiebre_real_usd|full_usd }}">
-            <div class="text-[10px] font-bold text-red-600 uppercase tracking-wider">Quiebre real</div>
+            <div class="text-[10px] font-bold text-red-600 uppercase tracking-wider">Quiebre real {% ayuda 'quiebre_real' %}</div>
             <div class="text-2xl font-black text-red-700 mt-1 font-mono">{{ resumen.quiebre_real_usd|compact_usd }}</div>
             <div class="text-[11px] text-red-600 mt-1">Compromisos que el stock de la red no cubre (disponible &lt; 0)</div>
         </div>
         <div class="bg-amber-50 rounded-2xl border border-amber-200 p-5 shadow-sm" title="{{ resumen.brecha_objetivo_usd|full_usd }}">
-            <div class="text-[10px] font-bold text-amber-700 uppercase tracking-wider">Brecha contra el máximo</div>
+            <div class="text-[10px] font-bold text-amber-700 uppercase tracking-wider">Brecha contra el máximo {% ayuda 'brecha' %}</div>
             <div class="text-2xl font-black text-amber-800 mt-1 font-mono">{{ resumen.brecha_objetivo_usd|compact_usd }}</div>
             <div class="text-[11px] text-amber-700 mt-1">Lo que falta para llegar al stock máximo. <b>No es quiebre.</b></div>
         </div>
@@ -232,5 +309,7 @@
         </div>
     </div>
     {% endif %}
+        </div>
+    </details>
 </div>
 {% endblock %}

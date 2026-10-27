@@ -322,9 +322,14 @@ class StockProjection(models.Model):
         ('NORMAL', '🟢 Normal'),
     ]
     # ── Tipo de acción sugerida (DRP Balanceo de Red) ──────────────────────────
+    # Desde SPEC-19 la Calculadora publica aqui sus acciones: COMPRAR solo en la central
+    # (compra de la red); las bodegas TRASLADAR / TRASLADAR_PARCIAL / ESPERA_COMPRA.
+    # MIXTO queda por compatibilidad con corridas del motor anterior.
     ACTION_CHOICES = [
         ('COMPRAR', '🛒 Compra a Proveedor'),
         ('TRASLADAR', '🚚 Traslado Interno'),
+        ('TRASLADAR_PARCIAL', '🚚 Traslado Parcial'),
+        ('ESPERA_COMPRA', '⏳ Espera Compra de la Red'),
         ('MIXTO', '🔀 Mixto (Traslado + Compra)'),
         ('NINGUNA', '✅ Sin Acción Requerida'),
     ]
@@ -343,7 +348,7 @@ class StockProjection(models.Model):
 
     # ── Campos NUEVOS: Balanceo DRP (Traslado vs Compra) ──────────────────────
     action_type = models.CharField(
-        max_length=15, choices=ACTION_CHOICES, default='NINGUNA', db_index=True,
+        max_length=20, choices=ACTION_CHOICES, default='NINGUNA', db_index=True,
         verbose_name="Acción Sugerida",
         help_text="COMPRAR: ir a proveedor. TRASLADAR: mover desde otra bodega. MIXTO: ambas."
     )

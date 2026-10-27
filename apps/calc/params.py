@@ -47,6 +47,9 @@ class Params:
     # Regla P acordada el 26-oct (SPEC-07 §6): P exige PC u OF abierto. Con False se usa
     # la regla literal del documento (consumo en 1-2 meses O compromiso activo).
     p_solo_con_compromiso: bool = True
+    # Eje XYZ por coeficiente de variacion del consumo mensual (SPEC-19 §3.1)
+    corte_xyz_x: float = 0.5
+    corte_xyz_y: float = 1.0
 
     # Proyeccion diaria
     horizonte_proyeccion_dias: int = 120
@@ -95,6 +98,8 @@ CATALOGO = {
     'corte_abc_a': ('Corte ABC clase A (% valor acumulado)', (GENERAL,), 0.5, 0.95),
     'corte_abc_b': ('Corte ABC clase B (% valor siguiente)', (GENERAL,), 0.01, 0.45),
     'p_solo_con_compromiso': ('P exige PC u OF abierto', (GENERAL,), 0, 1),
+    'corte_xyz_x': ('Corte XYZ clase X (coef. de variacion maximo)', (GENERAL,), 0.05, 3),
+    'corte_xyz_y': ('Corte XYZ clase Y (coef. de variacion maximo)', (GENERAL,), 0.1, 5),
     'horizonte_proyeccion_dias': ('Horizonte de proyeccion diaria (dias)', (GENERAL,), 30, 365),
     'alerta_bajo_ss_dias': ('Alerta bajo SS proyectado (dias)', (GENERAL,), 1, 90),
     'alerta_contrato_vence_dias': ('Alerta contrato por vencer (dias)', (GENERAL,), 1, 365),

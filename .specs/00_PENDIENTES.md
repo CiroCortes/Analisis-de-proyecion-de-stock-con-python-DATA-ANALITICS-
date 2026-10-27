@@ -55,9 +55,12 @@ quiebre real USD 717 mil vs brecha contra objetivo USD 3,94 M.
 
 ## Trabajo técnico pendiente
 
-- **Commit**: muchísimos cambios sin commitear. Dividir (ingesta, alcance/grupos, bodegas/zonas,
-  motor anterior, Calculadora: núcleo + app + pantallas + specs); no incluir `scratch/` ni `data/*.txt`.
-- **Reprocesar** con Sincronizar para aplicar el arreglo de OC/SC en la `013` a `InventoryMetric`.
+- **Fusión del Recomendador (SPEC-19)**: en la rama `feature/fusion-recomendador`. Al fusionar a
+  `main`, correr Sincronizar una vez (captura el escenario actual y publica). Tras la marcha
+  blanca, decidir si se borra `/purchasing/` y si el motor anterior se reduce a solo el ROP de
+  comparación.
+- **Quiebre en el Dashboard**: desde SPEC-19 muestra el quiebre real (antes USD 96 M de brecha del
+  motor anterior). Avisar a gerencia antes de presentar el Reporte Gerencial.
 - **Verificar OF con cantidades enormes**: 2,7 M u comprometidas en 013-PP; sospecha de unidades
   (metros/kilos/litros). Revisar el top 10; afecta traslados y excepciones.
 - **Stock en la `013` a secas** (1.704 u): hoy no se cuenta. Revisar si suma a 013-PP.
@@ -78,6 +81,13 @@ quiebre real USD 717 mil vs brecha contra objetivo USD 3,94 M.
 - `03_sop_ui_ux.md`: revisar contra las pantallas nuevas.
 
 ## Hecho
+
+**27-oct-2026 (tarde, SPEC-19)**: fuente única (la Calculadora publica en StockProjection y
+SKUClassification; motor anterior en EscenarioActual); eje XYZ y matriz ABC-XYZ; consumo y
+cobertura por bodega; inventario histórico + proyección en el detalle; pantallas Bodegas,
+Segmentación y Guía; panel "Qué hay que hacer hoy"; ayuda (?) en contexto; Recomendador fuera del
+menú; filtros ABC del Dashboard y Recomendador con la definición por valor. Commit de respaldo
+del estado anterior subido a `main` (sin documentos internos: el repo es público).
 
 **27-oct-2026**: núcleo de cálculo puro `apps/calc/` (consumo, plazo, clasificación, política, red,
 proyección, calendario, simulación); casos dorados 1–5 en verde y 45 tests de reglas; app Django

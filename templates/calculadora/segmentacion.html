@@ -1,0 +1,129 @@
+{% extends 'base.html' %}
+{% load inventory_tags calculadora_tags %}
+
+{% block title %}Segmentación ABC-XYZ | Calculadora Pesco{% endblock %}
+
+{% block content %}
+<div class="w-full space-y-6">
+    {% include 'calculadora/_subnav.html' %}
+
+    <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 bg-white p-6 sm:p-7 rounded-3xl shadow-sm border border-slate-200 border-l-8 border-l-pesco-cyan">
+        <div>
+            <span class="text-xs font-bold text-pesco-cyan uppercase tracking-wider">Calculadora de compras · Segmentación</span>
+            <h1 class="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight mt-1">¿Dónde poner la atención?</h1>
+            <p class="text-sm text-slate-500 mt-1 max-w-3xl">
+                Cada artículo se ubica por su <b>importancia en plata</b> (ABC {% ayuda 'abc' %}) y por <b>qué tan parejo es su consumo</b> (XYZ {% ayuda 'xyz' %}).
+                Arriba a la izquierda están los artículos importantes y predecibles; abajo a la derecha, los de poco valor y consumo errático.
+                Haz clic en una celda para ver sus artículos.
+            </p>
+        </div>
+        <form method="get" class="flex items-center gap-2 text-xs">
+            <label class="font-bold text-slate-400 uppercase tracking-wider">Artículos</label>
+            <select name="alcance" onchange="this.form.submit()" class="border border-slate-200 rounded-xl px-3 py-2 text-sm">
+                <option value="rep" {% if alcance == 'rep' %}selected{% endif %}>Que se compran (R, E, P)</option>
+                <option value="re" {% if alcance == 're' %}selected{% endif %}>Solo reposición (R, E)</option>
+                <option value="todo" {% if alcance == 'todo' %}selected{% endif %}>Todos</option>
+            </select>
+        </form>
+    </div>
+
+    <div class="grid grid-cols-3 gap-4">
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 text-center shadow-sm">
+            <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Artículos</div>
+            <div class="text-2xl font-black font-mono">{{ total_n }}</div>
+        </div>
+        <div class="bg-pesco-lightcyan rounded-2xl border border-cyan-200 p-4 text-center shadow-sm">
+            <div class="text-[10px] font-bold text-pesco-darkcyan uppercase tracking-wider">Valor del stock</div>
+            <div class="text-2xl font-black font-mono text-pesco-darkcyan">{{ total_stock|compact_usd }}</div>
+        </div>
+        <div class="bg-slate-900 rounded-2xl p-4 text-center shadow-sm">
+            <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">A comprar {% ayuda 'cantidad_sugerida' %}</div>
+            <div class="text-2xl font-black font-mono text-white">{{ total_comprar|compact_usd }}</div>
+        </div>
+    </div>
+
+    <!-- Matriz -->
+    <div class="bg-white rounded-3xl shadow-sm border border-slate-200 p-4 sm:p-6 overflow-x-auto">
+        <table class="w-full min-w-[720px] border-separate" style="border-spacing: 8px;">
+            <thead>
+                <tr>
+                    <th class="w-32"></th>
+                    {% for x, nombre in xyz_cols %}
+                    <th class="text-center pb-1">
+                        <div class="text-2xl font-black text-slate-800">{{ x }}</div>
+                        <div class="text-[10px] font-bold uppercase tracking-wider text-slate-400">{{ nombre }}</div>
+                    </th>
+                    {% endfor %}
+                </tr>
+            </thead>
+            <tbody>
+            {% for fila in filas %}
+            <tr>
+                <th class="text-left align-middle pr-2">
+                    <div class="text-2xl font-black text-slate-800">{{ fila.abc }}</div>
+                    <div class="text-[10px] font-bold uppercase tracking-wider text-slate-400">{{ fila.abc_txt }}</div>
+                </th>
+                {% for c in fila.celdas %}
+                <td class="align-top p-0">
+                    <a href="{% url 'calculadora:grilla' %}?abc={{ c.abc }}&xyz={{ c.xyz }}&todo=1"
+                       class="block rounded-2xl p-4 h-full border transition hover:shadow-md hover:-translate-y-0.5
+                       {% if c.tono == 0 %}bg-slate-50 border-slate-100 text-slate-400
+                       {% elif c.tono == 1 %}bg-cyan-50 border-cyan-100 text-slate-700
+                       {% elif c.tono == 2 %}bg-cyan-100 border-cyan-200 text-slate-800
+                       {% elif c.tono == 3 %}bg-cyan-200 border-cyan-300 text-slate-900
+                       {% elif c.tono == 4 %}bg-cyan-400 border-cyan-500 text-white
+                       {% else %}bg-pesco-darkcyan border-pesco-darkcyan text-white{% endif %}">
+                        <div class="flex justify-between items-baseline">
+                            <span class="font-black text-sm">{{ c.abc }}{{ c.xyz }}</span>
+                            <span class="font-mono text-[11px] font-bold">{{ c.pct|floatformat:1 }}% del valor</span>
+                        </div>
+                        <div class="text-2xl font-black font-mono mt-1">{{ c.n }} <span class="text-xs font-bold">artículos</span></div>
+                        <div class="text-[11px] mt-1">Stock <b class="font-mono">{{ c.stock|compact_usd }}</b> · Comprar <b class="font-mono">{{ c.comprar|compact_usd }}</b></div>
+                        <div class="text-[11px] mt-2 font-bold leading-snug"><i class="fa-solid fa-lightbulb mr-1"></i>{{ c.recomendacion }}</div>
+                    </a>
+                </td>
+                {% endfor %}
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div class="bg-white rounded-3xl shadow-sm border border-slate-200 p-6 space-y-3 text-sm text-slate-600">
+            <h2 class="font-black text-slate-800">Cómo se arma la matriz</h2>
+            <p><b>ABC (importancia en plata):</b> se ordenan los artículos por valor consumido en el año (cantidad × costo).
+                <b>A</b> = los que suman el primer {{ corte_a }}% del valor, <b>B</b> = el siguiente {{ corte_b }}%, <b>C</b> = el {{ corte_c }}% restante.</p>
+            <p><b>XYZ (qué tan parejo es el consumo):</b> se compara la variación mensual con el promedio (coeficiente de variación).
+                <b>X</b> = hasta {{ corte_x }} (estable), <b>Y</b> = hasta {{ corte_y }} (variable), <b>Z</b> = más de {{ corte_y }} o sin consumo (errático).</p>
+            <p class="text-xs text-slate-400">Los cortes se ajustan en <a href="{% url 'calculadora:parametros' %}" class="text-pesco-cyan font-bold">Parámetros</a>. Las recomendaciones son orientativas: la compra la sigue calculando la fórmula de cada artículo.</p>
+        </div>
+
+        <div class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+            <div class="px-6 py-4 border-b border-slate-100">
+                <h2 class="font-black text-slate-800">Los 10 más delicados: A y errático (AZ)</h2>
+                <p class="text-xs text-slate-500">Mucho valor y consumo difícil de prever: conviene revisarlos con el área comercial antes de aprobar compras.</p>
+            </div>
+            <table class="min-w-full text-xs">
+                <thead><tr class="text-[10px] uppercase tracking-wider text-slate-400 border-b border-slate-100 bg-slate-50">
+                    <th class="text-left py-2 px-4">Artículo</th><th class="text-center py-2 px-2">Letra</th>
+                    <th class="text-right py-2 px-3">Consumo anual USD</th><th class="text-right py-2 px-3">Variación / promedio</th>
+                </tr></thead>
+                <tbody>
+                {% for r in riesgosos %}
+                <tr class="border-b border-slate-50 hover:bg-slate-50">
+                    <td class="py-2 px-4"><a href="{% url 'calculadora:articulo' r.product_id %}" class="font-mono font-bold text-pesco-darkcyan hover:underline">{{ r.product_id }}</a>
+                        <div class="text-[11px] text-slate-500 truncate max-w-[260px]">{{ r.product.description }}</div></td>
+                    <td class="py-2 px-2 text-center font-black">{{ r.letra }}</td>
+                    <td class="py-2 px-3 text-right font-mono">{{ r.valor_consumo_anual|compact_usd }}</td>
+                    <td class="py-2 px-3 text-right font-mono">{% if r.cv is not None %}{{ r.cv|floatformat:2 }}{% else %}sin consumo{% endif %}</td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="4" class="py-8 text-center text-slate-500">No hay artículos A con consumo errático.</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

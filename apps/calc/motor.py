@@ -68,6 +68,7 @@ class ResultadoArticulo:
     excepcion: object
     cantidad_excepcion: int = 0
     causa_excepcion: str = ''
+    xyz: str = 'Z'
     avisos: list = field(default_factory=list)
 
     @property
@@ -150,7 +151,8 @@ def calcular_articulo(e):
         nivel_servicio=nivel, consumo=consumo, plazo=plazo, politica=politica, compra=compra,
         stock_fisico=stock, en_transito=transito, comprometido=comprometido,
         acciones=acciones, traslados=traslados, serie=serie, excepcion=excepcion,
-        cantidad_excepcion=cantidad_exc, causa_excepcion=causa, avisos=avisos,
+        cantidad_excepcion=cantidad_exc, causa_excepcion=causa,
+        xyz=cl.clase_xyz(consumo.consumo_promedio_mes, consumo.variacion_consumo, p), avisos=avisos,
     )
 
 

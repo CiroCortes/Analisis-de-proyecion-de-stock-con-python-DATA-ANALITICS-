@@ -88,10 +88,8 @@
                     <i class="fa-solid fa-calculator {% if request.resolver_match.app_name == 'calculadora' %}text-white{% else %}text-pesco-cyan{% endif %}"></i> Calculadora
                 </a>
 
-                <!-- 3. Recomendador de Compras -->
-                <a href="{% url 'purchasing:list' %}" class="px-3 py-2 rounded-xl transition flex items-center gap-1.5 {% if request.resolver_match.app_name == 'purchasing' %}bg-pesco-cyan text-white shadow-sm font-black{% else %}text-slate-700 hover:bg-pesco-lightcyan hover:text-pesco-cyan{% endif %}">
-                    <i class="fa-solid fa-cart-shopping {% if request.resolver_match.app_name == 'purchasing' %}text-white{% else %}text-pesco-cyan{% endif %}"></i> Recomendador
-                </a>
+                <!-- 3. Recomendador: absorbido por la Calculadora (SPEC-19 §7.4). La URL /purchasing/
+                     sigue activa y se enlaza desde Indicadores como "Escenario anterior". -->
 
                 <!-- 4. Configuración S&OP -->
                 <a href="{% url 'inventory:configuracion' %}" class="px-3 py-2 rounded-xl transition flex items-center gap-1.5 {% if request.resolver_match.url_name in 'configuracion,configurar_grupos' %}bg-pesco-cyan text-white shadow-sm font-black{% else %}text-slate-700 hover:bg-pesco-lightcyan hover:text-pesco-cyan{% endif %}" title="Configuración S&OP: Bodegas a Auditar, Grupos y Parámetros">

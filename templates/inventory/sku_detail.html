@@ -25,6 +25,10 @@
             <span class="inline-flex items-center gap-1.5 bg-slate-900 text-white px-3.5 py-1 rounded-full font-mono font-bold text-xs shadow-sm whitespace-nowrap">
                 <i class="fa-solid fa-barcode text-pesco-cyan"></i> SKU: {{ sku.code }}
             </span>
+            <a href="{% url 'calculadora:articulo' sku.code %}" id="link-calculadora"
+               class="inline-flex items-center gap-2 bg-pesco-cyan hover:bg-pesco-darkcyan text-white px-4 py-1.5 rounded-full font-bold text-xs shadow-md uppercase tracking-wider whitespace-nowrap transition">
+                <i class="fa-solid fa-calculator"></i> Ver cálculo completo en la Calculadora
+            </a>
         </div>
     </div>
 

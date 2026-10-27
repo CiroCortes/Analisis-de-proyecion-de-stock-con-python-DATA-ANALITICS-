@@ -1,5 +1,6 @@
 from django.urls import path
 
+from . import views_fusion as fu
 from . import views_gestion as g
 from . import views_planificacion as v
 
@@ -33,4 +34,10 @@ urlpatterns = [
     path('parametros/simular/', g.parametros_simular, name='parametros_simular'),
     path('parametros/historial/excel/', g.parametros_historial_excel, name='parametros_historial_excel'),
     path('proveedores/', g.proveedores, name='proveedores'),
+
+    # Fusion del Recomendador (SPEC-19): bodegas y zonas, segmentacion ABC-XYZ, guia
+    path('bodegas/', fu.bodegas, name='bodegas'),
+    path('bodegas/excel/', fu.bodegas_excel, name='bodegas_excel'),
+    path('segmentacion/', fu.segmentacion, name='segmentacion'),
+    path('guia/', fu.guia, name='guia'),
 ]

@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% load inventory_tags %}
+{% load inventory_tags calculadora_tags %}
 
 {% block title %}Grilla de Compras | Calculadora Pesco{% endblock %}
 
@@ -88,6 +88,15 @@
                 </select>
             </div>
             <div>
+                <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">XYZ {% ayuda 'xyz' %}</label>
+                <select name="xyz" class="w-full border border-slate-300 rounded-xl px-3 py-2">
+                    <option value="">Todas</option>
+                    <option value="X" {% if f.xyz == 'X' %}selected{% endif %}>X · estable</option>
+                    <option value="Y" {% if f.xyz == 'Y' %}selected{% endif %}>Y · variable</option>
+                    <option value="Z" {% if f.xyz == 'Z' %}selected{% endif %}>Z · errático</option>
+                </select>
+            </div>
+            <div>
                 <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Urgencia</label>
                 <select name="urgencia" class="w-full border border-slate-300 rounded-xl px-3 py-2">
                     <option value="">Todas</option>
@@ -138,34 +147,34 @@
             <thead class="text-[9px] uppercase tracking-wider text-slate-500">
                 <tr class="bg-slate-100 border-b border-slate-200">
                     <th colspan="3" class="px-3 py-1.5 text-left">Identificación</th>
-                    <th colspan="3" class="px-3 py-1.5 text-center bg-blue-50 text-blue-700">Consumo</th>
-                    <th colspan="2" class="px-3 py-1.5 text-center">Plazo</th>
-                    <th colspan="4" class="px-3 py-1.5 text-center bg-indigo-50 text-indigo-700">Cálculo</th>
-                    <th colspan="5" class="px-3 py-1.5 text-center">Posición de la red</th>
-                    <th colspan="5" class="px-3 py-1.5 text-center bg-emerald-50 text-emerald-700">Acción</th>
+                    <th colspan="3" class="px-3 py-1.5 text-center bg-blue-50 text-blue-700">Consumo {% ayuda 'consumo_promedio' %}</th>
+                    <th colspan="2" class="px-3 py-1.5 text-center">Plazo {% ayuda 'plazo' %}</th>
+                    <th colspan="4" class="px-3 py-1.5 text-center bg-indigo-50 text-indigo-700">Cálculo {% ayuda 'punto_pedido' %}</th>
+                    <th colspan="5" class="px-3 py-1.5 text-center">Posición de la red {% ayuda 'disponible' %}</th>
+                    <th colspan="5" class="px-3 py-1.5 text-center bg-emerald-50 text-emerald-700">Acción {% ayuda 'cantidad_sugerida' %}</th>
                 </tr>
                 <tr class="bg-slate-50">
                     <th class="px-3 py-2 text-left">Artículo</th>
-                    <th class="px-2 py-2">Clase</th>
+                    <th class="px-2 py-2">Clase {% ayuda 'abc' %}{% ayuda 'xyz' %}</th>
                     <th class="px-2 py-2 text-left">Proveedor</th>
                     <th class="px-2 py-2 text-right bg-blue-50/50">Prom/mes</th>
-                    <th class="px-2 py-2 text-right bg-blue-50/50">Variac.</th>
+                    <th class="px-2 py-2 text-right bg-blue-50/50">Variac. {% ayuda 'variacion' %}</th>
                     <th class="px-2 py-2 bg-blue-50/50">12 meses</th>
                     <th class="px-2 py-2 text-right">Días</th>
                     <th class="px-2 py-2">Origen</th>
                     <th class="px-2 py-2 text-right bg-indigo-50/50">Factor</th>
-                    <th class="px-2 py-2 text-right bg-indigo-50/50">SS</th>
-                    <th class="px-2 py-2 text-right bg-indigo-50/50">P. pedido</th>
-                    <th class="px-2 py-2 text-right bg-indigo-50/50">Máximo</th>
+                    <th class="px-2 py-2 text-right bg-indigo-50/50">SS {% ayuda 'stock_seguridad' %}</th>
+                    <th class="px-2 py-2 text-right bg-indigo-50/50">P. pedido {% ayuda 'punto_pedido' %}</th>
+                    <th class="px-2 py-2 text-right bg-indigo-50/50">Máximo {% ayuda 'stock_maximo' %}</th>
                     <th class="px-2 py-2 text-right">Físico</th>
                     <th class="px-2 py-2 text-right">Tránsito</th>
                     <th class="px-2 py-2 text-right">Compr.</th>
-                    <th class="px-2 py-2 text-right">Disponible</th>
-                    <th class="px-2 py-2 text-right">Cobert. días</th>
-                    <th class="px-2 py-2 bg-emerald-50/50">Estado</th>
+                    <th class="px-2 py-2 text-right">Disponible {% ayuda 'disponible' %}</th>
+                    <th class="px-2 py-2 text-right">Cobert. días {% ayuda 'cobertura' %}</th>
+                    <th class="px-2 py-2 bg-emerald-50/50">Estado {% ayuda 'excepcion' %}</th>
                     <th class="px-2 py-2 text-right bg-emerald-50/50">Cantidad</th>
                     <th class="px-2 py-2 text-right bg-emerald-50/50">USD</th>
-                    <th class="px-2 py-2 bg-emerald-50/50">Urgencia</th>
+                    <th class="px-2 py-2 bg-emerald-50/50">Urgencia {% ayuda 'urgencia' %}</th>
                     <th class="px-2 py-2 bg-emerald-50/50">Llegada / próx.</th>
                 </tr>
             </thead>
@@ -179,7 +188,7 @@
                 </td>
                 <td class="px-2 py-2 text-center whitespace-nowrap">
                     <span class="font-black {% if r.letra == 'R' %}text-blue-700{% elif r.letra == 'E' %}text-purple-700{% elif r.letra == 'P' %}text-amber-700{% else %}text-rose-700{% endif %}">{{ r.letra }}</span>{% if r.subclase %}<span class="text-[9px] text-slate-400">·{{ r.subclase|slice:":3" }}</span>{% endif %}
-                    <span class="ml-1 px-1.5 rounded bg-slate-100 font-bold">{{ r.abc }}</span>
+                    <span class="ml-1 px-1.5 rounded bg-slate-100 font-bold" title="ABC por valor">{{ r.abc }}</span><span class="ml-0.5 px-1.5 rounded font-bold {% if r.xyz == 'X' %}bg-emerald-100 text-emerald-700{% elif r.xyz == 'Y' %}bg-amber-100 text-amber-700{% else %}bg-rose-100 text-rose-700{% endif %}" title="Variabilidad: X estable, Y variable, Z errático">{{ r.xyz }}</span>
                     <div class="mt-0.5 space-x-0.5">
                         {% if r.es_critico %}<span class="text-[9px] px-1 rounded bg-red-100 text-red-700 font-bold">CRÍT</span>{% endif %}
                         {% if r.es_nuevo %}<span class="text-[9px] px-1 rounded bg-sky-100 text-sky-700 font-bold">NUEVO</span>{% endif %}

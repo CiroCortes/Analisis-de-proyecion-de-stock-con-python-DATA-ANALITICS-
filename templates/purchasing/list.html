@@ -6,11 +6,12 @@
 {% block content %}
 <div class="w-full space-y-6">
 
-    <!-- Aviso de convivencia con la Calculadora (SPEC-18 §5) -->
+    <!-- Vista heredada: los datos los publica la Calculadora (SPEC-19 §2) -->
     <div class="bg-amber-50 border border-amber-200 text-amber-900 rounded-2xl px-5 py-3 text-sm flex flex-wrap items-center justify-between gap-3">
         <div><i class="fa-solid fa-circle-info mr-1"></i>
-            Este recomendador usa el <strong>motor anterior</strong> (compra por bodega hasta el punto de pedido). Se mantiene como
-            escenario actual de comparación. La <strong>Calculadora de Compras</strong> calcula una sola compra para la red, traslados y solicitudes por proveedor.</div>
+            Vista anterior del Recomendador. Sus números ya vienen de la <strong>Calculadora de Compras</strong>: la compra
+            de la red aparece solo en 013-PP y las demás bodegas muestran traslados o "espera compra". Para aprobar compras y
+            ver el detalle por bodega usa la Calculadora.</div>
         <a href="{% url 'calculadora:panel' %}" class="bg-pesco-cyan hover:bg-pesco-darkcyan text-white text-xs font-bold px-4 py-2 rounded-full uppercase tracking-wider whitespace-nowrap">
             Ir a la Calculadora <i class="fa-solid fa-arrow-right ml-1"></i></a>
     </div>
@@ -216,10 +217,9 @@
                     </label>
                     <select name="abc" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-pesco-cyan focus:border-pesco-cyan outline-none transition">
                         <option value="">-- Todas las Clases ABC --</option>
-                        <option value="A" {% if selected_abc == 'A' %}selected{% endif %}>⭐ Clase A (9 a 12 meses activos)</option>
-                        <option value="B" {% if selected_abc == 'B' %}selected{% endif %}>🔹 Clase B (5 a 8 meses activos)</option>
-                        <option value="C" {% if selected_abc == 'C' %}selected{% endif %}>🔸 Clase C (1 a 4 meses activos)</option>
-                        <option value="D" {% if selected_abc == 'D' %}selected{% endif %}>⚪ Clase D (Sin movimiento 1 año)</option>
+                        <option value="A" {% if selected_abc == 'A' %}selected{% endif %}>⭐ Clase A (80% del valor)</option>
+                        <option value="B" {% if selected_abc == 'B' %}selected{% endif %}>🔹 Clase B (siguiente 15%)</option>
+                        <option value="C" {% if selected_abc == 'C' %}selected{% endif %}>🔸 Clase C (resto del valor)</option>
                     </select>
                 </div>
 

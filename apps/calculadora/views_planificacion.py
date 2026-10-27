@@ -17,7 +17,7 @@ from apps.inventory.models import ProductSKU
 from . import cargadores, servicio, solicitudes
 from .excel import respuesta_excel
 from .models import (Alerta, ArticuloConfig, CargaDatos, CompromisoAbierto, ConsumoMensual, Corrida, EventoComercial,
-                     HistorialMensual, OCAbierta, PlazoOC, Proveedor, ResultadoArticulo)
+                     HistorialMensual, OCAbierta, PlazoOC, Proveedor, ResultadoArticulo, TrasladoSugerido)
 from .parametros import puede_aprobar, puede_editar
 
 LETRAS = [('R', 'Reposición'), ('E', 'Estratégico'), ('P', 'A pedido'), ('O', 'Obsoleto')]
@@ -78,6 +78,49 @@ def _ultimas_cargas():
     return sorted(cargas.values(), key=lambda c: c.tabla)
 
 
+# Semaforo de datos (SPEC-19 §7.1): nombre legible y que se pierde si la fuente no es real
+DATOS_LEGIBLES = {
+    'consumo_mensual': ('Consumo mensual', 'el consumo sale de PC y OF cerrados, no del movimiento real de inventario'),
+    'plazos_oc': ('Plazos de entrega', 'los plazos son los del maestro de SAP, no los reales de cada proveedor'),
+    'acuerdos': ('Acuerdos globales', 'las solicitudes salen sin contrato y valorizadas al último precio'),
+    'parametros_compra': ('Parámetros de compra', 'sin mínimo ni múltiplo de compra; el proveedor sale de la última entrada'),
+    'oc_abiertas': ('OC abiertas', 'no se ven las llegadas de OC en la proyección'),
+    'compromisos': ('Pedidos y OF abiertas', 'la proyección no descuenta los compromisos por fecha'),
+    'proveedores': ('Proveedores', 'sin país (nacional / importado)'),
+    'bodegas': ('Bodegas', 'nombres de bodega genéricos'),
+}
+
+
+def _semaforo(cargas):
+    filas = []
+    for c in cargas:
+        nombre, impacto = DATOS_LEGIBLES.get(c.tabla, (c.tabla.replace('_', ' ').capitalize(), ''))
+        if c.fuente == 'SIN_ARCHIVO':
+            color, texto = 'rojo', f'Falta: {impacto}.' if impacto else 'Falta el archivo.'
+        elif c.fuente in ('RESPALDO', 'PC_OF'):
+            color, texto = 'amarillo', f'Provisional: {impacto}.' if impacto else 'Provisional.'
+        else:
+            color, texto = 'verde', 'Dato real del Datalake.'
+        filas.append({'nombre': nombre, 'color': color, 'texto': texto, 'carga': c})
+    orden = {'rojo': 0, 'amarillo': 1, 'verde': 2}
+    return sorted(filas, key=lambda f: (orden[f['color']], f['nombre']))
+
+
+def _tarjetas_hoy():
+    """Las 4 acciones del dia (SPEC-19 §7.1), con su frase en lenguaje simple."""
+    valor = F('cantidad_sugerida') * F('costo_unitario')
+    compras = ResultadoArticulo.objects.filter(comprar=True)
+    por_prov = compras.filter(proveedor__isnull=False).values('proveedor_id').distinct().count()
+    dia = compras.aggregate(n=Count('pk'), usd=Sum(valor, output_field=FloatField()))
+    exc = ResultadoArticulo.objects.filter(excepcion=True).aggregate(
+        n=Count('pk'), inevitable=Count('pk', filter=Q(dias_quiebre_inevitable__gt=0)),
+        usd=Sum(F('cantidad_excepcion') * F('costo_unitario'), output_field=FloatField()))
+    tras = TrasladoSugerido.objects.filter(urgencia='URGENTE').aggregate(
+        n=Count('pk'), u=Sum('cantidad'), destinos=Count('destino', distinct=True))
+    alertas = Alerta.objects.filter(vigente=True, estado=Alerta.NUEVA, severidad='ALTA').count()
+    return {'proveedores': por_prov, 'dia': dia, 'exc': exc, 'tras': tras, 'alertas': alertas}
+
+
 @login_required
 def panel(request):
     corrida = Corrida.objects.first()
@@ -100,6 +143,7 @@ def panel(request):
         'cargas': cargas, 'brechas': [c for c in cargas if c.fuente in FUENTES_BRECHA],
         'fuente_provisional': bool(ultima_ok and ultima_ok.fuente_consumo == 'PC_OF'),
         'alertas_tipo': alertas_tipo, 'top': top, 'causas': CAUSAS,
+        'hoy': _tarjetas_hoy(), 'semaforo': _semaforo(cargas),
         'puede_correr': request.user.is_staff or puede_aprobar(request.user),
     })
 
@@ -125,7 +169,7 @@ def correr(request):
 
 def _filtros(request):
     g = request.GET
-    f = {k: g.get(k, '').strip() for k in ('search', 'letra', 'subclase', 'abc', 'urgencia', 'metodo', 'proveedor',
+    f = {k: g.get(k, '').strip() for k in ('search', 'letra', 'subclase', 'abc', 'xyz', 'urgencia', 'metodo', 'proveedor',
                                           'familia', 'compra', 'bodega_accion', 'orden')}
     for k in ('nuevo', 'inmovilizado', 'critico'):
         f[k] = g.get(k) == '1'
@@ -138,7 +182,7 @@ def _queryset(f):
     qs = ResultadoArticulo.objects.filter(product__category__is_active=True)
     if f['search']:
         qs = qs.filter(Q(product__code__icontains=f['search']) | Q(product__description__icontains=f['search']))
-    for campo in ('letra', 'subclase', 'abc', 'urgencia', 'metodo'):
+    for campo in ('letra', 'subclase', 'abc', 'xyz', 'urgencia', 'metodo'):
         if f[campo]:
             qs = qs.filter(**{campo: f[campo]})
     if f['proveedor']:
@@ -146,6 +190,9 @@ def _queryset(f):
     if f['familia']:
         qs = qs.filter(Q(product__sap_group_code=f['familia']) | Q(product__category__code=f['familia']))
     compra = f['compra']
+    # Desde la Segmentacion (celda ABC-XYZ) se quiere ver la celda completa, no solo lo que tiene accion
+    if f['xyz'] and not compra:
+        f['todo'] = True
     if compra == 'comprar':
         qs = qs.filter(comprar=True)
     elif compra == 'necesita':
@@ -199,7 +246,7 @@ def grilla_excel(request):
         filas.append({
             'Artículo': p.code, 'Descripción': p.description, 'Grupo SAP': p.sap_group_name,
             'Proveedor': r.proveedor_id or '', 'Nombre proveedor': r.proveedor.nombre if r.proveedor else '',
-            'Letra': r.letra, 'Subclase': r.subclase, 'ABC': r.abc, 'Crítico': 'Sí' if r.es_critico else '',
+            'Letra': r.letra, 'Subclase': r.subclase, 'ABC': r.abc, 'XYZ': r.xyz, 'Crítico': 'Sí' if r.es_critico else '',
             'Nuevo': 'Sí' if r.es_nuevo else '', 'Inmovilizado': 'Sí' if r.es_inmovilizado else '',
             'Consumo promedio mes': round(r.consumo_promedio_mes, 2), 'Variación consumo': round(r.variacion_consumo, 2),
             'Consumo 12 meses': ', '.join(f'{v:g}' for v in r.consumo_meses or []),
@@ -337,22 +384,98 @@ def _grafico_consumo(producto, r, e):
     }
 
 
-def _grafico_proyeccion(r, e):
+def _grafico_linea(producto, r, e):
+    """Una linea continua (SPEC-19 §5): 12 cierres de mes reconstruidos + hoy + 120 dias
+    proyectados. Indices alineados en todos los datasets; `hoy` marca el divisor."""
     import datetime
+    historico = servicio.historico_articulo(producto.code, e.hoy)
     serie = r.serie or []
-    labels = [(e.hoy + datetime.timedelta(days=d)).strftime('%d-%m') for d in range(1, len(serie) + 1)]
-    llegadas = [None] * len(serie)
+    n_pasado = len(historico)
+    labels = [f'{_mes(m)}' for m, _, _ in historico] + ['hoy']
+    labels += [(e.hoy + datetime.timedelta(days=d)).strftime('%d-%m') for d in range(1, len(serie) + 1)]
+    total = len(labels)
+    hoy_stock = round(r.stock_fisico, 2)
+    pasado = [round(s, 2) for _, s, _ in historico] + [hoy_stock] + [None] * len(serie)
+    inconsistente = [bool(inc) for _, _, inc in historico] + [False] * (1 + len(serie))
+    futuro = [None] * n_pasado + [hoy_stock] + [round(v, 2) for v in serie]
+    llegadas, quiebre = [None] * total, [None] * total
     for dia, q in e.llegadas:
         d = max(1, int(dia))
         if d <= len(serie):
-            llegadas[d - 1] = round(serie[d - 1], 2)
-    quiebre = [None] * len(serie)
+            llegadas[n_pasado + d] = round(serie[d - 1], 2)
     if r.excepcion and r.excepcion.dia_quiebre and r.excepcion.dia_quiebre <= len(serie):
-        quiebre[r.excepcion.dia_quiebre - 1] = round(serie[r.excepcion.dia_quiebre - 1], 2)
+        quiebre[n_pasado + r.excepcion.dia_quiebre] = round(serie[r.excepcion.dia_quiebre - 1], 2)
     return {
-        'labels': labels, 'serie': [round(v, 2) for v in serie], 'llegadas': llegadas, 'quiebre': quiebre,
+        'labels': labels, 'pasado': pasado, 'futuro': futuro, 'inconsistente': inconsistente,
+        'llegadas': llegadas, 'quiebre': quiebre, 'hoy': n_pasado,
         'ss': r.politica.stock_seguridad, 'rop': r.politica.punto_pedido, 'max': r.politica.stock_maximo,
+        'hay_inconsistencia': any(inconsistente),
     }
+
+
+LETRA_SIMPLE = {
+    'R': 'Es un artículo R (se repone solo)',
+    'E': 'Es un artículo E (estratégico: se mantiene siempre con su mínimo)',
+    'P': 'Es un artículo P (a pedido: solo se compra lo comprometido en pedidos y OF)',
+    'O': 'Es un artículo O (no se recompra: no tiene consumo regular ni pedidos abiertos)',
+}
+XYZ_SIMPLE = {'X': 'su consumo es estable', 'Y': 'su consumo es variable', 'Z': 'su consumo es errático o esporádico'}
+
+
+def _que_dice(r, e, guardado, proxima, proveedor):
+    """2-4 frases en lenguaje simple con la conclusion del calculo (SPEC-19 §5)."""
+    frases = []
+    letra = LETRA_SIMPLE.get(r.letra, f'Es un artículo {r.letra}')
+    detalle = XYZ_SIMPLE.get(r.xyz, '')
+    if r.letra in ('R', 'E') and r.clasificacion.subclase == 'INTERMITENTE':
+        detalle = 'sale pocas veces al año, en cantidades grandes'
+    frases.append(f'{letra}{", y " + detalle if detalle and r.letra != "O" else ""}.')
+
+    co, ex = r.compra, r.excepcion
+    prov = (proveedor.nombre or proveedor.codigo) if proveedor else None
+    q = r.cantidad_a_comprar
+    if not prov and (co.necesita_compra or (ex and ex.excepcion)):
+        frases.append('Necesita compra, pero no tiene proveedor asignado: hay que definirlo antes de pedir.')
+    if co.comprar:
+        frases.append(f'Hoy es día de compra{" de " + prov if prov else ""}: se sugiere comprar {q:g} u '
+                      f'(USD {_n(q * e.costo, 0)}) para llegar al máximo de {r.politica.stock_maximo}.')
+    elif ex and ex.excepcion:
+        fecha_q = (e.hoy + _dias(ex.dia_quiebre)).strftime('%d-%m')
+        fecha_l = (e.hoy + _dias(ex.dia_llegada_posible)).strftime('%d-%m')
+        texto = (f'Hoy no {"toca comprar a este proveedor" if prov else "es día de compra"}, pero el stock se acaba el {fecha_q}, antes de que llegue la '
+                 f'próxima compra normal ({fecha_l}): se sugiere comprar {q:g} u fuera de calendario '
+                 f'({CAUSAS.get(r.causa_excepcion, r.causa_excepcion).lower()}).')
+        if ex.dias_quiebre_inevitable:
+            texto += f' Aun comprando hoy faltaría stock {ex.dias_quiebre_inevitable} días: conviene buscar un traslado o una compra urgente.'
+        frases.append(texto)
+    elif co.necesita_compra:
+        frases.append(f'Está bajo su punto de pedido: entra en la compra del {proxima:%d-%m} por {co.cantidad_sugerida} u.')
+    elif r.letra == 'P' and co.cantidad_sugerida:
+        frases.append(f'Hay pedidos que el stock no cubre: comprar {co.cantidad_sugerida} u.')
+    elif r.politica.stock_maximo > 0:
+        txt = f'No necesita compra: el disponible de la red ({co.disponible_futuro:g} u) está sobre el punto de pedido ({r.politica.punto_pedido}).'
+        if ex and ex.dia_quiebre:
+            txt += f' Al ritmo actual se acabaría el {(e.hoy + _dias(ex.dia_quiebre)):%d-%m}.'
+        frases.append(txt)
+    else:
+        frases.append('No se sugiere compra.')
+
+    if guardado:
+        movs = []
+        for b in guardado.bodegas.select_related('warehouse').exclude(accion='NINGUNA').order_by('warehouse__code')[:4]:
+            if b.accion in ('TRASLADAR', 'TRASLADAR_PARCIAL'):
+                origen = ', '.join(f'{_n(qq, 0)} desde {o}' for o, qq in b.origenes)
+                movs.append(f'{b.warehouse.code} recibe {origen}' + (' (el resto espera la compra)' if b.accion == 'TRASLADAR_PARCIAL' else ''))
+            elif b.accion == 'ESPERA_COMPRA':
+                movs.append(f'{b.warehouse.code} espera la compra de la red ({_n(b.espera_compra, 0)} u)')
+        if movs:
+            frases.append('En bodegas: ' + '; '.join(movs) + '.')
+    return frases
+
+
+def _dias(n):
+    import datetime
+    return datetime.timedelta(days=int(n or 0))
 
 
 @login_required
@@ -361,12 +484,15 @@ def articulo(request, code):
     e, r, prov_codigo, proxima = servicio.calcular_detalle(code)
     guardado = ResultadoArticulo.objects.filter(product=producto).select_related('proveedor', 'corrida').first()
     config = ArticuloConfig.objects.filter(product=producto).select_related('proveedor').first()
+    proveedor = Proveedor.objects.filter(codigo=prov_codigo).first() if prov_codigo else None
+    linea = _grafico_linea(producto, r, e)
     contexto = {
         'p': producto, 'e': e, 'r': r, 'guardado': guardado, 'config': config,
-        'proveedor': Proveedor.objects.filter(codigo=prov_codigo).first() if prov_codigo else None,
+        'proveedor': proveedor,
         'proxima': proxima, 'memoria': _memoria(e, r), 'causas': CAUSAS,
+        'que_dice': _que_dice(r, e, guardado, proxima, proveedor),
         'grafico_consumo': json.dumps(_grafico_consumo(producto, r, e)),
-        'grafico_proyeccion': json.dumps(_grafico_proyeccion(r, e)) if r.serie else None,
+        'grafico_linea': json.dumps(linea), 'hay_inconsistencia': linea['hay_inconsistencia'],
         'bodegas': guardado.bodegas.select_related('warehouse').order_by('warehouse__code') if guardado else [],
         'traslados': guardado.traslados.select_related('origen', 'destino') if guardado else [],
         'oc_abiertas': OCAbierta.objects.filter(product=producto).order_by('fecha_comprometida'),
@@ -452,8 +578,10 @@ def _impacto(familia_filtro, filtros_qs):
 @login_required
 def indicadores(request):
     g = request.GET
-    f = {k: g.get(k, '').strip() for k in ('familia', 'proveedor', 'letra', 'abc')}
+    f = {k: g.get(k, '').strip() for k in ('familia', 'proveedor', 'letra', 'abc', 'xyz')}
     qs = ResultadoArticulo.objects.filter(product__category__is_active=True)
+    if f['xyz']:
+        qs = qs.filter(xyz=f['xyz'])
     if f['familia']:
         qs = qs.filter(product__sap_group_code=f['familia'])
     if f['proveedor']:

@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% load inventory_tags %}
+{% load inventory_tags calculadora_tags %}
 
 {% block title %}Indicadores de gestión | Calculadora Pesco{% endblock %}
 
@@ -15,9 +15,22 @@
             <b>Propuesto</b> = esta calculadora (comprar hasta el stock máximo, cada 15 días por proveedor).
             Simulación diaria a 12 meses con el consumo histórico de cada artículo; no es un pronóstico.
         </p>
+        <p class="text-xs text-slate-400 mt-1">El escenario actual sale del motor anterior, capturado en la última sincronización (tabla EscenarioActual) antes de que la Calculadora publique sus resultados. {% ayuda 'escenario_actual' %}</p>
     </div>
 
-    <form method="get" class="bg-white p-4 rounded-3xl shadow-sm border border-slate-200 grid grid-cols-2 md:grid-cols-5 gap-3 text-xs items-end">
+    <!-- Escenario anterior (Recomendador) -->
+    <div class="bg-slate-50 border border-slate-200 rounded-3xl p-5 flex flex-col md:flex-row md:items-center justify-between gap-3">
+        <div class="flex gap-3">
+            <div class="w-10 h-10 rounded-2xl bg-slate-200 text-slate-600 flex items-center justify-center shrink-0"><i class="fa-solid fa-clock-rotate-left"></i></div>
+            <div>
+                <div class="font-black text-slate-800">Escenario anterior (Recomendador)</div>
+                <p class="text-xs text-slate-600">Es el motor anterior: compraba por bodega hasta el punto de pedido. Se mantiene solo para comparar y medir la mejora; las compras se deciden en la Calculadora.</p>
+            </div>
+        </div>
+        <a href="{% url 'purchasing:list' %}" class="text-center bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 text-xs font-bold px-5 py-2.5 rounded-full uppercase tracking-wider whitespace-nowrap">Ver escenario anterior</a>
+    </div>
+
+    <form method="get" class="bg-white p-4 rounded-3xl shadow-sm border border-slate-200 grid grid-cols-2 md:grid-cols-6 gap-3 text-xs items-end">
         <div class="col-span-2">
             <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Grupo SAP (familia)</label>
             <select name="familia" class="w-full border border-slate-300 rounded-xl px-3 py-2">
@@ -42,6 +55,15 @@
                 <select name="abc" class="w-full border border-slate-300 rounded-xl px-2 py-2">
                     <option value="">Todas</option>
                     {% for k in 'ABC' %}<option value="{{ k }}" {% if f.abc == k %}selected{% endif %}>{{ k }}</option>{% endfor %}
+                </select>
+            </div>
+            <div>
+                <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">XYZ {% ayuda 'xyz' %}</label>
+                <select name="xyz" class="w-full border border-slate-300 rounded-xl px-2 py-2">
+                    <option value="">Todas</option>
+                    <option value="X" {% if f.xyz == 'X' %}selected{% endif %}>X · estable</option>
+                    <option value="Y" {% if f.xyz == 'Y' %}selected{% endif %}>Y · variable</option>
+                    <option value="Z" {% if f.xyz == 'Z' %}selected{% endif %}>Z · errático</option>
                 </select>
             </div>
         </div>

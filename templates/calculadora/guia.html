@@ -1,0 +1,101 @@
+{% extends 'base.html' %}
+
+{% block title %}Guía de la Calculadora | Calculadora Pesco{% endblock %}
+
+{% block content %}
+<div class="w-full space-y-6">
+    {% include 'calculadora/_subnav.html' %}
+
+    <div class="bg-white p-6 sm:p-7 rounded-3xl shadow-sm border border-slate-200 border-l-8 border-l-pesco-cyan">
+        <span class="text-xs font-bold text-pesco-cyan uppercase tracking-wider">Calculadora de compras · Guía</span>
+        <h1 class="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight mt-1">Guía en lenguaje simple</h1>
+        <p class="text-sm text-slate-500 mt-1 max-w-3xl">Qué significa cada número de la Calculadora, con un ejemplo y qué hacer cuando aparece. Los íconos <i class="fa-regular fa-circle-question"></i> de las pantallas llevan directo a la definición.</p>
+    </div>
+
+    <!-- 5 pasos -->
+    <div class="bg-white rounded-3xl shadow-sm border border-slate-200 p-6">
+        <h2 class="font-black text-slate-800 mb-4">Cómo usar la Calculadora en 5 pasos</h2>
+        <ol class="grid grid-cols-1 md:grid-cols-5 gap-3">
+            {% for titulo, detalle, url, query in pasos %}
+            <li>
+                <a href="{% url url %}{{ query }}" class="block h-full rounded-2xl border border-slate-200 p-4 hover:border-pesco-cyan hover:shadow-md transition">
+                    <div class="w-8 h-8 rounded-full bg-pesco-cyan text-white font-black flex items-center justify-center">{{ forloop.counter }}</div>
+                    <div class="font-black text-slate-800 text-sm mt-3">{{ titulo }}</div>
+                    <div class="text-xs text-slate-500 mt-1">{{ detalle }}</div>
+                </a>
+            </li>
+            {% endfor %}
+        </ol>
+    </div>
+
+    <!-- Datos -->
+    <div class="bg-white rounded-3xl shadow-sm border border-slate-200 p-6">
+        <h2 class="font-black text-slate-800">De dónde salen los datos</h2>
+        <p class="text-xs text-slate-500 mt-1 mb-4">Todo viene de SAP Business One a través del Datalake. Verde = dato real; amarillo = se está usando un respaldo provisional; rojo = falta el archivo.</p>
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            {% for d in fuentes %}
+            <div class="flex items-start gap-3 rounded-2xl border border-slate-100 p-3">
+                <span class="mt-1 w-3 h-3 rounded-full flex-shrink-0 {% if d.color == 'verde' %}bg-emerald-500{% elif d.color == 'amarillo' %}bg-amber-400{% else %}bg-red-500{% endif %}"></span>
+                <div>
+                    <div class="text-sm font-bold text-slate-800">{{ d.nombre }}</div>
+                    <div class="text-[11px] text-slate-500">{{ d.estado }}{% if d.carga %} · {{ d.carga.cargado_en|date:"d-m-Y H:i" }}{% endif %}</div>
+                    {% if d.carga.nota %}<div class="text-[11px] text-slate-400">{{ d.carga.nota }}</div>{% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- Buscador -->
+    <div class="bg-white rounded-3xl shadow-sm border border-slate-200 p-4 flex items-center gap-3">
+        <i class="fa-solid fa-magnifying-glass text-slate-400 ml-2"></i>
+        <input id="guia-buscar" type="search" placeholder="Buscar un término: stock de seguridad, traslado, excepción…" class="flex-1 text-sm outline-none px-2 py-1.5" autocomplete="off">
+        <span id="guia-sin-resultados" class="hidden text-xs text-slate-400">Sin resultados</span>
+    </div>
+
+    <!-- Glosario -->
+    {% for s in secciones %}
+    <section class="guia-seccion space-y-3">
+        <div>
+            <h2 class="text-lg font-black text-slate-800">{{ s.titulo }}</h2>
+            {% if s.intro %}<p class="text-xs text-slate-500">{{ s.intro }}</p>{% endif %}
+        </div>
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {% for e in s.entradas %}
+            <article id="{{ e.clave }}" class="guia-entrada bg-white rounded-3xl shadow-sm border border-slate-200 p-5 scroll-mt-28 target:ring-2 target:ring-pesco-cyan">
+                <h3 class="font-black text-slate-900">{{ e.termino }}</h3>
+                <p class="text-sm text-slate-700 mt-1">{{ e.definicion }}</p>
+                {% if e.ejemplo %}<p class="text-xs text-slate-500 mt-2"><i class="fa-solid fa-calculator text-pesco-cyan mr-1"></i><b>Ejemplo:</b> {{ e.ejemplo }}</p>{% endif %}
+                {% if e.que_hacer %}<p class="text-xs text-emerald-700 mt-2"><i class="fa-solid fa-hand-point-right mr-1"></i><b>Qué hacer:</b> {{ e.que_hacer }}</p>{% endif %}
+            </article>
+            {% endfor %}
+        </div>
+    </section>
+    {% endfor %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+    var input = document.getElementById('guia-buscar');
+    var vacio = document.getElementById('guia-sin-resultados');
+    function normalizar(t) { return (t || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, ''); }
+    input.addEventListener('input', function () {
+        var q = normalizar(input.value.trim());
+        var visibles = 0;
+        document.querySelectorAll('.guia-seccion').forEach(function (sec) {
+            var enSeccion = 0;
+            sec.querySelectorAll('.guia-entrada').forEach(function (art) {
+                var ok = !q || normalizar(art.textContent).indexOf(q) !== -1;
+                art.style.display = ok ? '' : 'none';
+                if (ok) { enSeccion++; }
+            });
+            sec.style.display = enSeccion ? '' : 'none';
+            visibles += enSeccion;
+        });
+        vacio.classList.toggle('hidden', visibles > 0);
+    });
+})();
+</script>
+{% endblock %}

@@ -1,15 +1,18 @@
 """Subnavegacion de la Calculadora: (url, etiqueta, icono, url_names que la marcan activa)."""
 
 SUBNAV = [
-    ('panel', 'Panel', 'fa-gauge-high', ('panel',)),
-    ('grilla', 'Grilla de compras', 'fa-table-list', ('grilla', 'articulo')),
+    ('panel', 'Hoy', 'fa-house', ('panel',)),
+    ('grilla', 'Compras', 'fa-table-list', ('grilla', 'articulo')),
     ('solicitudes', 'Solicitudes', 'fa-file-invoice-dollar', ('solicitudes', 'solicitud_detalle')),
+    ('bodegas', 'Bodegas', 'fa-warehouse', ('bodegas',)),
     ('traslados', 'Traslados', 'fa-truck-ramp-box', ('traslados',)),
     ('alertas', 'Alertas', 'fa-bell', ('alertas',)),
-    ('eventos', 'Eventos comerciales', 'fa-bullhorn', ('eventos',)),
+    ('segmentacion', 'Segmentación', 'fa-table-cells', ('segmentacion',)),
     ('indicadores', 'Indicadores', 'fa-chart-column', ('indicadores',)),
+    ('eventos', 'Eventos', 'fa-bullhorn', ('eventos',)),
     ('parametros', 'Parámetros', 'fa-sliders', ('parametros',)),
     ('proveedores', 'Proveedores', 'fa-calendar-days', ('proveedores',)),
+    ('guia', 'Guía', 'fa-circle-question', ('guia',)),
 ]
 
 
