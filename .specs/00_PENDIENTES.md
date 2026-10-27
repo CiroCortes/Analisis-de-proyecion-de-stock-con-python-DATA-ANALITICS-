@@ -52,6 +52,10 @@ quiebre real USD 717 mil vs brecha contra objetivo USD 3,94 M.
 - **Escribir en SAP** (Service Layer, U_RPEO, U_CRITICO, creación de solicitudes): hasta habilitación
   de IT. Mientras tanto: planilla de exportación (SPEC-13 §5); validar la plantilla DTW con IT.
 - **Conexión directa a Athena** (boto3): construida, sin probar (`manage.py check_athena`).
+- **Saldo de acuerdos globales**: `OAT1.planqty` está declarada `DECIMAL(12,6)` en el catálogo
+  Glue y hay acuerdos con 500.000.000 → Athena no puede leer la columna (INVALID_CAST_ARGUMENT,
+  aunque se haga CAST). La consulta 12 la envía en 0 (sin control de saldo). Pedir al equipo de
+  datos ampliar el tipo a `DECIMAL(19,6)` en Glue y restaurar `l.planqty` en la consulta 12.
 
 ## Trabajo técnico pendiente
 

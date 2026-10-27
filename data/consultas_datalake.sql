@@ -330,7 +330,11 @@ SELECT
     a.status                                             AS estado,
     l.agrlinenum                                         AS linea_acuerdo,
     l.itemcode                                           AS codigo_sku,
-    CAST(l.planqty AS DECIMAL(18, 2))                    AS cantidad_plan,   -- OAT1.PlanQty (no plannedqty, que es de WOR1)
+    -- OAT1.planqty NO se puede leer: el catalogo del Datalake la declara DECIMAL(12,6) y hay
+    -- acuerdos con 500.000.000 (no caben) -> Athena falla al leerla aunque se haga CAST.
+    -- Mientras el equipo de datos no amplie el tipo en Glue, va en 0: la plataforma entiende
+    -- "sin cantidad planificada" y no controla saldo (precio y contrato si se usan).
+    CAST(0 AS DECIMAL(18, 2))                            AS cantidad_plan,
     CAST(l.cumqty AS DECIMAL(18, 2))                     AS cantidad_acumulada,
     CAST(l.unitprice AS DECIMAL(18, 4))                  AS precio_unitario
 FROM pesco_sbo_pescousd.ooat a
