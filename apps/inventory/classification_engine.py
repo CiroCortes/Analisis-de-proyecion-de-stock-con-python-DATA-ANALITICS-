@@ -86,11 +86,12 @@ def run_classification_engine():
         if f_end >= six_months_ago:
             of_trans_6m[sku] += 1
 
-    # OFs con estado distinto de Cerrada
+    # OF y PC abiertos: la ingesta no los guarda como movimientos (solo cerrados), viven como
+    # compromisos por bodega en InventoryMetric. Un SKU "a pedido" (P) es el que no rota
+    # regularmente y tiene una venta (PC) u OF abierta que obliga a pedirlo.
+    from apps.inventory.models import InventoryMetric
     of_open_skus = set(
-        ProductionOrderMovement.objects
-        .exclude(status='Cerrada')
-        .values_list('product_id', flat=True)
+        InventoryMetric.objects.filter(comp_of_qty__gt=0).values_list('product_id', flat=True)
     )
 
     # 3. Agrupar movimientos de Pedidos de Clientes (Ventas Despachadas)
@@ -122,11 +123,9 @@ def run_classification_engine():
         if f_ent >= six_months_ago:
             pc_trans_6m[sku] += 1
 
-    # PCs con estado distinto de Cerrado
+    # PCs abiertos (ver nota arriba)
     pc_open_skus = set(
-        SalesOrderMovement.objects
-        .exclude(status='Cerrado')
-        .values_list('product_id', flat=True)
+        InventoryMetric.objects.filter(comp_pc_qty__gt=0).values_list('product_id', flat=True)
     )
 
     # 4. Clasificar todos los SKUs de la Base de Datos
@@ -134,7 +133,7 @@ def run_classification_engine():
     all_skus = (
         ProductSKU.objects
         .select_related('category')
-        .all()
+        .filter(is_active=True)  # fuera servicios/gastos (invntitem = 'N') y SKUs que ya no vienen de SAP
     )
 
     classifications_to_save = []
@@ -271,8 +270,8 @@ def run_classification_engine():
         if repo in ('R', 'E') and total_demand_1y > 0:
             monthly_values = []
             for i in range(12):
-                dt = reference_date.replace(day=1) - datetime.timedelta(days=i * 30)
-                key = (dt.year, dt.month)
+                total_m = reference_date.year * 12 + (reference_date.month - 1) - i
+                key = (total_m // 12, total_m % 12 + 1)
                 qty = of_monthly_qty.get(sku, {}).get(key, 0.0) + pc_monthly_qty.get(sku, {}).get(key, 0.0)
                 monthly_values.append(qty)
 
@@ -280,7 +279,10 @@ def run_classification_engine():
             avg_m = sum(monthly_values) / n if n > 0 else 0.0
             std_m = math.sqrt(sum((v - avg_m) ** 2 for v in monthly_values) / (n - 1)) if n > 1 else 0.0
 
-            lt_meses = max(float(p.lead_time_days or 0), 1) / 30.0
+            # REQUERIMIENTO S&OP (Minuta 21/10/2026):
+            # Lead Time logístico efectivo = Lead Time SAP + 2 días (proceso de recepción e ingreso a bodega)
+            lead_time_days_eff = max(float(p.lead_time_days or 0), 1.0) + 2.0
+            lt_meses = lead_time_days_eff / 30.0
             z_f = float(z)
 
             st_min_f = (lt_meses + 0.25) * avg_m
@@ -365,14 +367,12 @@ def run_classification_engine():
 def run_drp_engine():
     """
     Motor DRP (Distribution Requirements Planning) de Abastecimiento y Balanceo.
-    Regla Híbrida:
-      1. Si SAP trae ROP manual (> 0) en el Excel, se respeta ese valor.
-      2. Si el Excel viene vacío o en 0:
-         - Aplica automáticamente el ROP Estadístico (rop_statistical) a la bodega central (013-PP)
-           para materiales R (Rotación) y E (Estratégico).
-         - Para materiales P (A Pedido), ROP = compromisos activos (OF + PC).
-         - Para materiales O (Obsoleto), ROP = 0 (bloqueo de compra).
-      3. Balanceo DRP:
+    ROP meta por bodega (recalculado en cada corrida, sin arrastrar valores previos):
+      1. Materiales R (Rotación) y E (Estratégico): ROP Estadístico (rop_statistical)
+         en la bodega central 013-PP; en las demás, lo comprometido localmente (OF + PC).
+      2. Materiales P (A Pedido): ROP = compromisos activos (OF + PC).
+      3. Materiales O (Obsoleto): ROP = 0 (bloqueo de compra).
+    Balanceo DRP:
          - Si una sucursal en regiones tiene déficit (disp_future < ROP):
            Revisa si las bodegas de Santiago (013-*) tienen stock disponible.
            * Si Santiago tiene stock -> Acción: TRASLADAR desde Santiago (no compra a proveedor).
@@ -383,13 +383,13 @@ def run_drp_engine():
 
     print("[MOTOR DRP PESCO] Iniciando Motor DRP de Balanceo y Proyecciones...", flush=True)
 
-    warehouses = list(Warehouse.objects.filter(is_active=True).order_by('code'))
+    # Solo bodegas fisicas de Santiago o sucursales; consignacion, no conformes y transitos quedan fuera
+    warehouses = [w for w in Warehouse.objects.filter(is_active=True).order_by('code') if w.zone]
     wh_by_id = {w.id: w for w in warehouses}
     wh_by_code = {w.code: w for w in warehouses}
 
     # Identificar bodegas de Santiago (donantes potenciales)
-    stgo_codes = {'013-PP', '013-PS', '013-07', '013-09'}
-    stgo_wh_ids = {w.id for w in warehouses if w.code in stgo_codes}
+    stgo_wh_ids = {w.id for w in warehouses if w.is_santiago}  # zona Santiago = todas las 013-xx
     central_pp_wh = wh_by_code.get('013-PP')
 
     # Cargar clasificaciones en memoria por product_id (que es el code del SKU)
@@ -399,7 +399,7 @@ def run_drp_engine():
     }
 
     # Cargar todos los productos con costo (la PK de ProductSKU es 'code')
-    products = list(ProductSKU.objects.all().values('code', 'unit_cost_usd'))
+    products = list(ProductSKU.objects.filter(is_active=True).values('code', 'unit_cost_usd'))
     prod_map = {p['code']: p for p in products}
 
     # Cargar métricas de inventario agrupadas por product_id -> {wh_id: metric_dict}
@@ -411,13 +411,6 @@ def run_drp_engine():
     metrics_by_prod = defaultdict(dict)
     for m in metrics_qs:
         metrics_by_prod[m['product_id']][m['warehouse_id']] = m
-
-    # Cargar proyecciones existentes para respetar cualquier ROP manual fijado en SAP
-    existing_projs_qs = StockProjection.objects.all().values('id', 'product_id', 'warehouse_id', 'rop')
-    existing_rop_map = {
-        (p['product_id'], p['warehouse_id']): p['rop']
-        for p in existing_projs_qs
-    }
 
     projections_to_save = []
     drp_stats = {
@@ -442,12 +435,8 @@ def run_drp_engine():
         for wh in warehouses:
             m = metrics_dict.get(wh.id, {})
             comp_local = (m.get('comp_pc_qty', 0) or 0) + (m.get('comp_of_qty', 0) or 0)
-            manual_rop = existing_rop_map.get((p_code, wh.id), 0)
 
-            if manual_rop > 0:
-                # 1. Respetar ROP manual explícito de SAP si venía en el Excel
-                target_rop = manual_rop
-            elif classif:
+            if classif:
                 if classif.repo_category in ('R', 'E') and classif.rop_statistical > 0:
                     if wh.code == '013-PP':
                         # Asignar ROP Estadístico automático a la bodega central

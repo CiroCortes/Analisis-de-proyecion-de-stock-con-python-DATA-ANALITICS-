@@ -4,7 +4,16 @@
 {% block title %}Recomendador de Compras S&amp;OP (Slim4 + REPO) | Pesco S.A.{% endblock %}
 
 {% block content %}
-<div class="max-w-7xl mx-auto space-y-6">
+<div class="w-full space-y-6">
+
+    <!-- Aviso de convivencia con la Calculadora (SPEC-18 §5) -->
+    <div class="bg-amber-50 border border-amber-200 text-amber-900 rounded-2xl px-5 py-3 text-sm flex flex-wrap items-center justify-between gap-3">
+        <div><i class="fa-solid fa-circle-info mr-1"></i>
+            Este recomendador usa el <strong>motor anterior</strong> (compra por bodega hasta el punto de pedido). Se mantiene como
+            escenario actual de comparación. La <strong>Calculadora de Compras</strong> calcula una sola compra para la red, traslados y solicitudes por proveedor.</div>
+        <a href="{% url 'calculadora:panel' %}" class="bg-pesco-cyan hover:bg-pesco-darkcyan text-white text-xs font-bold px-4 py-2 rounded-full uppercase tracking-wider whitespace-nowrap">
+            Ir a la Calculadora <i class="fa-solid fa-arrow-right ml-1"></i></a>
+    </div>
 
     <!-- ═══════════════════════════════════════════════════════════
          HEADER
@@ -23,7 +32,7 @@
             <h1 class="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight mt-1">Recomendador de Compras &amp; Políticas de Stock</h1>
             <p class="text-sm text-slate-500 mt-1">Sugerido inteligente con Slim4, clasificación REPO dinámica (R/E/P/O) y balanceo de traslados vs compras.</p>
         </div>
-        <a href="{% url 'reports:export_excel' %}" class="bg-pesco-cyan hover:bg-pesco-darkcyan text-white text-xs font-bold px-6 py-3.5 rounded-full shadow-md transition flex items-center gap-2 uppercase tracking-wider whitespace-nowrap">
+        <a href="{% url 'reports:export_excel' %}?{{ request.GET.urlencode }}" class="bg-pesco-cyan hover:bg-pesco-darkcyan text-white text-xs font-bold px-6 py-3.5 rounded-full shadow-md transition flex items-center gap-2 uppercase tracking-wider whitespace-nowrap">
             <i class="fa-solid fa-file-excel"></i> Descargar Excel Sugerido
         </a>
     </div>
@@ -134,10 +143,10 @@
                         </a>
                     </div>
                     <select name="category" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-pesco-cyan focus:border-pesco-cyan outline-none transition">
-                        <option value="">-- {% if inactive_groups_count > 0 %}Grupos Activos S&amp;OP ({{ categories.count }} total){% else %}Todos los Grupos ({{ categories.count }}){% endif %} --</option>
+                        <option value="">-- {% if inactive_groups_count > 0 and not include_all_groups %}Grupos Activos S&amp;OP ({{ categories|length }}){% else %}Todos los Grupos ({{ categories|length }}){% endif %} --</option>
                         {% for cat in categories %}
                         <option value="{{ cat.code }}" {% if selected_category == cat.code %}selected{% endif %}>
-                            {% if not cat.is_active %}⚪ [Excluido] {% endif %}{{ cat.name }}
+                            {{ cat.name }}
                         </option>
                         {% endfor %}
                     </select>
@@ -149,11 +158,29 @@
                     </label>
                     <select name="warehouse" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-pesco-cyan focus:border-pesco-cyan outline-none transition">
                         <option value="">-- Todas las Bodegas ({{ warehouses.count }}) --</option>
-                        {% for wh in warehouses %}
-                        <option value="{{ wh.code }}" {% if selected_wh == wh.code %}selected{% endif %}>
-                            {{ wh.code }} - {{ wh.name }}
-                        </option>
-                        {% endfor %}
+                        {% if wh_santiago %}<optgroup label="Santiago">
+                        {% for wh in wh_santiago %}
+                        <option value="{{ wh.code }}" {% if selected_wh == wh.code %}selected{% endif %}>{{ wh.name }}</option>
+                        {% endfor %}</optgroup>{% endif %}
+                        {% if wh_sucursales %}<optgroup label="Sucursales">
+                        {% for wh in wh_sucursales %}
+                        <option value="{{ wh.code }}" {% if selected_wh == wh.code %}selected{% endif %}>{{ wh.name }}</option>
+                        {% endfor %}</optgroup>{% endif %}
+                        {% if wh_otras %}<optgroup label="Otras bodegas">
+                        {% for wh in wh_otras %}
+                        <option value="{{ wh.code }}" {% if selected_wh == wh.code %}selected{% endif %}>{{ wh.code }} - {{ wh.name }}</option>
+                        {% endfor %}</optgroup>{% endif %}
+                    </select>
+                </div>
+
+                <div>
+                    <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                        <i class="fa-solid fa-location-dot text-pesco-cyan mr-1"></i> Zona
+                    </label>
+                    <select name="zone" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-pesco-cyan focus:border-pesco-cyan outline-none transition">
+                        <option value="">-- Santiago y Sucursales --</option>
+                        <option value="SANTIAGO" {% if selected_zone == 'SANTIAGO' %}selected{% endif %}>Santiago (013-xx)</option>
+                        <option value="SUCURSAL" {% if selected_zone == 'SUCURSAL' %}selected{% endif %}>Sucursales (regiones)</option>
                     </select>
                 </div>
 
@@ -288,7 +315,9 @@
                         <th class="py-4 px-4 text-center bg-teal-50 text-teal-700 border-r border-teal-200">Acción Sugerida</th>
                         <th class="py-4 px-4 text-center">Bodega</th>
                         <th class="py-4 px-4 text-center">Urgencia</th>
-                        <th class="py-4 px-4 text-center">Demanda (DPD)</th>
+                        <!-- Requerimientos S&OP: Métricas de Demanda Separadas -->
+                        <th class="py-4 px-4 text-center bg-slate-50 text-slate-700" title="Promedio de consumo mensual">Demanda Mensual</th>
+                        <th class="py-4 px-4 text-center bg-slate-50 text-slate-700" title="Consumo total histórico anual">Demanda Anual</th>
                         <th class="py-4 px-5 text-center bg-pesco-lightcyan/40 font-black text-pesco-darkcyan">Sugerido</th>
                         <th class="py-4 px-6 text-right">Quiebre (USD)</th>
                     </tr>
@@ -305,7 +334,7 @@
                         </td>
 
                         <!-- Descripción + Badges Nuevo/Inmovilizado -->
-                        <td class="py-4 px-5 text-slate-800 max-w-xs truncate font-medium">
+                        <td class="py-4 px-5 text-slate-800 max-w-md truncate font-medium">
                             <span title="{{ proj.product.description }}">{{ proj.product.description }}</span>
                             {% if proj.product.classification.is_new %}
                             <span class="ml-1.5 bg-blue-100 text-blue-800 text-[9px] font-black px-2 py-0.5 rounded border border-blue-200">NUEVO</span>
@@ -386,7 +415,7 @@
                             </span>
                             <div class="text-[10px] text-cyan-700 mt-1 font-semibold">
                                 <span class="font-bold text-slate-800">{{ proj.suggested_transfer_units }} u</span>
-                                <span class="text-cyan-600 font-mono">desde {{ proj.transfer_source_warehouse.code|default:"Stgo" }}</span>
+                                <span class="text-cyan-600 font-mono">desde {{ proj.transfer_source_warehouse.code|default:"Stgo" }}</span>{% if proj.warehouse.is_santiago %} <span class="text-sky-700 font-bold">(interno Santiago)</span>{% endif %}
                                 <span class="text-slate-400">➔</span>
                                 <span class="text-slate-900 font-mono font-bold">{{ proj.warehouse.code }}</span>
                             </div>
@@ -406,7 +435,7 @@
                                 🔀 MIXTO
                             </span>
                             <div class="text-[10px] text-orange-700 mt-1 font-semibold">
-                                🚚 {{ proj.suggested_transfer_units }}u desde {{ proj.transfer_source_warehouse.code|default:"Stgo" }} +
+                                🚚 {{ proj.suggested_transfer_units }}u desde {{ proj.transfer_source_warehouse.code|default:"Stgo" }}{% if proj.warehouse.is_santiago %} (interno Stgo){% endif %} +
                                 🛒 {{ proj.suggested_buy_units }}u cmp
                             </div>
                             {% else %}
@@ -421,6 +450,7 @@
                             <span class="inline-flex items-center justify-center min-w-[70px] px-2.5 py-1 bg-slate-100 text-slate-800 font-mono font-bold rounded-lg border border-slate-200 text-xs">
                                 {{ proj.warehouse.code|default:"Global" }}
                             </span>
+                            <div class="text-[10px] font-bold mt-1 {% if proj.warehouse.is_santiago %}text-sky-700{% else %}text-violet-700{% endif %}">{{ proj.warehouse.city|default:proj.warehouse.zone_label }}</div>
                         </td>
 
                         <!-- Urgencia -->
@@ -434,10 +464,15 @@
                             {% endif %}
                         </td>
 
-                        <!-- Demanda Real (DPD) -->
-                        <td class="py-4 px-4 text-center text-xs font-mono font-bold text-slate-700">
-                            {{ proj.product.classification.avg_daily_demand|default:"0.0000" }} u/d
-                            <span class="block text-[10px] text-slate-400 font-normal">({{ proj.product.classification.annual_demand_units|default:"0" }} u/año)</span>
+                        <!-- Demanda Media Mensual (Minuta 21/10/2026) -->
+                        <td class="py-4 px-4 text-center text-xs font-mono font-bold text-slate-800 bg-slate-50/30">
+                            {{ proj.product.classification.avg_monthly_consumption|default:"0.0" }} <span class="text-[10px] text-slate-500 font-normal">u/m</span>
+                            <span class="block text-[9px] text-slate-400 font-normal">({{ proj.product.classification.avg_daily_demand|default:"0.0" }} u/d)</span>
+                        </td>
+
+                        <!-- Demanda Anual (Minuta 21/10/2026) -->
+                        <td class="py-4 px-4 text-center text-xs font-mono font-bold text-slate-800 bg-slate-50/30">
+                            {{ proj.product.classification.annual_demand_units|default:"0"|floatformat:0 }} <span class="text-[10px] text-slate-500 font-normal">u/año</span>
                         </td>
 
                         <!-- Sugerido Compra -->
@@ -456,7 +491,7 @@
                     </tr>
                     {% empty %}
                     <tr>
-                        <td colspan="12" class="py-12 text-center text-slate-400 text-sm">
+                        <td colspan="13" class="py-12 text-center text-slate-400 text-sm">
                             <i class="fa-solid fa-inbox text-3xl mb-2 block"></i> No se encontraron productos con los filtros seleccionados.
                         </td>
                     </tr>
@@ -473,15 +508,15 @@
             </span>
             <div class="flex items-center gap-1">
                 {% if page_obj.has_previous %}
-                <a href="?page=1{% if search_query %}&search={{ search_query }}{% endif %}{% if selected_category %}&category={{ selected_category }}{% endif %}{% if selected_wh %}&warehouse={{ selected_wh }}{% endif %}{% if selected_urgency %}&urgency={{ selected_urgency }}{% endif %}{% if selected_segment %}&segment={{ selected_segment }}{% endif %}{% if selected_abc %}&abc={{ selected_abc }}{% endif %}{% if selected_policy %}&policy={{ selected_policy }}{% endif %}{% if filter_inmovilizado %}&inmovilizado={{ filter_inmovilizado }}{% endif %}{% if filter_nuevo %}&nuevo={{ filter_nuevo }}{% endif %}{% if selected_repo %}&repo={{ selected_repo }}{% endif %}{% if selected_action %}&action={{ selected_action }}{% endif %}" class="px-3 py-1.5 bg-white border border-slate-200 rounded-lg hover:bg-slate-100 font-bold">&laquo; Primera</a>
-                <a href="?page={{ page_obj.previous_page_number }}{% if search_query %}&search={{ search_query }}{% endif %}{% if selected_category %}&category={{ selected_category }}{% endif %}{% if selected_wh %}&warehouse={{ selected_wh }}{% endif %}{% if selected_urgency %}&urgency={{ selected_urgency }}{% endif %}{% if selected_segment %}&segment={{ selected_segment }}{% endif %}{% if selected_abc %}&abc={{ selected_abc }}{% endif %}{% if selected_policy %}&policy={{ selected_policy }}{% endif %}{% if filter_inmovilizado %}&inmovilizado={{ filter_inmovilizado }}{% endif %}{% if filter_nuevo %}&nuevo={{ filter_nuevo }}{% endif %}{% if selected_repo %}&repo={{ selected_repo }}{% endif %}{% if selected_action %}&action={{ selected_action }}{% endif %}" class="px-3 py-1.5 bg-white border border-slate-200 rounded-lg hover:bg-slate-100 font-bold">&lsaquo; Anterior</a>
+                <a href="?page=1{% if search_query %}&search={{ search_query }}{% endif %}{% if selected_category %}&category={{ selected_category }}{% endif %}{% if selected_wh %}&warehouse={{ selected_wh }}{% endif %}{% if selected_zone %}&zone={{ selected_zone }}{% endif %}{% if selected_urgency %}&urgency={{ selected_urgency }}{% endif %}{% if selected_segment %}&segment={{ selected_segment }}{% endif %}{% if selected_abc %}&abc={{ selected_abc }}{% endif %}{% if selected_policy %}&policy={{ selected_policy }}{% endif %}{% if filter_inmovilizado %}&inmovilizado={{ filter_inmovilizado }}{% endif %}{% if filter_nuevo %}&nuevo={{ filter_nuevo }}{% endif %}{% if selected_repo %}&repo={{ selected_repo }}{% endif %}{% if selected_action %}&action={{ selected_action }}{% endif %}" class="px-3 py-1.5 bg-white border border-slate-200 rounded-lg hover:bg-slate-100 font-bold">&laquo; Primera</a>
+                <a href="?page={{ page_obj.previous_page_number }}{% if search_query %}&search={{ search_query }}{% endif %}{% if selected_category %}&category={{ selected_category }}{% endif %}{% if selected_wh %}&warehouse={{ selected_wh }}{% endif %}{% if selected_zone %}&zone={{ selected_zone }}{% endif %}{% if selected_urgency %}&urgency={{ selected_urgency }}{% endif %}{% if selected_segment %}&segment={{ selected_segment }}{% endif %}{% if selected_abc %}&abc={{ selected_abc }}{% endif %}{% if selected_policy %}&policy={{ selected_policy }}{% endif %}{% if filter_inmovilizado %}&inmovilizado={{ filter_inmovilizado }}{% endif %}{% if filter_nuevo %}&nuevo={{ filter_nuevo }}{% endif %}{% if selected_repo %}&repo={{ selected_repo }}{% endif %}{% if selected_action %}&action={{ selected_action }}{% endif %}" class="px-3 py-1.5 bg-white border border-slate-200 rounded-lg hover:bg-slate-100 font-bold">&lsaquo; Anterior</a>
                 {% endif %}
 
                 <span class="px-3 py-1.5 bg-pesco-cyan text-white rounded-lg font-black">{{ page_obj.number }}</span>
 
                 {% if page_obj.has_next %}
-                <a href="?page={{ page_obj.next_page_number }}{% if search_query %}&search={{ search_query }}{% endif %}{% if selected_category %}&category={{ selected_category }}{% endif %}{% if selected_wh %}&warehouse={{ selected_wh }}{% endif %}{% if selected_urgency %}&urgency={{ selected_urgency }}{% endif %}{% if selected_segment %}&segment={{ selected_segment }}{% endif %}{% if selected_abc %}&abc={{ selected_abc }}{% endif %}{% if selected_policy %}&policy={{ selected_policy }}{% endif %}{% if filter_inmovilizado %}&inmovilizado={{ filter_inmovilizado }}{% endif %}{% if filter_nuevo %}&nuevo={{ filter_nuevo }}{% endif %}{% if selected_repo %}&repo={{ selected_repo }}{% endif %}{% if selected_action %}&action={{ selected_action }}{% endif %}" class="px-3 py-1.5 bg-white border border-slate-200 rounded-lg hover:bg-slate-100 font-bold">Siguiente &rsaquo;</a>
-                <a href="?page={{ page_obj.paginator.num_pages }}{% if search_query %}&search={{ search_query }}{% endif %}{% if selected_category %}&category={{ selected_category }}{% endif %}{% if selected_wh %}&warehouse={{ selected_wh }}{% endif %}{% if selected_urgency %}&urgency={{ selected_urgency }}{% endif %}{% if selected_segment %}&segment={{ selected_segment }}{% endif %}{% if selected_abc %}&abc={{ selected_abc }}{% endif %}{% if selected_policy %}&policy={{ selected_policy }}{% endif %}{% if filter_inmovilizado %}&inmovilizado={{ filter_inmovilizado }}{% endif %}{% if filter_nuevo %}&nuevo={{ filter_nuevo }}{% endif %}{% if selected_repo %}&repo={{ selected_repo }}{% endif %}{% if selected_action %}&action={{ selected_action }}{% endif %}" class="px-3 py-1.5 bg-white border border-slate-200 rounded-lg hover:bg-slate-100 font-bold">Última &raquo;</a>
+                <a href="?page={{ page_obj.next_page_number }}{% if search_query %}&search={{ search_query }}{% endif %}{% if selected_category %}&category={{ selected_category }}{% endif %}{% if selected_wh %}&warehouse={{ selected_wh }}{% endif %}{% if selected_zone %}&zone={{ selected_zone }}{% endif %}{% if selected_urgency %}&urgency={{ selected_urgency }}{% endif %}{% if selected_segment %}&segment={{ selected_segment }}{% endif %}{% if selected_abc %}&abc={{ selected_abc }}{% endif %}{% if selected_policy %}&policy={{ selected_policy }}{% endif %}{% if filter_inmovilizado %}&inmovilizado={{ filter_inmovilizado }}{% endif %}{% if filter_nuevo %}&nuevo={{ filter_nuevo }}{% endif %}{% if selected_repo %}&repo={{ selected_repo }}{% endif %}{% if selected_action %}&action={{ selected_action }}{% endif %}" class="px-3 py-1.5 bg-white border border-slate-200 rounded-lg hover:bg-slate-100 font-bold">Siguiente &rsaquo;</a>
+                <a href="?page={{ page_obj.paginator.num_pages }}{% if search_query %}&search={{ search_query }}{% endif %}{% if selected_category %}&category={{ selected_category }}{% endif %}{% if selected_wh %}&warehouse={{ selected_wh }}{% endif %}{% if selected_zone %}&zone={{ selected_zone }}{% endif %}{% if selected_urgency %}&urgency={{ selected_urgency }}{% endif %}{% if selected_segment %}&segment={{ selected_segment }}{% endif %}{% if selected_abc %}&abc={{ selected_abc }}{% endif %}{% if selected_policy %}&policy={{ selected_policy }}{% endif %}{% if filter_inmovilizado %}&inmovilizado={{ filter_inmovilizado }}{% endif %}{% if filter_nuevo %}&nuevo={{ filter_nuevo }}{% endif %}{% if selected_repo %}&repo={{ selected_repo }}{% endif %}{% if selected_action %}&action={{ selected_action }}{% endif %}" class="px-3 py-1.5 bg-white border border-slate-200 rounded-lg hover:bg-slate-100 font-bold">Última &raquo;</a>
                 {% endif %}
             </div>
         </div>

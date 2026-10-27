@@ -7,6 +7,7 @@ class Category(models.Model):
     name = models.CharField(max_length=150, verbose_name="Nombre Categoría")
     gerencia = models.CharField(max_length=150, default="Gerencia Repuestos", db_index=True, verbose_name="Gerencia / Área")
     is_active = models.BooleanField(default=True, db_index=True, verbose_name="Incluido en S&OP por Defecto")
+    tipo = models.CharField(max_length=12, blank=True, default='', db_index=True, verbose_name="Tipo de Material")
 
     class Meta:
         verbose_name = "Categoría"
@@ -21,6 +22,35 @@ class Warehouse(models.Model):
     code = models.CharField(max_length=20, unique=True, db_index=True, verbose_name="Código Bodega")
     name = models.CharField(max_length=100, verbose_name="Nombre Bodega")
     is_active = models.BooleanField(default=True, db_index=True, verbose_name="Activa")
+
+    @property
+    def zone(self):
+        from apps.data_ingestion.warehouses import zone_for
+        return zone_for(self.code)
+
+    @property
+    def zone_label(self):
+        from apps.data_ingestion.warehouses import ZONE_LABELS
+        return ZONE_LABELS.get(self.zone, 'Otras')
+
+    @property
+    def city(self):
+        from apps.data_ingestion.warehouses import city_for
+        return city_for(self.code)
+
+    @property
+    def kind_label(self):
+        from apps.data_ingestion.warehouses import kind_for, KIND_LABELS
+        return KIND_LABELS.get(kind_for(self.code), '')
+
+    @property
+    def is_physical(self):
+        from apps.data_ingestion.warehouses import is_physical
+        return is_physical(self.code)
+
+    @property
+    def is_santiago(self):
+        return self.zone == 'SANTIAGO'
 
     class Meta:
         verbose_name = "Bodega"
@@ -45,6 +75,10 @@ class ProductSKU(models.Model):
     subfamilia = models.CharField(max_length=100, blank=True, default='', verbose_name="SubFamilia")
     modelo = models.CharField(max_length=100, blank=True, default='', verbose_name="Modelo")
     sap_categoria = models.CharField(max_length=100, blank=True, default='', verbose_name="Categoría SAP")
+    sap_group_code = models.CharField(max_length=20, blank=True, default='', verbose_name="Cód. Grupo SAP")
+    sap_group_name = models.CharField(max_length=150, blank=True, default='', verbose_name="Grupo de Artículos SAP")
+    gestiona_inventario = models.BooleanField(default=True, verbose_name="Gestiona Inventario (SAP)")
+    es_vendible = models.BooleanField(default=True, verbose_name="Es Vendible (SAP)")
     fec_creacion_sap = models.DateField(null=True, blank=True, verbose_name="Fecha Creación SAP")
     
     created_at = models.DateTimeField(auto_now_add=True)

@@ -1,214 +1,375 @@
 {% extends 'base.html' %}
 {% load inventory_tags %}
 
-{% block title %}Configuración de Grupos de SKU | S&amp;OP Pesco S.A.{% endblock %}
+{% block title %}Centro de Configuración y Alcance S&amp;OP | Pesco S.A.{% endblock %}
 
 {% block content %}
-<div class="max-w-7xl mx-auto space-y-6">
+<div class="w-full space-y-6">
 
     <!-- Header Section -->
     <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-6 sm:p-7 rounded-3xl shadow-sm border border-slate-200 border-l-8 border-l-pesco-cyan">
         <div>
             <div class="flex items-center gap-2">
-                <span class="text-xs font-bold text-pesco-cyan uppercase tracking-wider">Parámetros Maestros de Inventario</span>
+                <span class="text-xs font-bold text-pesco-cyan uppercase tracking-wider">Centro de Control de Alcance</span>
                 <span class="bg-indigo-100 text-indigo-800 text-[10px] font-black uppercase px-3 py-0.5 rounded-full border border-indigo-200 shadow-sm">
-                    <i class="fa-solid fa-sliders mr-1"></i> Control de Alcance S&amp;OP
+                    <i class="fa-solid fa-sliders mr-1"></i> Configuración S&amp;OP
                 </span>
             </div>
-            <h1 class="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight mt-1">Configuración de Grupos de Materiales (SKU)</h1>
-            <p class="text-sm text-slate-500 mt-1">Selecciona qué grupos de artículos procesar o excluir por defecto en los tableros y sugerencias de compra (ej: excluir Servicios Post-Venta o Camiones).</p>
+            <h1 class="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight mt-1">Configuración y Alcance del Modelo S&amp;OP</h1>
+            <p class="text-sm text-slate-500 mt-1">Administra qué bodegas operativas auditar, qué grupos de materiales incluir y visualiza las clases de repuestos activas en el motor de abastecimiento.</p>
         </div>
-        <div class="flex items-center gap-3">
-            <a href="{% url 'purchasing:list' %}" class="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold px-5 py-3 rounded-full transition flex items-center gap-2 uppercase tracking-wider">
-                <i class="fa-solid fa-cart-shopping text-pesco-cyan"></i> Ir al Recomendador
+        <div class="flex flex-wrap items-center gap-3">
+            <!-- Botón Recalcular S&OP -->
+            <form method="POST" action="{% url 'inventory:configuracion' %}">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="recalculate_sop">
+                <button type="submit" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black px-5 py-3 rounded-2xl shadow-sm transition flex items-center gap-2 uppercase tracking-wider" title="Ejecuta de inmediato el balance DRP y proyecciones con los cambios guardados">
+                    <i class="fa-solid fa-arrows-rotate"></i> Recalcular S&amp;OP
+                </button>
+            </form>
+            <a href="{% url 'purchasing:list' %}" class="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold px-5 py-3 rounded-2xl transition flex items-center gap-2 uppercase tracking-wider">
+                <i class="fa-solid fa-cart-shopping text-pesco-cyan"></i> Recomendador
             </a>
         </div>
     </div>
 
-    <!-- Summary KPI Cards -->
-    <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <div class="bg-white rounded-2xl border border-slate-200 p-5 text-center shadow-sm">
-            <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total Grupos SAP</div>
-            <div class="text-3xl font-black text-slate-900 mt-1 font-mono">{{ total_categories }}</div>
-            <span class="text-[10px] text-slate-400 font-medium block mt-0.5">Catálogo Maestro</span>
-        </div>
-        <div class="bg-emerald-50 rounded-2xl border border-emerald-200 p-5 text-center shadow-sm">
-            <div class="text-[10px] font-bold text-emerald-700 uppercase tracking-wider">Grupos Activos (S&amp;OP)</div>
-            <div class="text-3xl font-black text-emerald-600 mt-1 font-mono" id="kpiActiveCount">{{ active_count }}</div>
-            <span class="text-[10px] text-emerald-600 font-bold block mt-0.5">Incluidos en análisis</span>
-        </div>
-        <div class="bg-rose-50 rounded-2xl border border-rose-200 p-5 text-center shadow-sm">
-            <div class="text-[10px] font-bold text-rose-700 uppercase tracking-wider">Grupos Excluidos</div>
-            <div class="text-3xl font-black text-rose-600 mt-1 font-mono" id="kpiInactiveCount">{{ inactive_count }}</div>
-            <span class="text-[10px] text-rose-600 font-bold block mt-0.5">Omitidos por defecto</span>
-        </div>
-        <div class="bg-slate-900 rounded-2xl border border-slate-700 p-5 text-center shadow-sm">
-            <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Impacto en Filtros</div>
-            <div class="text-base font-black text-white mt-2">
-                {% if inactive_count > 0 %}
-                <span class="text-amber-400"><i class="fa-solid fa-filter"></i> Filtro Activo</span>
-                {% else %}
-                <span class="text-emerald-400"><i class="fa-solid fa-check-double"></i> 100% Catálogo</span>
-                {% endif %}
-            </div>
-            <span class="text-[10px] text-slate-400 font-medium block mt-0.5">Aplica a Dashboards</span>
-        </div>
+    <!-- Pestañas de Navegación (Tabs) -->
+    <div class="flex items-center gap-2 border-b border-slate-200 pb-1">
+        <a href="?tab=bodegas" 
+           class="px-5 py-3 rounded-t-2xl font-bold text-xs uppercase tracking-wider transition flex items-center gap-2 border-b-2 {% if active_tab == 'bodegas' %}bg-white text-pesco-cyan border-pesco-cyan shadow-sm font-black{% else %}text-slate-500 hover:text-slate-800 border-transparent hover:bg-slate-50{% endif %}">
+            <i class="fa-solid fa-warehouse"></i> Bodegas a Auditar
+            <span class="{% if active_tab == 'bodegas' %}bg-pesco-cyan text-white{% else %}bg-slate-200 text-slate-700{% endif %} text-[10px] font-black px-2 py-0.5 rounded-full ml-1">
+                {{ active_warehouses_count }}/{{ total_warehouses }}
+            </span>
+        </a>
+        <a href="?tab=grupos" 
+           class="px-5 py-3 rounded-t-2xl font-bold text-xs uppercase tracking-wider transition flex items-center gap-2 border-b-2 {% if active_tab == 'grupos' %}bg-white text-pesco-cyan border-pesco-cyan shadow-sm font-black{% else %}text-slate-500 hover:text-slate-800 border-transparent hover:bg-slate-50{% endif %}">
+            <i class="fa-solid fa-layer-group"></i> Grupos de Materiales
+            <span class="{% if active_tab == 'grupos' %}bg-pesco-cyan text-white{% else %}bg-slate-200 text-slate-700{% endif %} text-[10px] font-black px-2 py-0.5 rounded-full ml-1">
+                {{ active_categories_count }}/{{ total_categories }}
+            </span>
+        </a>
+        <a href="?tab=tipos" 
+           class="px-5 py-3 rounded-t-2xl font-bold text-xs uppercase tracking-wider transition flex items-center gap-2 border-b-2 {% if active_tab == 'tipos' %}bg-white text-pesco-cyan border-pesco-cyan shadow-sm font-black{% else %}text-slate-500 hover:text-slate-800 border-transparent hover:bg-slate-50{% endif %}">
+            <i class="fa-solid fa-tags"></i> Tipos y Clases SKU
+            <span class="bg-amber-100 text-amber-800 text-[10px] font-black px-2 py-0.5 rounded-full ml-1 border border-amber-200">
+                Próximo paso
+            </span>
+        </a>
     </div>
 
-    <!-- Presets & Quick Actions Toolbar -->
-    <div class="bg-white p-5 sm:p-6 rounded-3xl shadow-sm border border-slate-200 space-y-4">
-        <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
-            <div>
-                <h3 class="text-sm font-black text-slate-900 flex items-center gap-2">
-                    <i class="fa-solid fa-wand-magic-sparkles text-pesco-cyan"></i> Presets y Reglas Automáticas
-                </h3>
-                <p class="text-xs text-slate-500 mt-0.5">Aplica configuraciones estándar con un solo clic.</p>
+    <!-- ===================================================================== -->
+    <!-- TAB 1: BODEGAS A AUDITAR                                              -->
+    <!-- ===================================================================== -->
+    {% if active_tab == 'bodegas' %}
+    <div class="space-y-6">
+
+        <!-- KPI Cards Bodegas -->
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <div class="bg-white rounded-2xl border border-slate-200 p-5 text-center shadow-sm">
+                <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Bodegas Detectadas SAP</div>
+                <div class="text-3xl font-black text-slate-900 mt-1 font-mono">{{ total_warehouses }}</div>
+                <span class="text-[10px] text-slate-400 font-medium block mt-0.5">Catálogo Físico Completo</span>
             </div>
-
-            <!-- Botones de Presets -->
-            <div class="flex flex-wrap items-center gap-2">
-                <!-- Preset Inteligente: Repuestos y Pañol -->
-                <form method="POST" action="{% url 'inventory:configurar_grupos' %}">
-                    {% csrf_token %}
-                    <input type="hidden" name="action" value="preset_rpts_panol">
-                    <button type="submit" class="bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 text-xs font-bold px-4 py-2.5 rounded-xl shadow-sm transition flex items-center gap-2" title="Excluye automáticamente Servicios Post-Venta, Terceros, Titanium y Camiones">
-                        <i class="fa-solid fa-wrench text-amber-600"></i> Solo Repuestos &amp; Pañol
-                    </button>
-                </form>
-
-                <!-- Preset: Activar Todos -->
-                <form method="POST" action="{% url 'inventory:configurar_grupos' %}">
-                    {% csrf_token %}
-                    <input type="hidden" name="action" value="preset_all">
-                    <button type="submit" class="bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 text-xs font-bold px-4 py-2.5 rounded-xl transition flex items-center gap-1.5">
-                        <i class="fa-solid fa-check-double text-emerald-600"></i> Activar Todos
-                    </button>
-                </form>
-
-                <!-- Preset: Desactivar Todos -->
-                <form method="POST" action="{% url 'inventory:configurar_grupos' %}">
-                    {% csrf_token %}
-                    <input type="hidden" name="action" value="preset_none">
-                    <button type="submit" class="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold px-4 py-2.5 rounded-xl transition flex items-center gap-1.5">
-                        <i class="fa-solid fa-ban text-slate-500"></i> Desactivar Todos
-                    </button>
-                </form>
+            <div class="bg-emerald-50 rounded-2xl border border-emerald-200 p-5 text-center shadow-sm">
+                <div class="text-[10px] font-bold text-emerald-700 uppercase tracking-wider">Bodegas Auditadas (S&amp;OP)</div>
+                <div class="text-3xl font-black text-emerald-600 mt-1 font-mono" id="kpiActiveWhCount">{{ active_warehouses_count }}</div>
+                <span class="text-[10px] text-emerald-600 font-bold block mt-0.5">Incluidas en balance DRP</span>
+            </div>
+            <div class="bg-rose-50 rounded-2xl border border-rose-200 p-5 text-center shadow-sm">
+                <div class="text-[10px] font-bold text-rose-700 uppercase tracking-wider">Bodegas Excluidas</div>
+                <div class="text-3xl font-black text-rose-600 mt-1 font-mono" id="kpiInactiveWhCount">{{ inactive_warehouses_count }}</div>
+                <span class="text-[10px] text-rose-600 font-bold block mt-0.5">Omitidas en reposición</span>
+            </div>
+            <div class="bg-slate-900 rounded-2xl border border-slate-700 p-5 text-center shadow-sm">
+                <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Stock Disponible Auditado</div>
+                <div class="text-2xl sm:text-3xl font-black text-white mt-1 font-mono">{{ total_audited_stock|default:0|floatformat:0 }} <span class="text-xs text-pesco-cyan font-sans">u</span></div>
+                <span class="text-[10px] text-slate-400 font-medium block mt-0.5">Bajo supervisión S&amp;OP</span>
             </div>
         </div>
 
-        <!-- Búsqueda en Vivo de Grupos -->
-        <div class="pt-3 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3">
-            <div class="relative w-full sm:w-96">
-                <i class="fa-solid fa-magnifying-glass absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
-                <input type="text" id="filterInput" placeholder="Buscar grupo de materiales en tiempo real..."
-                       class="w-full pl-9 pr-4 py-2.5 border border-slate-300 rounded-xl text-xs font-medium focus:ring-2 focus:ring-pesco-cyan focus:border-pesco-cyan bg-slate-50 outline-none transition">
-            </div>
-            <span class="text-xs text-slate-400 font-medium">Puedes cambiar el estado de cada grupo individualmente o guardar en lote.</span>
-        </div>
-    </div>
-
-    <!-- Formulario Masivo y Tabla de Grupos -->
-    <form method="POST" action="{% url 'inventory:configurar_grupos' %}" id="bulkForm">
-        {% csrf_token %}
-        <input type="hidden" name="action" value="save_all">
-
-        <div class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
-            <div class="p-5 border-b border-slate-100 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-slate-50/50">
-                <div class="flex items-center gap-3">
-                    <label class="inline-flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-700">
-                        <input type="checkbox" id="selectAllMaster" class="rounded text-pesco-cyan focus:ring-pesco-cyan w-4 h-4">
-                        <span>Seleccionar Visibles</span>
-                    </label>
-                    <span class="text-xs text-slate-400">|</span>
-                    <span class="text-xs text-slate-500 font-medium" id="counterText">{{ active_count }} de {{ total_categories }} seleccionados</span>
+        <!-- Presets & Toolbar Bodegas -->
+        <div class="bg-white p-5 sm:p-6 rounded-3xl shadow-sm border border-slate-200 space-y-4">
+            <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
+                <div>
+                    <h3 class="text-sm font-black text-slate-900 flex items-center gap-2">
+                        <i class="fa-solid fa-wand-magic-sparkles text-pesco-cyan"></i> Presets de Bodegas Operativas
+                    </h3>
+                    <p class="text-xs text-slate-500 mt-0.5">Selecciona el alcance territorial para la auditoría de stock y balance DRP.</p>
                 </div>
-                <button type="submit" class="bg-pesco-cyan hover:bg-pesco-darkcyan text-white text-xs font-bold px-6 py-2.5 rounded-xl shadow-md transition flex items-center gap-2 uppercase tracking-wider">
-                    <i class="fa-solid fa-floppy-disk"></i> Guardar Cambios
-                </button>
+
+                <div class="flex flex-wrap items-center gap-2">
+                    <!-- Preset: Matriz Oficial 10 Bodegas (Incluye 013-03) -->
+                    <form method="POST" action="{% url 'inventory:configuracion' %}">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="preset_warehouses_operational">
+                        <button type="submit" class="bg-pesco-cyan hover:bg-pesco-darkcyan text-white text-xs font-black px-4 py-2.5 rounded-xl shadow-sm transition flex items-center gap-2" title="Activa las 5 bodegas operativas de Santiago (013-PP, 013-PS, 013-07, 013-09, 013-03) y las 5 sucursales regionales">
+                            <i class="fa-solid fa-star text-amber-300"></i> Matriz Oficial (10 Bodegas)
+                        </button>
+                    </form>
+
+                    <!-- Preset: Solo Santiago -->
+                    <form method="POST" action="{% url 'inventory:configuracion' %}">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="preset_warehouses_stgo">
+                        <button type="submit" class="bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200 text-xs font-bold px-4 py-2.5 rounded-xl transition flex items-center gap-1.5" title="Activa solo los pañoles y bodegas centrales de Santiago">
+                            <i class="fa-solid fa-city text-indigo-600"></i> Solo Santiago (013-*)
+                        </button>
+                    </form>
+
+                    <!-- Preset: Activar Todas -->
+                    <form method="POST" action="{% url 'inventory:configuracion' %}">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="preset_warehouses_all">
+                        <button type="submit" class="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold px-4 py-2.5 rounded-xl transition flex items-center gap-1.5">
+                            <i class="fa-solid fa-check-double text-slate-600"></i> Activar Todas
+                        </button>
+                    </form>
+                </div>
             </div>
 
-            <div class="overflow-x-auto">
-                <table class="w-full text-left text-sm whitespace-nowrap min-w-[850px]" id="categoriesTable">
-                    <thead class="bg-slate-100/80 text-slate-600 uppercase text-[11px] font-black tracking-wider border-b border-slate-200">
+            <!-- Búsqueda en Vivo de Bodegas -->
+            <div class="pt-3 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3">
+                <div class="relative w-full sm:w-96">
+                    <i class="fa-solid fa-magnifying-glass absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
+                    <input type="text" id="filterWhInput" placeholder="Buscar bodega por código o nombre..."
+                           class="w-full pl-9 pr-4 py-2.5 border border-slate-300 rounded-xl text-xs font-medium focus:ring-2 focus:ring-pesco-cyan focus:border-pesco-cyan bg-slate-50 outline-none transition">
+                </div>
+                <span class="text-xs text-slate-400 font-medium">Usa los switches individuales o guarda la selección en bloque.</span>
+            </div>
+        </div>
+
+        <!-- Formulario Masivo y Tabla de Bodegas -->
+        <form method="POST" action="{% url 'inventory:configuracion' %}" id="whBulkForm">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="save_warehouses">
+
+            <div class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+                <div class="p-4 sm:p-5 bg-slate-50/80 border-b border-slate-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                    <div class="flex items-center gap-3">
+                        <label class="inline-flex items-center gap-2 cursor-pointer select-none">
+                            <input type="checkbox" id="selectAllWh" class="w-4 h-4 text-pesco-cyan rounded border-slate-300 focus:ring-pesco-cyan">
+                            <span class="text-xs font-bold text-slate-700">Seleccionar Visibles</span>
+                        </label>
+                        <span class="text-xs text-slate-400 font-medium">|</span>
+                        <span class="text-xs font-bold text-slate-500" id="selectedWhCounter">0 bodegas seleccionadas</span>
+                    </div>
+                    <button type="submit" class="bg-slate-900 hover:bg-slate-800 text-white text-xs font-black px-6 py-2.5 rounded-xl shadow-sm transition flex items-center gap-2">
+                        <i class="fa-solid fa-floppy-disk text-pesco-cyan"></i> Guardar Selección de Bodegas
+                    </button>
+                </div>
+
+                <div class="overflow-x-auto max-h-[650px] overflow-y-auto">
+                    <table class="w-full text-left border-collapse text-xs">
+                        <thead class="sticky top-0 bg-slate-100 text-slate-600 uppercase text-[10px] font-black tracking-wider border-b border-slate-200 z-10">
+                            <tr>
+                                <th class="py-3 px-4 w-12 text-center">Sel.</th>
+                                <th class="py-3 px-4 w-28">Código</th>
+                                <th class="py-3 px-4">Nombre / Descripción Bodega</th>
+                                <th class="py-3 px-4 w-44">Zona Operativa</th>
+                                <th class="py-3 px-4 w-28 text-right">SKUs en Bodega</th>
+                                <th class="py-3 px-4 w-36 text-right">Stock Disponible</th>
+                                <th class="py-3 px-4 w-32 text-center">Estado Auditoría</th>
+                                <th class="py-3 px-4 w-28 text-center">Acción Rápida</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100 text-slate-700" id="whTableBody">
+                            {% for w in warehouses %}
+                            <tr class="wh-row transition hover:bg-slate-50/80 {% if not w.is_active %}bg-slate-50/60 opacity-75{% endif %}"
+                                data-code="{{ w.code }}"
+                                data-name="{{ w.name|lower }}"
+                                data-active="{{ w.is_active|yesno:'true,false' }}">
+                                <td class="py-3 px-4 text-center">
+                                    <input type="checkbox" name="active_warehouses" value="{{ w.code }}"
+                                           class="wh-checkbox w-4 h-4 text-pesco-cyan rounded border-slate-300 focus:ring-pesco-cyan cursor-pointer"
+                                           {% if w.is_active %}checked{% endif %}{% if not w.is_physical %} disabled{% endif %}>
+                                </td>
+                                <td class="py-3 px-4 font-mono font-black text-slate-900">
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded-md {% if w.is_stgo %}bg-indigo-100 text-indigo-900{% else %}bg-slate-100 text-slate-800{% endif %}">
+                                        {{ w.code }}
+                                    </span>
+                                </td>
+                                <td class="py-3 px-4 font-semibold text-slate-800">
+                                    {{ w.name }}
+                                    {% if w.code == '013-03' %}
+                                    <span class="ml-2 bg-emerald-100 text-emerald-800 text-[10px] font-black px-2 py-0.5 rounded-full border border-emerald-300">
+                                        ⭐ Nueva Incorporación S&amp;OP
+                                    </span>
+                                    {% endif %}
+                                </td>
+                                <td class="py-3 px-4 font-medium">
+                                    {% if not w.is_physical %}
+                                    <span class="inline-flex items-center gap-1.5 text-slate-500 font-bold" title="No es una bodega física del S&amp;OP (tránsito, consignación o no conforme): se excluye de los cálculos">
+                                        <i class="fa-solid fa-ban text-xs"></i> {{ w.kind_label|default:"No física" }}
+                                    </span>
+                                    {% elif w.is_stgo %}
+                                    <span class="inline-flex items-center gap-1.5 text-indigo-700 font-bold">
+                                        <i class="fa-solid fa-city text-xs"></i> Santiago
+                                    </span>
+                                    {% elif w.zone == 'SUCURSAL' %}
+                                    <span class="inline-flex items-center gap-1.5 text-violet-700 font-bold">
+                                        <i class="fa-solid fa-location-dot text-xs text-amber-500"></i> Sucursal {{ w.city }}
+                                    </span>
+                                    {% else %}
+                                    <span class="inline-flex items-center gap-1.5 text-slate-400 font-bold">Otra bodega</span>
+                                    {% endif %}
+                                </td>
+                                <td class="py-3 px-4 text-right font-mono font-bold text-slate-600">
+                                    {{ w.sku_count|default:0 }}
+                                </td>
+                                <td class="py-3 px-4 text-right font-mono font-bold {% if w.stock_disponible > 0 %}text-slate-900{% else %}text-slate-400{% endif %}">
+                                    {{ w.stock_disponible|default:0|floatformat:0 }} u
+                                </td>
+                                <td class="py-3 px-4 text-center">
+                                    {% if w.is_active %}
+                                    <span class="wh-status-badge inline-flex items-center gap-1 px-3 py-1 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-300">
+                                        <i class="fa-solid fa-check"></i> AUDITADA
+                                    </span>
+                                    {% else %}
+                                    <span class="wh-status-badge inline-flex items-center gap-1 px-3 py-1 rounded-full text-[10px] font-black bg-slate-200 text-slate-600 border border-slate-300">
+                                        <i class="fa-solid fa-xmark"></i> EXCLUIDA
+                                    </span>
+                                    {% endif %}
+                                </td>
+                                <td class="py-3 px-4 text-center">
+                                    <button type="button" 
+                                            class="wh-toggle-btn inline-flex items-center justify-center gap-1 px-3 py-1 rounded-xl text-[10px] font-black transition {% if w.is_active %}bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100{% else %}bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100{% endif %}"
+                                            data-code="{{ w.code }}"
+                                            data-active="{{ w.is_active|yesno:'true,false' }}">
+                                        {% if w.is_active %}Excluir{% else %}Incluir{% endif %}
+                                    </button>
+                                </td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="8" class="text-center py-12 text-slate-400 font-medium">
+                                    No se encontraron bodegas registradas.
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="p-4 sm:p-5 bg-slate-50 border-t border-slate-200 flex flex-col sm:flex-row justify-between items-center gap-3">
+                    <span class="text-xs text-slate-500 font-medium">
+                        Las bodegas auditadas participan en el balanceo DRP para donar stock y recibir sugerencias de compras o traslados.
+                    </span>
+                    <button type="submit" class="bg-slate-900 hover:bg-slate-800 text-white text-xs font-black px-6 py-2.5 rounded-xl shadow-sm transition flex items-center gap-2">
+                        <i class="fa-solid fa-floppy-disk text-pesco-cyan"></i> Guardar Selección de Bodegas
+                    </button>
+                </div>
+            </div>
+        </form>
+    </div>
+    {% endif %}
+
+
+    <!-- ===================================================================== -->
+    <!-- TAB 2: GRUPOS DE MATERIALES (CATEGORÍAS SAP)                          -->
+    <!-- ===================================================================== -->
+    {% if active_tab == 'grupos' %}
+    <div class="space-y-6">
+
+        <!-- Resumen de alcance -->
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
+                <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Grupos SAP</div>
+                <div class="text-3xl font-black text-slate-900 mt-1 font-mono">
+                    <span class="text-emerald-600" id="kpiActiveCount">{{ active_categories_count }}</span><span class="text-slate-300 text-xl"> / {{ total_categories }}</span>
+                </div>
+                <span class="text-[10px] text-slate-500 font-medium block mt-0.5">se abastecen / total (<span id="kpiInactiveCount">{{ inactive_categories_count }}</span> excluidos)</span>
+            </div>
+            <div class="bg-emerald-50 rounded-2xl border border-emerald-200 p-5 shadow-sm">
+                <div class="text-[10px] font-bold text-emerald-700 uppercase tracking-wider">SKUs que se auditan</div>
+                <div class="text-3xl font-black text-emerald-600 mt-1 font-mono">{{ skus_en_alcance|floatformat:0 }}</div>
+                <span class="text-[10px] text-emerald-700 font-bold block mt-0.5">de {{ skus_total|floatformat:0 }} en el catálogo</span>
+            </div>
+            <div class="bg-emerald-50 rounded-2xl border border-emerald-200 p-5 shadow-sm">
+                <div class="text-[10px] font-bold text-emerald-700 uppercase tracking-wider">Stock en alcance</div>
+                <div class="text-3xl font-black text-emerald-600 mt-1 font-mono">USD {{ valor_en_alcance|floatformat:0 }}</div>
+                <span class="text-[10px] text-emerald-700 font-bold block mt-0.5">valorizado, bodegas operativas</span>
+            </div>
+            <div class="bg-rose-50 rounded-2xl border border-rose-200 p-5 shadow-sm">
+                <div class="text-[10px] font-bold text-rose-700 uppercase tracking-wider">Stock excluido</div>
+                <div class="text-3xl font-black text-rose-600 mt-1 font-mono">USD {{ valor_excluido|floatformat:0 }}</div>
+                <span class="text-[10px] text-rose-700 font-bold block mt-0.5">no entra a proyecciones ni compras</span>
+            </div>
+        </div>
+
+        <!-- Cómo se decide el alcance -->
+        <div class="bg-white p-5 sm:p-6 rounded-3xl shadow-sm border border-slate-200 space-y-5">
+            <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
+                <div class="max-w-3xl">
+                    <h3 class="text-sm font-black text-slate-900 flex items-center gap-2">
+                        <i class="fa-solid fa-filter text-pesco-cyan"></i> Qué materiales se auditan
+                    </h3>
+                    <p class="text-xs text-slate-500 mt-1 leading-relaxed">
+                        Cada <strong>grupo de artículos SAP</strong> tiene un <strong>tipo de material</strong> con una recomendación.
+                        Los grupos <strong>excluidos</strong> no entran a proyecciones, recomendador, compras ni reportes.
+                        Además, los artículos que SAP marca como <em>no inventariables</em> (servicios, gastos, activos) quedan siempre fuera,
+                        sin importar el grupo.
+                    </p>
+                </div>
+                <div class="flex flex-wrap items-center gap-2">
+                    <form method="POST" action="{% url 'inventory:configuracion' %}">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="preset_recommended">
+                        <button type="submit" class="bg-slate-900 hover:bg-slate-800 text-white text-xs font-black px-4 py-2.5 rounded-xl shadow-sm transition flex items-center gap-2" title="Restablece cada grupo a la recomendación de su tipo (descarta cambios manuales)">
+                            <i class="fa-solid fa-wand-magic-sparkles text-pesco-cyan"></i> Aplicar recomendación
+                        </button>
+                    </form>
+                    <form method="POST" action="{% url 'inventory:configuracion' %}">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="preset_all">
+                        <button type="submit" class="bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 text-xs font-bold px-4 py-2.5 rounded-xl transition flex items-center gap-1.5">
+                            <i class="fa-solid fa-check-double text-emerald-600"></i> Activar todos
+                        </button>
+                    </form>
+                    <form method="POST" action="{% url 'inventory:configuracion' %}">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="preset_none">
+                        <button type="submit" class="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold px-4 py-2.5 rounded-xl transition flex items-center gap-1.5">
+                            <i class="fa-solid fa-ban text-slate-500"></i> Desactivar todos
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Resumen por tipo de material -->
+            <div class="overflow-x-auto rounded-2xl border border-slate-200">
+                <table class="w-full text-left text-xs">
+                    <thead class="bg-slate-100 text-slate-600 uppercase text-[10px] font-black tracking-wider">
                         <tr>
-                            <th class="py-4 px-5 text-center w-16">Incluir</th>
-                            <th class="py-4 px-5">Grupo de Materiales / Área</th>
-                            <th class="py-4 px-5 text-center">Código SAP</th>
-                            <th class="py-4 px-5 text-center">Total SKUs</th>
-                            <th class="py-4 px-5 text-center">SKUs Urgentes</th>
-                            <th class="py-4 px-5 text-right">Quiebre USD</th>
-                            <th class="py-4 px-6 text-center w-36">Estado S&amp;OP</th>
+                            <th class="py-2.5 px-4">Tipo de material</th>
+                            <th class="py-2.5 px-4">Qué incluye</th>
+                            <th class="py-2.5 px-4 text-right">Grupos</th>
+                            <th class="py-2.5 px-4 text-right">SKUs</th>
+                            <th class="py-2.5 px-4 text-right">Stock USD</th>
+                            <th class="py-2.5 px-4 text-center">Recomendado</th>
+                            <th class="py-2.5 px-4 text-center">Todos los grupos del tipo</th>
                         </tr>
                     </thead>
-                    <tbody class="divide-y divide-slate-100 font-medium text-xs">
-                        {% for cat in categories %}
-                        <tr class="hover:bg-pesco-lightcyan/20 transition group-row {% if not cat.is_active %}bg-slate-50/60 opacity-75{% endif %}" data-name="{{ cat.name|lower }}" data-code="{{ cat.code|lower }}">
-                            <!-- Checkbox -->
-                            <td class="py-4 px-5 text-center">
-                                <input type="checkbox" name="active_categories" value="{{ cat.code }}"
-                                       class="cat-checkbox rounded text-pesco-cyan focus:ring-pesco-cyan w-4 h-4 cursor-pointer"
-                                       {% if cat.is_active %}checked{% endif %}
-                                       data-code="{{ cat.code }}">
+                    <tbody class="divide-y divide-slate-100">
+                        {% for t in tipos_resumen %}
+                        <tr class="tipo-row cursor-pointer hover:bg-slate-50" data-tipo-filter="{{ t.key }}" title="Clic para filtrar la tabla por este tipo">
+                            <td class="py-2.5 px-4 font-black text-slate-900">{{ t.label }}</td>
+                            <td class="py-2.5 px-4 text-slate-500">{{ t.desc }}</td>
+                            <td class="py-2.5 px-4 text-right font-mono font-bold">{{ t.activos }}/{{ t.grupos }} activos</td>
+                            <td class="py-2.5 px-4 text-right font-mono">{{ t.skus }}</td>
+                            <td class="py-2.5 px-4 text-right font-mono">{{ t.valor|floatformat:0 }}</td>
+                            <td class="py-2.5 px-4 text-center">
+                                {% if t.abastece %}<span class="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800">Se abastece</span>
+                                {% else %}<span class="px-2 py-0.5 rounded-full text-[10px] font-black bg-rose-100 text-rose-800">Excluir</span>{% endif %}
                             </td>
-
-                            <!-- Nombre Grupo -->
-                            <td class="py-4 px-5 font-bold text-slate-900">
-                                <div class="flex items-center gap-2">
-                                    {% if 'PAÑOL' in cat.name or 'PANOL' in cat.name %}
-                                    <span class="text-amber-600 text-sm"><i class="fa-solid fa-wrench"></i></span>
-                                    {% elif 'SERVICIO' in cat.name %}
-                                    <span class="text-purple-600 text-sm"><i class="fa-solid fa-headset"></i></span>
-                                    {% elif 'CAMIONES' in cat.name or 'CHASIS' in cat.name %}
-                                    <span class="text-blue-600 text-sm"><i class="fa-solid fa-truck"></i></span>
-                                    {% else %}
-                                    <span class="text-slate-400 text-sm"><i class="fa-solid fa-box"></i></span>
-                                    {% endif %}
-                                    <span>{{ cat.name }}</span>
-                                </div>
-                            </td>
-
-                            <!-- Código -->
-                            <td class="py-4 px-5 text-center">
-                                <span class="bg-slate-100 text-slate-700 px-2.5 py-1 rounded-lg font-mono text-[11px] font-bold border border-slate-200">
-                                    {{ cat.code }}
-                                </span>
-                            </td>
-
-                            <!-- Total SKUs -->
-                            <td class="py-4 px-5 text-center font-bold font-mono text-slate-800 text-sm">
-                                {{ cat.sku_count|default:"0" }}
-                            </td>
-
-                            <!-- SKUs Urgentes -->
-                            <td class="py-4 px-5 text-center font-bold font-mono">
-                                {% if cat.urgentes_count > 0 or cat.criticos_count > 0 %}
-                                <span class="text-red-600 bg-red-50 border border-red-200 px-2.5 py-0.5 rounded-full text-xs font-black">
-                                    {{ cat.urgentes_count|default:cat.criticos_count }}
-                                </span>
-                                {% else %}
-                                <span class="text-slate-400">0</span>
-                                {% endif %}
-                            </td>
-
-                            <!-- Quiebre USD -->
-                            <td class="py-4 px-5 text-right font-black font-mono text-sm {% if cat.total_shortage > 0 %}text-red-600{% else %}text-slate-400{% endif %}" title="{{ cat.total_shortage|full_usd }} USD">
-                                {{ cat.total_shortage|compact_usd }}
-                            </td>
-
-                            <!-- Estado Badge con Switch Directo -->
-                            <td class="py-4 px-6 text-center">
-                                <button type="button" class="toggle-btn inline-flex items-center justify-center gap-1.5 px-3.5 py-1 rounded-full text-xs font-black shadow-sm transition {% if cat.is_active %}bg-emerald-100 text-emerald-800 border border-emerald-300 hover:bg-emerald-200{% else %}bg-slate-200 text-slate-600 border border-slate-300 hover:bg-slate-300{% endif %}"
-                                        data-code="{{ cat.code }}"
-                                        data-active="{% if cat.is_active %}true{% else %}false{% endif %}">
-                                    <span class="status-icon">{% if cat.is_active %}✓{% else %}✗{% endif %}</span>
-                                    <span class="status-text">{% if cat.is_active %}ACTIVO{% else %}EXCLUIDO{% endif %}</span>
-                                </button>
-                            </td>
-                        </tr>
-                        {% empty %}
-                        <tr>
-                            <td colspan="7" class="py-12 text-center text-slate-400 text-sm">
-                                <i class="fa-solid fa-folder-open text-3xl mb-2 block"></i> No se encontraron grupos de materiales.
+                            <td class="py-2.5 px-4">
+                                <form method="POST" action="{% url 'inventory:configuracion' %}" class="flex justify-center gap-1.5">
+                                    {% csrf_token %}
+                                    <input type="hidden" name="action" value="set_tipo">
+                                    <input type="hidden" name="tipo" value="{{ t.key }}">
+                                    <button name="estado" value="activar" class="px-2.5 py-1 rounded-lg text-[10px] font-black bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100">Activar</button>
+                                    <button name="estado" value="excluir" class="px-2.5 py-1 rounded-lg text-[10px] font-black bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100">Excluir</button>
+                                </form>
                             </td>
                         </tr>
                         {% endfor %}
@@ -216,94 +377,382 @@
                 </table>
             </div>
 
-            <!-- Footer Save Bar -->
-            <div class="p-5 bg-slate-50 border-t border-slate-200 flex justify-between items-center">
-                <span class="text-xs text-slate-500">Al guardar, los cambios se reflejarán inmediatamente en los tableros y sugerencias de compra.</span>
-                <button type="submit" class="bg-pesco-cyan hover:bg-pesco-darkcyan text-white text-xs font-bold px-7 py-3 rounded-full shadow-md transition flex items-center gap-2 uppercase tracking-wider">
-                    <i class="fa-solid fa-floppy-disk"></i> Guardar Selección de Grupos
-                </button>
+            <!-- Búsqueda en Vivo de Grupos -->
+            <div class="pt-3 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3">
+                <div class="relative w-full sm:w-96">
+                    <i class="fa-solid fa-magnifying-glass absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
+                    <input type="text" id="filterInput" placeholder="Buscar grupo de materiales en tiempo real..."
+                           class="w-full pl-9 pr-4 py-2.5 border border-slate-300 rounded-xl text-xs font-medium focus:ring-2 focus:ring-pesco-cyan focus:border-pesco-cyan bg-slate-50 outline-none transition">
+                </div>
+                <span class="text-xs text-slate-400 font-medium">Puedes cambiar el estado de cada grupo individualmente o guardar en lote.</span>
             </div>
         </div>
-    </form>
+
+        <!-- Formulario Masivo y Tabla de Grupos -->
+        <form method="POST" action="{% url 'inventory:configuracion' %}" id="bulkForm">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="save_all">
+
+            <div class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+                <div class="p-4 sm:p-5 bg-slate-50/80 border-b border-slate-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                    <div class="flex items-center gap-3">
+                        <label class="inline-flex items-center gap-2 cursor-pointer select-none">
+                            <input type="checkbox" id="selectAll" class="w-4 h-4 text-pesco-cyan rounded border-slate-300 focus:ring-pesco-cyan">
+                            <span class="text-xs font-bold text-slate-700">Seleccionar Visibles</span>
+                        </label>
+                        <span class="text-xs text-slate-400 font-medium">|</span>
+                        <span class="text-xs font-bold text-slate-500" id="selectedCounter">0 grupos seleccionados</span>
+                    </div>
+                    <button type="submit" class="bg-slate-900 hover:bg-slate-800 text-white text-xs font-black px-6 py-2.5 rounded-xl shadow-sm transition flex items-center gap-2">
+                        <i class="fa-solid fa-floppy-disk text-pesco-cyan"></i> Guardar Selección de Grupos
+                    </button>
+                </div>
+
+                <div class="overflow-x-auto max-h-[600px] overflow-y-auto">
+                    <table class="w-full text-left border-collapse text-xs">
+                        <thead class="sticky top-0 bg-slate-100 text-slate-600 uppercase text-[10px] font-black tracking-wider border-b border-slate-200 z-10">
+                            <tr>
+                                <th class="py-3 px-4 w-12 text-center">Sel.</th>
+                                <th class="py-3 px-4 w-24">Código</th>
+                                <th class="py-3 px-4">Grupo de artículos SAP</th>
+                                <th class="py-3 px-4 w-44">Tipo de material</th>
+                                <th class="py-3 px-4 w-20 text-right">SKUs</th>
+                                <th class="py-3 px-4 w-24 text-right">Con stock</th>
+                                <th class="py-3 px-4 w-28 text-right">Stock USD</th>
+                                <th class="py-3 px-4 w-28 text-right" title="SKUs que SAP marca como no inventariables (se excluyen siempre)">No inventar.</th>
+                                <th class="py-3 px-4 w-32 text-center">Estado S&amp;OP</th>
+                                <th class="py-3 px-4 w-28 text-center">Acción Directa</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100 text-slate-700" id="categoriesTableBody">
+                            {% for cat in categories %}
+                            <tr class="cat-row transition hover:bg-slate-50/80 {% if not cat.is_active %}bg-slate-50/60 opacity-75{% endif %}"
+                                data-name="{{ cat.name|lower }}"
+                                data-code="{{ cat.code|lower }}"
+                                data-tipo="{{ cat.tipo }}"
+                                data-active="{{ cat.is_active|yesno:'true,false' }}">
+                                <td class="py-3 px-4 text-center">
+                                    <input type="checkbox" name="active_categories" value="{{ cat.code }}"
+                                           class="cat-checkbox w-4 h-4 text-pesco-cyan rounded border-slate-300 focus:ring-pesco-cyan cursor-pointer"
+                                           {% if cat.is_active %}checked{% endif %}>
+                                </td>
+                                <td class="py-3 px-4 font-mono font-bold text-slate-500">{{ cat.code }}</td>
+                                <td class="py-3 px-4 font-bold text-slate-900">
+                                    {{ cat.name }}
+                                </td>
+                                <td class="py-3 px-4">
+                                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold {% if cat.recomendado_activo %}bg-sky-50 text-sky-800 border border-sky-200{% else %}bg-amber-50 text-amber-800 border border-amber-200{% endif %}">
+                                        {{ cat.tipo_label }}
+                                    </span>
+                                    {% if cat.is_active != cat.recomendado_activo %}
+                                    <span class="block text-[10px] text-amber-600 font-bold mt-0.5" title="Difiere de la recomendación para este tipo">cambiado a mano</span>
+                                    {% endif %}
+                                </td>
+                                <td class="py-3 px-4 text-right font-mono font-bold text-slate-600">{{ cat.sku_count }}</td>
+                                <td class="py-3 px-4 text-right font-mono text-slate-600">{{ cat.skus_con_stock }}</td>
+                                <td class="py-3 px-4 text-right font-mono text-slate-600">{{ cat.valor_stock|floatformat:0 }}</td>
+                                <td class="py-3 px-4 text-right font-mono {% if cat.serv_count %}text-rose-600 font-bold{% else %}text-slate-300{% endif %}">{{ cat.serv_count }}</td>
+                                <td class="py-3 px-4 text-center">
+                                    {% if cat.is_active %}
+                                    <span class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-300">
+                                        <i class="fa-solid fa-check"></i> ACTIVO
+                                    </span>
+                                    {% else %}
+                                    <span class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-[10px] font-black bg-slate-200 text-slate-600 border border-slate-300">
+                                        <i class="fa-solid fa-xmark"></i> EXCLUIDO
+                                    </span>
+                                    {% endif %}
+                                </td>
+                                <td class="py-3 px-4 text-center">
+                                    <button type="button" 
+                                            class="cat-toggle-btn inline-flex items-center justify-center gap-1 px-3 py-1 rounded-xl text-[10px] font-black transition {% if cat.is_active %}bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100{% else %}bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100{% endif %}"
+                                            data-code="{{ cat.code }}"
+                                            data-active="{{ cat.is_active|yesno:'true,false' }}">
+                                        {% if cat.is_active %}Excluir{% else %}Activar{% endif %}
+                                    </button>
+                                </td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="10" class="text-center py-12 text-slate-400 font-medium">
+                                    No se encontraron grupos de artículos.
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="p-4 sm:p-5 bg-slate-50 border-t border-slate-200 flex flex-col sm:flex-row justify-between items-center gap-3">
+                    <span class="text-xs text-slate-500 font-medium">
+                        Los cambios aplicados aquí actualizarán el alcance del Recomendador y las Proyecciones.
+                    </span>
+                    <button type="submit" class="bg-slate-900 hover:bg-slate-800 text-white text-xs font-black px-6 py-2.5 rounded-xl shadow-sm transition flex items-center gap-2">
+                        <i class="fa-solid fa-floppy-disk text-pesco-cyan"></i> Guardar Selección de Grupos
+                    </button>
+                </div>
+            </div>
+        </form>
+    </div>
+    {% endif %}
+
+
+    <!-- ===================================================================== -->
+    <!-- TAB 3: TIPOS Y CLASES DE SKU (PRÓXIMO PASO)                           -->
+    <!-- ===================================================================== -->
+    {% if active_tab == 'tipos' %}
+    <div class="space-y-6">
+
+        <div class="bg-gradient-to-r from-amber-50 to-orange-50 border-2 border-amber-200 p-6 sm:p-8 rounded-3xl shadow-sm">
+            <div class="flex items-start gap-4">
+                <div class="w-12 h-12 rounded-2xl bg-amber-500 text-white flex items-center justify-center text-xl shrink-0 shadow-md">
+                    <i class="fa-solid fa-tags"></i>
+                </div>
+                <div>
+                    <span class="bg-amber-200 text-amber-900 text-[10px] font-black uppercase px-3 py-1 rounded-full border border-amber-300">
+                        Próxima Etapa Operativa S&amp;OP
+                    </span>
+                    <h2 class="text-xl sm:text-2xl font-black text-slate-900 tracking-tight mt-2">Auditoría Selectiva por Tipos y Clases de SKU</h2>
+                    <p class="text-sm text-slate-600 mt-1 max-w-3xl leading-relaxed">
+                        Aquí configuraremos en el siguiente paso el filtrado paramétrico por <strong>Clase de Repuesto</strong>, <strong>Familia</strong> y <strong>Categoría SAP</strong>. Podrás definir con precisión qué familias de artículos entran a compras automáticas, cuáles pasan por aprobación especial o cuáles se bloquean por obsolescencia técnica.
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Muestra de Datos Detectados en SAP -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+
+            <!-- Clases SAP -->
+            <div class="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm space-y-4">
+                <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+                    <h3 class="font-black text-slate-900 text-sm flex items-center gap-2">
+                        <i class="fa-solid fa-boxes-stacked text-pesco-cyan"></i> Clases de Repuestos
+                    </h3>
+                    <span class="text-[10px] font-bold text-slate-400 uppercase">Top Detectadas</span>
+                </div>
+                <div class="space-y-2">
+                    {% for c in top_clases %}
+                    <div class="flex items-center justify-between text-xs p-2 rounded-xl bg-slate-50 border border-slate-100">
+                        <span class="font-bold text-slate-800">{{ c.clase }}</span>
+                        <span class="font-mono text-slate-500 font-bold">{{ c.sku_count }} SKUs</span>
+                    </div>
+                    {% empty %}
+                    <p class="text-xs text-slate-400">Sin datos de clase.</p>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <!-- Familias SAP -->
+            <div class="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm space-y-4">
+                <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+                    <h3 class="font-black text-slate-900 text-sm flex items-center gap-2">
+                        <i class="fa-solid fa-sitemap text-indigo-500"></i> Familias de Productos
+                    </h3>
+                    <span class="text-[10px] font-bold text-slate-400 uppercase">Top Detectadas</span>
+                </div>
+                <div class="space-y-2">
+                    {% for f in top_familias %}
+                    <div class="flex items-center justify-between text-xs p-2 rounded-xl bg-slate-50 border border-slate-100">
+                        <span class="font-bold text-slate-800">{{ f.familia }}</span>
+                        <span class="font-mono text-slate-500 font-bold">{{ f.sku_count }} SKUs</span>
+                    </div>
+                    {% empty %}
+                    <p class="text-xs text-slate-400">Sin datos de familia.</p>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <!-- Categorías SAP -->
+            <div class="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm space-y-4">
+                <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+                    <h3 class="font-black text-slate-900 text-sm flex items-center gap-2">
+                        <i class="fa-solid fa-layer-group text-emerald-500"></i> Categorías SAP
+                    </h3>
+                    <span class="text-[10px] font-bold text-slate-400 uppercase">Top Detectadas</span>
+                </div>
+                <div class="space-y-2">
+                    {% for sc in sap_cats %}
+                    <div class="flex items-center justify-between text-xs p-2 rounded-xl bg-slate-50 border border-slate-100">
+                        <span class="font-bold text-slate-800">{{ sc.sap_categoria }}</span>
+                        <span class="font-mono text-slate-500 font-bold">{{ sc.sku_count }} SKUs</span>
+                    </div>
+                    {% empty %}
+                    <p class="text-xs text-slate-400">Sin datos de categorías SAP.</p>
+                    {% endfor %}
+                </div>
+            </div>
+
+        </div>
+
+    </div>
+    {% endif %}
+
 </div>
 
 <script>
-document.addEventListener("DOMContentLoaded", function() {
-    const filterInput = document.getElementById('filterInput');
-    const rows = document.querySelectorAll('.group-row');
-    const selectAllMaster = document.getElementById('selectAllMaster');
-    const checkboxes = document.querySelectorAll('.cat-checkbox');
-    const counterText = document.getElementById('counterText');
+document.addEventListener('DOMContentLoaded', function() {
 
-    // Búsqueda en vivo
-    filterInput.addEventListener('input', function() {
-        const query = this.value.toLowerCase().trim();
-        rows.forEach(row => {
-            const name = row.getAttribute('data-name') || '';
-            const code = row.getAttribute('data-code') || '';
-            if (name.includes(query) || code.includes(query)) {
-                row.style.display = '';
-            } else {
-                row.style.display = 'none';
-            }
-        });
-    });
+    // =========================================================================
+    // JS PARA PESTAÑA BODEGAS
+    // =========================================================================
+    const filterWhInput = document.getElementById('filterWhInput');
+    const whRows = document.querySelectorAll('.wh-row');
+    const selectAllWh = document.getElementById('selectAllWh');
+    const whCheckboxes = document.querySelectorAll('.wh-checkbox');
+    const selectedWhCounter = document.getElementById('selectedWhCounter');
+    const kpiActiveWhCount = document.getElementById('kpiActiveWhCount');
+    const kpiInactiveWhCount = document.getElementById('kpiInactiveWhCount');
 
-    // Actualizar contador
-    function updateCounter() {
-        let count = 0;
-        checkboxes.forEach(cb => {
-            if (cb.checked) count++;
-        });
-        counterText.textContent = `${count} de ${checkboxes.length} seleccionados`;
+    function updateWhCounter() {
+        if (!selectedWhCounter) return;
+        const totalChecked = Array.from(whCheckboxes).filter(cb => cb.checked).length;
+        selectedWhCounter.textContent = `${totalChecked} bodegas seleccionadas`;
+        if (kpiActiveWhCount) kpiActiveWhCount.textContent = totalChecked;
+        if (kpiInactiveWhCount) kpiInactiveWhCount.textContent = whCheckboxes.length - totalChecked;
     }
 
-    // Checkbox Master
-    selectAllMaster.addEventListener('change', function() {
-        const isChecked = this.checked;
-        rows.forEach(row => {
-            if (row.style.display !== 'none') {
-                const cb = row.querySelector('.cat-checkbox');
-                if (cb) {
-                    cb.checked = isChecked;
-                    updateRowVisuals(row, isChecked);
+    if (whCheckboxes.length > 0) {
+        updateWhCounter();
+        whCheckboxes.forEach(cb => cb.addEventListener('change', updateWhCounter));
+    }
+
+    if (selectAllWh) {
+        selectAllWh.addEventListener('change', function() {
+            const isChecked = this.checked;
+            whRows.forEach(row => {
+                if (row.style.display !== 'none') {
+                    const cb = row.querySelector('.wh-checkbox');
+                    if (cb) cb.checked = isChecked;
                 }
-            }
+            });
+            updateWhCounter();
         });
-        updateCounter();
-    });
-
-    checkboxes.forEach(cb => {
-        cb.addEventListener('change', function() {
-            const row = this.closest('tr');
-            updateRowVisuals(row, this.checked);
-            updateCounter();
-        });
-    });
-
-    function updateRowVisuals(row, isActive) {
-        const btn = row.querySelector('.toggle-btn');
-        if (isActive) {
-            row.classList.remove('bg-slate-50/60', 'opacity-75');
-            if (btn) {
-                btn.className = 'toggle-btn inline-flex items-center justify-center gap-1.5 px-3.5 py-1 rounded-full text-xs font-black shadow-sm transition bg-emerald-100 text-emerald-800 border border-emerald-300 hover:bg-emerald-200';
-                btn.querySelector('.status-icon').textContent = '✓';
-                btn.querySelector('.status-text').textContent = 'ACTIVO';
-                btn.setAttribute('data-active', 'true');
-            }
-        } else {
-            row.classList.add('bg-slate-50/60', 'opacity-75');
-            if (btn) {
-                btn.className = 'toggle-btn inline-flex items-center justify-center gap-1.5 px-3.5 py-1 rounded-full text-xs font-black shadow-sm transition bg-slate-200 text-slate-600 border border-slate-300 hover:bg-slate-300';
-                btn.querySelector('.status-icon').textContent = '✗';
-                btn.querySelector('.status-text').textContent = 'EXCLUIDO';
-                btn.setAttribute('data-active', 'false');
-            }
-        }
     }
 
-    // Toggle individual con AJAX
-    document.querySelectorAll('.toggle-btn').forEach(btn => {
+    if (filterWhInput) {
+        filterWhInput.addEventListener('input', function() {
+            const term = this.value.toLowerCase().trim();
+            whRows.forEach(row => {
+                const code = row.getAttribute('data-code').toLowerCase();
+                const name = row.getAttribute('data-name').toLowerCase();
+                if (!term || code.includes(term) || name.includes(term)) {
+                    row.style.display = '';
+                } else {
+                    row.style.display = 'none';
+                }
+            });
+        });
+    }
+
+    // Toggle individual bodega con AJAX
+    document.querySelectorAll('.wh-toggle-btn').forEach(btn => {
+        btn.addEventListener('click', async function(e) {
+            e.preventDefault();
+            const code = this.getAttribute('data-code');
+            const row = this.closest('tr');
+            const cb = row.querySelector('.wh-checkbox');
+
+            const formData = new FormData();
+            formData.append('action', 'toggle_warehouse');
+            formData.append('warehouse_code', code);
+            formData.append('csrfmiddlewaretoken', '{{ csrf_token }}');
+
+            try {
+                const res = await fetch("{% url 'inventory:configuracion' %}", {
+                    method: 'POST',
+                    body: formData,
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' }
+                });
+                const data = await res.json();
+                if (data.status === 'ok') {
+                    cb.checked = data.is_active;
+                    if (data.is_active) {
+                        row.classList.remove('bg-slate-50/60', 'opacity-75');
+                        btn.className = 'wh-toggle-btn inline-flex items-center justify-center gap-1 px-3 py-1 rounded-xl text-[10px] font-black transition bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100';
+                        btn.textContent = 'Excluir';
+                        const badge = row.querySelector('.wh-status-badge');
+                        if (badge) {
+                            badge.className = 'wh-status-badge inline-flex items-center gap-1 px-3 py-1 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-300';
+                            badge.innerHTML = '<i class="fa-solid fa-check"></i> AUDITADA';
+                        }
+                    } else {
+                        row.classList.add('bg-slate-50/60', 'opacity-75');
+                        btn.className = 'wh-toggle-btn inline-flex items-center justify-center gap-1 px-3 py-1 rounded-xl text-[10px] font-black transition bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100';
+                        btn.textContent = 'Incluir';
+                        const badge = row.querySelector('.wh-status-badge');
+                        if (badge) {
+                            badge.className = 'wh-status-badge inline-flex items-center gap-1 px-3 py-1 rounded-full text-[10px] font-black bg-slate-200 text-slate-600 border border-slate-300';
+                            badge.innerHTML = '<i class="fa-solid fa-xmark"></i> EXCLUIDA';
+                        }
+                    }
+                    updateWhCounter();
+                }
+            } catch (err) {
+                console.error(err);
+            }
+        });
+    });
+
+    // =========================================================================
+    // JS PARA PESTAÑA GRUPOS
+    // =========================================================================
+    const filterInput = document.getElementById('filterInput');
+    const catRows = document.querySelectorAll('.cat-row');
+    const selectAll = document.getElementById('selectAll');
+    const catCheckboxes = document.querySelectorAll('.cat-checkbox');
+    const selectedCounter = document.getElementById('selectedCounter');
+    const kpiActiveCount = document.getElementById('kpiActiveCount');
+    const kpiInactiveCount = document.getElementById('kpiInactiveCount');
+
+    function updateCatCounter() {
+        if (!selectedCounter) return;
+        const totalChecked = Array.from(catCheckboxes).filter(cb => cb.checked).length;
+        selectedCounter.textContent = `${totalChecked} grupos seleccionados`;
+        if (kpiActiveCount) kpiActiveCount.textContent = totalChecked;
+        if (kpiInactiveCount) kpiInactiveCount.textContent = catCheckboxes.length - totalChecked;
+    }
+
+    if (catCheckboxes.length > 0) {
+        updateCatCounter();
+        catCheckboxes.forEach(cb => cb.addEventListener('change', updateCatCounter));
+    }
+
+    if (selectAll) {
+        selectAll.addEventListener('change', function() {
+            const isChecked = this.checked;
+            catRows.forEach(row => {
+                if (row.style.display !== 'none') {
+                    const cb = row.querySelector('.cat-checkbox');
+                    if (cb) cb.checked = isChecked;
+                }
+            });
+            updateCatCounter();
+        });
+    }
+
+    let tipoFilter = '';
+    function applyCatFilters() {
+        const term = filterInput ? filterInput.value.toLowerCase().trim() : '';
+        catRows.forEach(row => {
+            const okText = !term || row.getAttribute('data-name').includes(term) || row.getAttribute('data-code').includes(term);
+            const okTipo = !tipoFilter || row.getAttribute('data-tipo') === tipoFilter;
+            row.style.display = (okText && okTipo) ? '' : 'none';
+        });
+    }
+    if (filterInput) filterInput.addEventListener('input', applyCatFilters);
+    document.querySelectorAll('.tipo-row').forEach(tr => {
+        tr.addEventListener('click', function(e) {
+            if (e.target.closest('form')) return;
+            const t = this.getAttribute('data-tipo-filter');
+            tipoFilter = (tipoFilter === t) ? '' : t;
+            document.querySelectorAll('.tipo-row').forEach(r => r.classList.toggle('bg-sky-50', r.getAttribute('data-tipo-filter') === tipoFilter));
+            applyCatFilters();
+        });
+    });
+
+    // Toggle individual grupo con AJAX
+    document.querySelectorAll('.cat-toggle-btn').forEach(btn => {
         btn.addEventListener('click', async function(e) {
             e.preventDefault();
             const code = this.getAttribute('data-code');
@@ -316,7 +765,7 @@ document.addEventListener("DOMContentLoaded", function() {
             formData.append('csrfmiddlewaretoken', '{{ csrf_token }}');
 
             try {
-                const res = await fetch("{% url 'inventory:configurar_grupos' %}", {
+                const res = await fetch("{% url 'inventory:configuracion' %}", {
                     method: 'POST',
                     body: formData,
                     headers: { 'X-Requested-With': 'XMLHttpRequest' }
@@ -324,17 +773,23 @@ document.addEventListener("DOMContentLoaded", function() {
                 const data = await res.json();
                 if (data.status === 'ok') {
                     cb.checked = data.is_active;
-                    updateRowVisuals(row, data.is_active);
-                    updateCounter();
+                    if (data.is_active) {
+                        row.classList.remove('bg-slate-50/60', 'opacity-75');
+                        btn.className = 'cat-toggle-btn inline-flex items-center justify-center gap-1 px-3 py-1 rounded-xl text-[10px] font-black transition bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100';
+                        btn.textContent = 'Excluir';
+                    } else {
+                        row.classList.add('bg-slate-50/60', 'opacity-75');
+                        btn.className = 'cat-toggle-btn inline-flex items-center justify-center gap-1 px-3 py-1 rounded-xl text-[10px] font-black transition bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100';
+                        btn.textContent = 'Activar';
+                    }
+                    updateCatCounter();
                 }
             } catch (err) {
-                // Fallback a submit tradicional
-                cb.checked = !cb.checked;
-                updateRowVisuals(row, cb.checked);
-                updateCounter();
+                console.error(err);
             }
         });
     });
+
 });
 </script>
 {% endblock %}

@@ -7,7 +7,8 @@
 *.xls
 *.csv
 *.parquet
-data/
+data/*
+!data/*.sql
 data_set.xlsx
 2907 00.- Proyeccion Stock Disponible Pañol 1.xls
 
@@ -35,3 +36,19 @@ media/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Credenciales
+.env
+
+# 5. Documentos internos de Pesco (el repo es publico): quedan solo en el equipo local
+*.docx
+.specs/fuente_requerimientos_*.txt
+MINUTA_EJECUTIVA_SOP*
+REQUERIMIENTOS_SOP.md
+SPEC_CALCULO_SOP.md
+INFORME_CALCULO_PROYECCION.txt
+resumen_reu_*.txt
+
+# 6. Scripts y respaldos de trabajo (incluye copias de la BD con datos reales)
+scratch/
+*.sqlite3

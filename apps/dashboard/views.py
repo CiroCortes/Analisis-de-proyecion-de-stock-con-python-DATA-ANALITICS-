@@ -21,7 +21,7 @@ def _apply_filters(queryset, request):
         queryset = queryset.filter(product__category__code=category_filter)
     elif not include_all_groups:
         # Por defecto, procesar únicamente los grupos activos configurados
-        queryset = queryset.filter(product__category__is_active=True)
+        queryset = queryset.filter(product__category__is_active=True, product__is_active=True)
 
     if warehouse_filter:
         queryset = queryset.filter(warehouse__code=warehouse_filter)
@@ -533,7 +533,7 @@ def api_disponibilidad_historica(request):
         month_dt = item['month']
         if month_dt and wh_code:
             group = get_group(wh_code)
-            if group:
+            if group and group in data_by_group:
                 m_str = f"{month_dt.year}-{month_dt.month:02d}"
                 if m_str in data_by_group[group]:
                     data_by_group[group][m_str]['t'] += item['total']
@@ -544,7 +544,7 @@ def api_disponibilidad_historica(request):
         month_dt = item['month']
         if month_dt and wh_code:
             group = get_group(wh_code)
-            if group:
+            if group and group in data_by_group:
                 m_str = f"{month_dt.year}-{month_dt.month:02d}"
                 if m_str in data_by_group[group]:
                     data_by_group[group][m_str]['t'] += item['total']

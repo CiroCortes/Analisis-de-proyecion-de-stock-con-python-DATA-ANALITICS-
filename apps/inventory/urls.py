@@ -8,6 +8,7 @@ urlpatterns = [
     # Stock Actual de Bodegas SAP
     path('stock-actual/', views.cargar_stock_actual, name='cargar_stock_actual'),
     path('stock-actual/consultar/', views.consultar_stock_actual, name='consultar_stock_actual'),
-    # Configuración de Grupos S&OP
-    path('configurar-grupos/', views.configurar_grupos_view, name='configurar_grupos'),
+    # Centro Maestro de Configuración S&OP (Bodegas, Grupos y Parámetros)
+    path('configuracion/', views.configuracion_view, name='configuracion'),
+    path('configurar-grupos/', views.configuracion_view, name='configurar_grupos'),
 ]

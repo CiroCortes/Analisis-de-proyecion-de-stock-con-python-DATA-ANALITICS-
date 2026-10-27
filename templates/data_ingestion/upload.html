@@ -3,71 +3,82 @@
 {% block title %}Centro de Sincronización de Datos S&amp;OP | Pesco S.A.{% endblock %}
 
 {% block content %}
-<div class="max-w-5xl mx-auto space-y-6">
+<div class="w-full space-y-6">
 
     <!-- Header Section -->
-    <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 border-l-4 border-l-pesco-cyan flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+    <div class="bg-white p-6 sm:p-7 rounded-3xl shadow-sm border border-slate-200 border-l-8 border-l-pesco-cyan flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-            <div class="flex items-center gap-2">
-                <span class="text-xs font-bold text-pesco-cyan uppercase tracking-wider">Pipeline de Datos Automatizado</span>
+            <div class="flex items-center gap-2 flex-wrap">
+                <span class="text-xs font-bold text-pesco-cyan uppercase tracking-wider">Centro de Control de Datos S&amp;OP</span>
+                <span class="bg-indigo-100 text-indigo-800 text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full border border-indigo-200">
+                    <i class="fa-solid fa-database mr-1"></i> Datalake SAP B1 Oficial
+                </span>
                 <span class="bg-emerald-100 text-emerald-800 text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full border border-emerald-200">
-                    <i class="fa-solid fa-folder-tree mr-1"></i> Ingesta Directa desde Raíz
+                    <i class="fa-solid fa-bolt mr-1"></i> Ingesta Directa sin Subida Web
                 </span>
             </div>
-            <h1 class="text-2xl font-black text-slate-900 tracking-tight mt-1">Centro de Sincronización S&amp;OP</h1>
-            <p class="text-sm text-slate-500 mt-0.5">Los archivos se consumen directamente desde el directorio de trabajo sin necesidad de subirlos por la web.</p>
+            <h1 class="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight mt-1">Sincronización de Datos &amp; Pipeline S&amp;OP</h1>
+            <p class="text-sm text-slate-500 mt-0.5">Alimenta el catálogo maestro, inventario multi-bodega y ejecuta la clasificación REPO y el balanceo DRP.</p>
         </div>
 
-        <form method="POST" action="{% url 'data_ingestion:upload' %}" id="syncAllForm">
+        <form method="POST" action="{% url 'data_ingestion:upload' %}" id="syncDatalakeForm">
             {% csrf_token %}
-            <input type="hidden" name="action" value="sync_all">
-            <button type="submit" id="btnSyncAll"
-                    class="bg-pesco-cyan hover:bg-pesco-darkcyan text-white text-xs font-bold px-6 py-3.5 rounded-full shadow-lg transition flex items-center gap-2 uppercase tracking-wider">
-                <i class="fa-solid fa-arrows-rotate"></i> Sincronizar Todo el Pipeline
+            <input type="hidden" name="action" value="sync_datalake">
+            <button type="submit" id="btnSyncDatalake"
+                    class="bg-pesco-cyan hover:bg-pesco-darkcyan text-white text-xs font-bold px-7 py-4 rounded-full shadow-lg transition flex items-center gap-2 uppercase tracking-wider whitespace-nowrap">
+                <i class="fa-solid fa-arrows-rotate fa-spin-pulse"></i> Sincronizar desde Datalake (TXT)
             </button>
         </form>
     </div>
 
     <!-- DB Stats Row -->
-    <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
+    <div class="grid grid-cols-2 md:grid-cols-6 gap-4">
         <div class="bg-white rounded-2xl border border-slate-200 p-4 text-center shadow-sm">
-            <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Catálogo Maestro</div>
-            <div class="text-2xl font-black text-slate-900 mt-1">{{ db_stats.total_skus|default:"0" }}</div>
-            <span class="text-[10px] text-emerald-600 font-bold block mt-0.5">SKUs Activos</span>
+            <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Catálogo SKUs</div>
+            <div class="text-2xl sm:text-3xl font-black text-slate-900 mt-1 font-mono">{{ db_stats.total_skus|default:"0" }}</div>
+            <span class="text-[10px] text-emerald-600 font-bold block mt-0.5">Artículos Activos</span>
         </div>
         <div class="bg-white rounded-2xl border border-slate-200 p-4 text-center shadow-sm">
-            <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Consumos OFs</div>
-            <div class="text-2xl font-black text-slate-900 mt-1">{{ db_stats.total_ofs|default:"0" }}</div>
-            <span class="text-[10px] text-pesco-cyan font-bold block mt-0.5">Entregas Taller</span>
+            <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Historial OFs</div>
+            <div class="text-2xl sm:text-3xl font-black text-slate-900 mt-1 font-mono">{{ db_stats.total_ofs|default:"0" }}</div>
+            <span class="text-[10px] text-pesco-cyan font-bold block mt-0.5">Consumos Taller</span>
         </div>
         <div class="bg-white rounded-2xl border border-slate-200 p-4 text-center shadow-sm">
-            <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Ventas Pedidos</div>
-            <div class="text-2xl font-black text-slate-900 mt-1">{{ db_stats.total_pedidos|default:"0" }}</div>
+            <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Historial Ventas</div>
+            <div class="text-2xl sm:text-3xl font-black text-slate-900 mt-1 font-mono">{{ db_stats.total_pedidos|default:"0" }}</div>
             <span class="text-[10px] text-indigo-600 font-bold block mt-0.5">Despachos Clientes</span>
         </div>
         <div class="bg-white rounded-2xl border border-slate-200 p-4 text-center shadow-sm">
             <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Clasificaciones</div>
-            <div class="text-2xl font-black text-slate-900 mt-1">{{ db_stats.total_clasificaciones|default:"0" }}</div>
-            <span class="text-[10px] text-amber-600 font-bold block mt-0.5">Matriz Slim4</span>
+            <div class="text-2xl sm:text-3xl font-black text-slate-900 mt-1 font-mono">{{ db_stats.total_clasificaciones|default:"0" }}</div>
+            <span class="text-[10px] text-amber-600 font-bold block mt-0.5">Matriz Slim4+REPO</span>
+        </div>
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 text-center shadow-sm">
+            <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Stock 63 Bodegas</div>
+            <div class="text-2xl sm:text-3xl font-black text-slate-900 mt-1 font-mono">{{ db_stats.total_stock_actual|default:"0" }}</div>
+            <span class="text-[10px] text-teal-600 font-bold block mt-0.5">Ubicaciones SAP</span>
         </div>
         <div class="bg-slate-900 rounded-2xl border border-slate-700 p-4 text-center shadow-sm">
-            <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Proyecciones</div>
-            <div class="text-2xl font-black text-white mt-1">{{ db_stats.total_proyecciones|default:"0" }}</div>
-            <span class="text-[10px] text-emerald-400 font-bold block mt-0.5">9 Bodegas Activas</span>
+            <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Proyecciones DRP</div>
+            <div class="text-2xl sm:text-3xl font-black text-white mt-1 font-mono">{{ db_stats.total_proyecciones|default:"0" }}</div>
+            <span class="text-[10px] text-emerald-400 font-bold block mt-0.5">9 Bodegas S&amp;OP</span>
         </div>
     </div>
 
-    <!-- Pipeline Files Status Table -->
+    <!-- ═══════════════════════════════════════════════════════════
+         TABLA 1: ARCHIVOS OFICIALES DATALAKE SAP B1 (TXT)
+         ═══════════════════════════════════════════════════════════ -->
     <div class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
-        <div class="p-6 border-b border-slate-100 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+        <div class="p-6 border-b border-slate-100 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 bg-gradient-to-r from-slate-50 to-indigo-50/30">
             <div>
-                <h3 class="text-base font-bold text-slate-900 flex items-center gap-2">
-                    <i class="fa-solid fa-server text-pesco-cyan"></i> Archivos Fuentes en Directorio Raíz
+                <h3 class="text-base font-black text-slate-900 flex items-center gap-2">
+                    <i class="fa-solid fa-cloud-arrow-down text-indigo-600"></i> Pipeline Oficial Datalake Pesco (AWS Athena / SAP B1)
                 </h3>
-                <p class="text-xs text-slate-400 mt-0.5">Detección automática de los conjuntos de datos en la carpeta del servidor.</p>
+                <p class="text-xs text-slate-500 mt-0.5">Archivos TXT delimitados por pipes generados desde las consultas optimizadas en el Datalake (carpeta <code class="font-mono bg-slate-100 px-1 py-0.5 rounded">data/</code>).</p>
             </div>
-            <span class="text-xs bg-slate-100 text-slate-700 font-bold px-3 py-1 rounded-full">
-                5 Fuentes de Datos
+            <span class="text-xs {% if all_datalake_exist %}bg-emerald-100 text-emerald-800 border-emerald-300{% else %}bg-amber-100 text-amber-800 border-amber-300{% endif %} border font-bold px-3 py-1 rounded-full flex items-center gap-1.5">
+                <i class="fa-solid {% if all_datalake_exist %}fa-circle-check text-emerald-600{% else %}fa-triangle-exclamation text-amber-600{% endif %}"></i>
+                {% if all_datalake_exist %}5 Archivos Listos{% else %}Archivos Pendientes{% endif %}
             </span>
         </div>
 
@@ -75,68 +86,43 @@
             <table class="w-full text-left text-sm">
                 <thead class="bg-slate-50 text-slate-500 uppercase text-[10px] font-bold tracking-wider border-b border-slate-200">
                     <tr>
-                        <th class="py-3.5 px-4">Estado</th>
-                        <th class="py-3.5 px-4">Nombre Conjunto de Datos</th>
-                        <th class="py-3.5 px-4">Archivo Excel en Disco</th>
+                        <th class="py-3.5 px-5">Estado</th>
+                        <th class="py-3.5 px-4">Conjunto de Datos (Datalake)</th>
+                        <th class="py-3.5 px-4">Archivo TXT en data/</th>
+                        <th class="py-3.5 px-4">Destino Sistema</th>
                         <th class="py-3.5 px-4 text-center">Tamaño</th>
-                        <th class="py-3.5 px-4 text-center">Última Modificación</th>
-                        <th class="py-3.5 px-4 text-right">Acción</th>
+                        <th class="py-3.5 px-5 text-center">Última Modificación</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-slate-100 font-medium text-xs">
-                    {% for f in files_status %}
+                    {% for f in datalake_status %}
                     <tr class="hover:bg-slate-50 transition">
-                        <!-- Estado -->
-                        <td class="py-3.5 px-4">
+                        <td class="py-3.5 px-5">
                             {% if f.exists %}
-                            <span class="bg-emerald-100 text-emerald-800 border border-emerald-200 px-2.5 py-1 rounded-full font-black text-[10px] flex items-center gap-1 w-fit">
+                            <span class="bg-emerald-100 text-emerald-800 border border-emerald-200 px-2.5 py-1 rounded-full font-black text-[10px] inline-flex items-center gap-1">
                                 <i class="fa-solid fa-circle-check"></i> DISPONIBLE
                             </span>
                             {% else %}
-                            <span class="bg-rose-100 text-rose-800 border border-rose-200 px-2.5 py-1 rounded-full font-black text-[10px] flex items-center gap-1 w-fit">
+                            <span class="bg-rose-100 text-rose-800 border border-rose-200 px-2.5 py-1 rounded-full font-black text-[10px] inline-flex items-center gap-1">
                                 <i class="fa-solid fa-circle-xmark"></i> NO DETECTADO
                             </span>
                             {% endif %}
                         </td>
-
-                        <!-- Nombre -->
                         <td class="py-3.5 px-4">
-                            <span class="font-bold text-slate-900 block text-xs">{{ f.name }}</span>
-                            <span class="text-[11px] text-slate-400">{{ f.description }}</span>
+                            <span class="font-bold text-slate-900">{{ f.name }}</span>
+                            <span class="block text-[10px] text-slate-400 mt-0.5">{{ f.description }}</span>
                         </td>
-
-                        <!-- Archivo -->
-                        <td class="py-3.5 px-4 font-mono text-slate-700">
-                            {{ f.filename }}
+                        <td class="py-3.5 px-4 font-mono text-slate-700 font-bold text-xs">
+                            <i class="fa-solid fa-file-lines text-indigo-500 mr-1.5"></i>{{ f.filename }}
                         </td>
-
-                        <!-- Tamaño -->
-                        <td class="py-3.5 px-4 text-center font-bold text-slate-700">
-                            {% if f.exists %}
-                            {{ f.size_mb }} MB
-                            {% else %}
-                            —
-                            {% endif %}
+                        <td class="py-3.5 px-4 font-mono text-[11px] text-slate-600">
+                            {{ f.target_model }}
                         </td>
-
-                        <!-- Fecha -->
-                        <td class="py-3.5 px-4 text-center text-slate-500">
+                        <td class="py-3.5 px-4 text-center font-mono font-bold text-slate-700">
+                            {% if f.exists %}{{ f.size_mb }} MB{% else %}—{% endif %}
+                        </td>
+                        <td class="py-3.5 px-5 text-center text-slate-500">
                             {{ f.mod_time }}
-                        </td>
-
-                        <!-- Acción Individual -->
-                        <td class="py-3.5 px-4 text-right">
-                            {% if f.exists %}
-                            <form method="POST" action="{% url 'data_ingestion:upload' %}" class="inline">
-                                {% csrf_token %}
-                                <input type="hidden" name="action" value="sync_{{ f.id }}">
-                                <button type="submit" class="bg-slate-100 hover:bg-pesco-lightcyan text-slate-700 hover:text-pesco-cyan font-bold px-3 py-1.5 rounded-xl text-[11px] transition">
-                                    <i class="fa-solid fa-rotate-right mr-1"></i> Ingestar
-                                </button>
-                            </form>
-                            {% else %}
-                            <span class="text-slate-300 text-[11px]">No disponible</span>
-                            {% endif %}
                         </td>
                     </tr>
                     {% endfor %}
@@ -145,41 +131,5 @@
         </div>
     </div>
 
-    <!-- Future Direct SAP Architecture Card -->
-    <div class="bg-gradient-to-r from-slate-900 to-slate-800 text-slate-300 p-6 rounded-3xl shadow-md border border-slate-700 text-xs space-y-3">
-        <div class="flex items-center gap-2 text-white text-sm font-bold">
-            <i class="fa-solid fa-network-wired text-pesco-cyan"></i>
-            <span>Arquitectura Futura: Conexión Nativa Directa a SAP Business One</span>
-        </div>
-        <p class="text-slate-400 leading-relaxed">
-            Este pipeline está desacoplado para que, en la siguiente fase de desarrollo, estas funciones de ingesta lean directamente desde las tablas 
-            <code class="text-pesco-cyan font-mono">OITM</code>, <code class="text-pesco-cyan font-mono">OITW</code>, <code class="text-pesco-cyan font-mono">WOR1</code> y <code class="text-pesco-cyan font-mono">RDR1</code> 
-            de <strong>SAP HANA / SQL Server</strong> mediante un conector ODBC/API sin requerir archivos Excel intermedios.
-        </p>
-    </div>
-
-    <!-- Loading Overlay -->
-    <div id="loadingOverlay" class="hidden fixed inset-0 bg-slate-900/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
-        <div class="bg-white rounded-3xl p-8 max-w-lg w-full text-center space-y-6 shadow-2xl border-4 border-pesco-cyan">
-            <div class="inline-block animate-spin rounded-full h-14 w-14 border-4 border-pesco-cyan border-t-transparent"></div>
-            <div>
-                <h3 class="text-2xl font-black text-slate-900">Sincronizando Pipeline S&amp;OP</h3>
-                <p class="text-xs text-slate-500 mt-1">Ingestando Maestro, OFs Cerradas, Pedidos y ejecutando Motor Slim4...</p>
-            </div>
-            <div class="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 text-xs font-bold flex items-center justify-center gap-2">
-                <i class="fa-solid fa-clock text-amber-600"></i>
-                Procesando ~350.000 registros en segundo plano. Tomará menos de 1 minuto.
-            </div>
-        </div>
-    </div>
-
 </div>
-{% endblock %}
-
-{% block extra_js %}
-<script>
-    document.getElementById('syncAllForm').addEventListener('submit', function() {
-        document.getElementById('loadingOverlay').classList.remove('hidden');
-    });
-</script>
 {% endblock %}

@@ -3,70 +3,84 @@ import time
 import datetime
 from django.shortcuts import render, redirect
 from django.contrib import messages
-from django.http import JsonResponse
 from django.contrib.auth.decorators import login_required
 from django.conf import settings
 
 from apps.inventory.models import (
-    ProductSKU, Warehouse, InventoryMetric,
-    StockProjection, ProductionOrderMovement,
+    ProductSKU, StockProjection, ProductionOrderMovement,
     SalesOrderMovement, SKUClassification
 )
-from apps.data_ingestion.excel_parser import parse_and_ingest_excel
-from apps.data_ingestion.historical_ingest import (
-    ingest_maestro_articulos,
-    ingest_detalle_ofs,
-    ingest_detalle_pedidos
-)
+from apps.inventory.stock_actual_models import StockActual
 from apps.inventory.classification_engine import run_classification_engine
+from apps.data_ingestion.datalake_ingest import run_full_datalake_pipeline
 
-PIPELINE_FILES = [
+DATALAKE_FILES = [
     {
-        'id': 'maestro',
-        'name': 'Maestro de Artículos v7',
-        'filename': '00.- Maestro Articulos v7.xlsx',
-        'description': 'Catálogo maestro con 20.400+ SKUs, costos unitarios, taxonomía y fechas de creación SAP.',
-        'target_model': 'ProductSKU (Catálogo)',
+        'id': 'dl_maestro',
+        'name': 'Maestro de Artículos & Costos (Datalake)',
+        'filename': 'Maestro de Artículos & Costos.txt',
+        'description': '20.500+ SKUs con costo unitario promedio en USD, lead times y taxonomía viva SAP B1.',
+        'target_model': 'ProductSKU',
     },
     {
-        'id': 'ofs',
-        'name': 'Detalle OFs Cerradas (Producción)',
-        'filename': 'Detalle OFs_v4.xlsx',
-        'description': 'Historial de consumo real de componentes e insumos en taller/planta (solo OFs Cerradas).',
-        'target_model': 'ProductionOrderMovement',
+        'id': 'dl_stock',
+        'name': 'Stock Físico por Bodega (Datalake)',
+        'filename': 'Stock Físico por Bodega.txt',
+        'description': 'Stock físico, reservas y tránsitos en las 63 bodegas y ubicaciones SAP B1.',
+        'target_model': 'StockActual & InventoryMetric',
     },
     {
-        'id': 'pedidos',
-        'name': 'Detalle Pedidos Clientes (Ventas)',
-        'filename': 'Detalle Pedidos Clientes 2023.xlsx',
-        'description': 'Historial de despachos y salidas comerciales a clientes por sucursal (solo Cerrados).',
-        'target_model': 'SalesOrderMovement',
+        'id': 'dl_ofs',
+        'name': 'Órdenes de Fabricación OF (Datalake)',
+        'filename': 'Órdenes de Fabricación (OF).txt',
+        'description': 'Consumos de taller en OFs cerradas + compromisos de fabricación abiertos.',
+        'target_model': 'ProductionOrderMovement & Comp. OF',
     },
     {
-        'id': 'stock_proyectado',
-        'name': 'Stock Proyectado & Bodegas SAP',
-        'filename': '0. Stock Proyectado.xlsx',
-        'description': 'Disponibilidad física, compromisos abiertos y ROP por las 9 bodegas operativas.',
-        'target_model': 'StockProjection & InventoryMetric',
+        'id': 'dl_pedidos',
+        'name': 'Pedidos de Clientes PC (Datalake)',
+        'filename': 'Pedidos de Clientes (PC).txt',
+        'description': 'Despachos históricos a clientes + compromisos comerciales abiertos.',
+        'target_model': 'SalesOrderMovement & Comp. PC',
     },
     {
-        'id': 'stock_actual',
-        'name': 'Stock Físico & Tránsitos Inter-Sucursal',
-        'filename': '00.- Stock.xlsx',
-        'description': 'Inventario físico actualizado en las 56 ubicaciones SAP y bodegas en tránsito (T*).',
-        'target_model': 'StockActual (Tránsitos T*)',
+        'id': 'dl_ocs',
+        'name': 'Órdenes de Compra en Tránsito OC (Datalake)',
+        'filename': 'Órdenes de Compra en Tránsito (OC).txt',
+        'description': 'Compras a proveedores en viaje con fecha de entrega para evitar duplicados.',
+        'target_model': 'OC Tránsito (InventoryMetric)',
+    },
+    {
+        'id': 'dl_scs',
+        'name': 'Solicitudes de Compra SC (Datalake)',
+        'filename': 'Solicitudes de Compra (SC).txt',
+        'description': 'SC abiertas aún sin OC. Suman al Disponible Futuro (consulta 6 del SQL optimizado). Si falta, SC = 0.',
+        'target_model': 'SC (InventoryMetric)',
+        'optional': True,
     },
 ]
 
 
-def _get_files_status():
-    """Escanea el directorio raíz y obtiene el estado de cada archivo del pipeline."""
-    base_dir = settings.BASE_DIR
+def _get_files_status(file_list, base_folder):
+    """Escanea un directorio y obtiene el estado de cada archivo."""
+    alt_mapping = {
+        'Maestro de Artículos & Costos.txt': 'oitm.txt',
+        'Stock Físico por Bodega.txt': 'oitw.txt',
+        'Órdenes de Fabricación (OF).txt': 'owor_wor1.txt',
+        'Pedidos de Clientes (PC).txt': 'ordr_rdr1.txt',
+        'Órdenes de Compra en Tránsito (OC).txt': 'opor_por1.txt',
+        'Solicitudes de Compra (SC).txt': 'oprq_prq1.txt',
+    }
     files_info = []
-
-    for f in PIPELINE_FILES:
-        full_path = os.path.join(base_dir, f['filename'])
+    for f in file_list:
+        full_path = os.path.join(base_folder, f['filename'])
         exists = os.path.exists(full_path)
+        if f['filename'] in alt_mapping:
+            alt_path = os.path.join(base_folder, alt_mapping[f['filename']])
+            if os.path.exists(alt_path):
+                if not exists or os.path.getmtime(alt_path) > os.path.getmtime(full_path):
+                    full_path = alt_path
+                    exists = True
         size_mb = 0.0
         mod_time_str = 'No disponible'
 
@@ -83,54 +97,41 @@ def _get_files_status():
             'mod_time': mod_time_str,
             'full_path': full_path,
         })
-
     return files_info
 
 
 @login_required
-def upload_excel_view(request):
+def upload_view(request):
     """
-    Centro de Control y Sincronización Directa de Datos S&OP.
-    Consume los archivos directamente desde el directorio raíz sin necesidad de subida web.
-    Preparado para conexión directa a SAP en el futuro.
+    Centro de Control y Sincronización de Datos S&OP.
+    La única fuente de datos es el Datalake (archivos TXT exportados de Athena/SAP B1 en /data).
     """
+    data_dir = os.path.join(settings.BASE_DIR, 'data')
+
     if request.method == 'POST':
-        action = request.POST.get('action', 'sync_all')
-        base_dir = settings.BASE_DIR
+        action = request.POST.get('action', 'sync_datalake')
         t0 = time.time()
 
         try:
-            if action == 'sync_all' or action == 'sync_maestro':
-                path = os.path.join(base_dir, '00.- Maestro Articulos v7.xlsx')
-                if os.path.exists(path):
-                    ingest_maestro_articulos(path)
+            if action == 'sync_datalake':
+                run_full_datalake_pipeline()
+                dt = round(time.time() - t0, 1)
+                messages.success(request, f"¡Sincronización oficial desde Datalake (TXT) completada con éxito en {dt} segundos! Base de datos y motor S&OP actualizados.")
 
-            if action == 'sync_all' or action == 'sync_ofs':
-                path = os.path.join(base_dir, 'Detalle OFs_v4.xlsx')
-                if os.path.exists(path):
-                    ingest_detalle_ofs(path)
-
-            if action == 'sync_all' or action == 'sync_pedidos':
-                path = os.path.join(base_dir, 'Detalle Pedidos Clientes 2023.xlsx')
-                if os.path.exists(path):
-                    ingest_detalle_pedidos(path)
-
-            if action == 'sync_all' or action == 'sync_stock':
-                path = os.path.join(base_dir, '0. Stock Proyectado.xlsx')
-                if os.path.exists(path):
-                    parse_and_ingest_excel(path)
-
-            if action == 'sync_all' or action == 'sync_engine':
+            elif action == 'sync_engine':
                 run_classification_engine()
+                dt = round(time.time() - t0, 1)
+                messages.success(request, f"Motor S&OP recalculado en {dt} segundos.")
 
-            dt = round(time.time() - t0, 1)
-            messages.success(request, f"¡Sincronización completada exitosamente en {dt} segundos! La base de datos y el motor S&OP han sido actualizados.")
+            else:
+                messages.error(request, f"Acción desconocida: {action}")
+
         except Exception as e:
             messages.error(request, f"Error durante la sincronización: {str(e)}")
 
         return redirect('data_ingestion:upload')
 
-    files_status = _get_files_status()
+    datalake_status = _get_files_status(DATALAKE_FILES, data_dir)
 
     # Métricas actuales en BD
     db_stats = {
@@ -139,17 +140,12 @@ def upload_excel_view(request):
         'total_pedidos': SalesOrderMovement.objects.count(),
         'total_clasificaciones': SKUClassification.objects.count(),
         'total_proyecciones': StockProjection.objects.count(),
+        'total_stock_actual': StockActual.objects.count(),
     }
 
     context = {
-        'files_status': files_status,
+        'datalake_status': datalake_status,
+        'all_datalake_exist': all(f['exists'] for f in datalake_status if not f.get('optional')),
         'db_stats': db_stats,
-        'all_files_exist': all(f['exists'] for f in files_status),
     }
     return render(request, 'data_ingestion/upload.html', context)
-
-
-@login_required
-def progress_api_view(request):
-    """Retorna el estado de sincronización."""
-    return JsonResponse({"current": 100, "total": 100, "percent": 100, "status": "idle"})

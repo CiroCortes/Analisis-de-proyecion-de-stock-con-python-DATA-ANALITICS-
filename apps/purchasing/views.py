@@ -1,8 +1,9 @@
 from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
-from django.db.models import Sum, Q
+from django.db.models import Sum, Q, Case, When, Value, IntegerField
 from django.core.paginator import Paginator
 from apps.inventory.models import StockProjection, Warehouse, Category
+from apps.data_ingestion.warehouses import SUCURSAL_CODES, SANTIAGO, SUCURSAL
 
 
 @login_required
@@ -19,6 +20,7 @@ def purchasing_list_view(request):
 
     # ── Filtros estándar ──────────────────────────────────────────────────────
     selected_wh        = request.GET.get('warehouse', '').strip()
+    selected_zone      = request.GET.get('zone', '').strip()      # SANTIAGO / SUCURSAL
     selected_urgency   = request.GET.get('urgency', '').strip()
     selected_category  = request.GET.get('category', '').strip()
     include_all_groups = request.GET.get('include_all_groups', '').strip() == '1'
@@ -35,16 +37,28 @@ def purchasing_list_view(request):
     selected_repo   = request.GET.get('repo', '').strip()    # R / E / P / O
     selected_action = request.GET.get('action', '').strip()  # COMPRAR / TRASLADAR / MIXTO
 
+    # Grupos excluidos de S&OP: no se listan ni se pueden filtrar (salvo include_all_groups=1)
+    categories = Category.objects.filter(productsku__isnull=False).distinct().order_by('name')
+    if not include_all_groups:
+        categories = categories.filter(is_active=True)
+        if selected_category and not categories.filter(code=selected_category).exists():
+            selected_category = ''  # enlace viejo apuntando a un grupo excluido
+
     # ── Aplicar filtros ───────────────────────────────────────────────────────
     if selected_wh:
         projections = projections.filter(warehouse__code=selected_wh)
+    santiago_q = Q(warehouse__code='013') | Q(warehouse__code__startswith='013-')
+    if selected_zone == SANTIAGO:
+        projections = projections.filter(santiago_q)
+    elif selected_zone == SUCURSAL:
+        projections = projections.filter(warehouse__code__in=SUCURSAL_CODES)
     if selected_urgency:
         projections = projections.filter(urgency_level=selected_urgency)
 
     if selected_category:
         projections = projections.filter(product__category__code=selected_category)
     elif not include_all_groups:
-        projections = projections.filter(product__category__is_active=True)
+        projections = projections.filter(product__category__is_active=True, product__is_active=True)
 
     if search_query:
         projections = projections.filter(
@@ -88,7 +102,14 @@ def purchasing_list_view(request):
     action_trasladar_count = projections.filter(action_type='TRASLADAR').count()
     action_mixto_count     = projections.filter(action_type='MIXTO').count()
 
-    projections = projections.order_by('-shortage_usd', '-suggested_buy_units')
+    # Orden: Santiago primero, luego sucursales; dentro de cada zona, mayor faltante
+    projections = projections.annotate(
+        zone_order=Case(
+            When(santiago_q, then=Value(0)),
+            When(warehouse__code__in=SUCURSAL_CODES, then=Value(1)),
+            default=Value(2), output_field=IntegerField(),
+        )
+    ).order_by('zone_order', 'warehouse__code', '-shortage_usd', '-suggested_buy_units')
 
     # ── Paginación ────────────────────────────────────────────────────────────
     paginator   = Paginator(projections, 50)
@@ -96,7 +117,9 @@ def purchasing_list_view(request):
     page_obj    = paginator.get_page(page_number)
 
     warehouses           = Warehouse.objects.filter(is_active=True).order_by('code')
-    categories           = Category.objects.filter(productsku__isnull=False).distinct().order_by('name')
+    wh_santiago   = [w for w in warehouses if w.zone == SANTIAGO]
+    wh_sucursales = [w for w in warehouses if w.zone == SUCURSAL]
+    wh_otras      = [w for w in warehouses if not w.zone]
     inactive_groups_count = Category.objects.filter(is_active=False).count()
 
     context = {
@@ -108,6 +131,10 @@ def purchasing_list_view(request):
         'include_all_groups': include_all_groups,
         # Filtros activos (para mantener estado del formulario)
         'selected_wh': selected_wh,
+        'selected_zone': selected_zone,
+        'wh_santiago': wh_santiago,
+        'wh_sucursales': wh_sucursales,
+        'wh_otras': wh_otras,
         'selected_urgency': selected_urgency,
         'selected_category': selected_category,
         'search_query': search_query,
