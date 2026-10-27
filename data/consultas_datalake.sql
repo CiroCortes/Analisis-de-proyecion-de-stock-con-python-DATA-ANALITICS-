@@ -43,7 +43,7 @@ SELECT
     -- si no hay ultima compra se usa avgprice como respaldo.
     CAST(COALESCE(NULLIF(
         CASE WHEN COALESCE(t0.lastpurcur, '') IN ('', 'USD') THEN t0.lastpurprc
-             ELSE t0.lastpurprc * fx.rate END, 0), t0.avgprice, 0.0) AS DECIMAL(12, 4)) AS costo_unitario_usd,
+             ELSE t0.lastpurprc * fx.rate END, 0), t0.avgprice, 0.0) AS DECIMAL(18, 4)) AS costo_unitario_usd,
     COALESCE(t0.leadtime, 30)                           AS lead_time_dias,
     COALESCE(t0.u_rhclse, '')                           AS clase,
     COALESCE(t0.u_rhfamilia, '')                        AS familia,
@@ -77,9 +77,9 @@ WHERE t0.frozenfor = 'N'
 SELECT
     t0.itemcode                                          AS codigo_sku,
     t0.whscode                                           AS codigo_bodega,
-    CAST(COALESCE(t0.onhand, 0) AS INTEGER)              AS stock_fisico,
-    CAST(COALESCE(t0.iscommited, 0) AS INTEGER)          AS compromisos_sap,
-    CAST(COALESCE(t0.onorder, 0) AS INTEGER)             AS transito_oc_sap
+    CAST(COALESCE(t0.onhand, 0) AS BIGINT)              AS stock_fisico,
+    CAST(COALESCE(t0.iscommited, 0) AS BIGINT)          AS compromisos_sap,
+    CAST(COALESCE(t0.onorder, 0) AS BIGINT)             AS transito_oc_sap
 FROM pesco_sbo_pescousd.oitw t0
 WHERE (COALESCE(t0.onhand, 0) > 0
     OR COALESCE(t0.iscommited, 0) > 0
@@ -99,9 +99,9 @@ SELECT
     t0.status                                            AS estado_of, -- P=Planificada, R=Liberada, L=Cerrada
     SUBSTR(CAST(t0.postdate AS VARCHAR), 1, 10)          AS fecha_creacion,
     SUBSTR(CAST(COALESCE(t0.closedate, t0.duedate) AS VARCHAR), 1, 10) AS fecha_cierre_o_venc,
-    CAST(t1.plannedqty AS DECIMAL(12, 2))                AS cantidad_planificada,
-    CAST(t1.issuedqty AS DECIMAL(12, 2))                 AS cantidad_consumida_real,
-    CAST(GREATEST(0, t1.plannedqty - t1.issuedqty) AS DECIMAL(12, 2)) AS cantidad_pendiente_comprometida
+    CAST(t1.plannedqty AS DECIMAL(18, 2))                AS cantidad_planificada,
+    CAST(t1.issuedqty AS DECIMAL(18, 2))                 AS cantidad_consumida_real,
+    CAST(GREATEST(0, t1.plannedqty - t1.issuedqty) AS DECIMAL(18, 2)) AS cantidad_pendiente_comprometida
 FROM pesco_sbo_pescousd.owor t0
 INNER JOIN pesco_sbo_pescousd.wor1 t1
     ON t0.docentry = t1.docentry
@@ -127,8 +127,8 @@ SELECT
     t0.docstatus                                         AS estado_pedido, -- O=Abierto, C=Cerrado
     SUBSTR(CAST(t0.docdate AS VARCHAR), 1, 10)           AS fecha_emision,
     SUBSTR(CAST(COALESCE(t1.shipdate, t0.docduedate) AS VARCHAR), 1, 10) AS fecha_entrega,
-    CAST(t1.quantity AS DECIMAL(12, 2))                  AS cantidad_solicitada,
-    CAST(COALESCE(t1.openqty, 0) AS DECIMAL(12, 2))      AS cantidad_pendiente_despacho
+    CAST(t1.quantity AS DECIMAL(18, 2))                  AS cantidad_solicitada,
+    CAST(COALESCE(t1.openqty, 0) AS DECIMAL(18, 2))      AS cantidad_pendiente_despacho
 FROM pesco_sbo_pescousd.ordr t0
 INNER JOIN pesco_sbo_pescousd.rdr1 t1
     ON t0.docentry = t1.docentry
@@ -154,8 +154,8 @@ SELECT
     oc.cardname                                          AS nombre_proveedor,
     SUBSTR(CAST(oc.docdate AS VARCHAR), 1, 10)           AS fecha_emision_oc,
     SUBSTR(CAST(COALESCE(oc_l.shipdate, oc.docduedate) AS VARCHAR), 1, 10) AS fecha_llegada_estimada,
-    CAST(oc_l.quantity AS DECIMAL(12, 2))                AS cantidad_comprada,
-    CAST(oc_l.openqty AS DECIMAL(12, 2))                 AS cantidad_en_transito_pendiente
+    CAST(oc_l.quantity AS DECIMAL(18, 2))                AS cantidad_comprada,
+    CAST(oc_l.openqty AS DECIMAL(18, 2))                 AS cantidad_en_transito_pendiente
 FROM pesco_sbo_pescousd.opor oc
 INNER JOIN pesco_sbo_pescousd.por1 oc_l
     ON oc.docentry = oc_l.docentry
@@ -176,8 +176,8 @@ SELECT
     COALESCE(NULLIF(prq_l.whscode, ''), '013-PP')        AS bodega_solicitada,
     prq_l.itemcode                                       AS codigo_sku,
     SUBSTR(CAST(prq.docdate AS VARCHAR), 1, 10)          AS fecha_solicitud,
-    CAST(prq_l.quantity AS DECIMAL(12, 2))               AS cantidad_solicitada,
-    CAST(prq_l.openqty AS DECIMAL(12, 2))                AS cantidad_pendiente_sc
+    CAST(prq_l.quantity AS DECIMAL(18, 2))               AS cantidad_solicitada,
+    CAST(prq_l.openqty AS DECIMAL(18, 2))                AS cantidad_pendiente_sc
 FROM pesco_sbo_pescousd.oprq prq
 INNER JOIN pesco_sbo_pescousd.prq1 prq_l
     ON prq.docentry = prq_l.docentry
@@ -200,8 +200,8 @@ SELECT
     SUBSTR(CAST(gr.docdate AS VARCHAR), 1, 10)           AS fecha_contabilizacion,
     gr.cardcode                                          AS codigo_proveedor,
     gr.cardname                                          AS nombre_proveedor,
-    CAST(gr_l.quantity AS DECIMAL(12, 2))                AS cantidad,
-    CAST(gr_l.linetotal AS DECIMAL(14, 2))               AS total_linea
+    CAST(gr_l.quantity AS DECIMAL(18, 2))                AS cantidad,
+    CAST(gr_l.linetotal AS DECIMAL(18, 2))               AS total_linea
 FROM pesco_sbo_pescousd.opdn gr
 INNER JOIN pesco_sbo_pescousd.pdn1 gr_l
     ON gr.docentry = gr_l.docentry
@@ -229,7 +229,7 @@ SELECT
     CASE WHEN m.transtype IN (13, 14, 15, 16) THEN 'VENTA'
          WHEN m.transtype = 60                THEN 'SALIDA'
          ELSE 'OTRO' END                                 AS origen,
-    CAST(SUM(COALESCE(m.outqty, 0) - COALESCE(m.inqty, 0)) AS DECIMAL(14, 2)) AS cantidad_neta
+    CAST(SUM(COALESCE(m.outqty, 0) - COALESCE(m.inqty, 0)) AS DECIMAL(18, 2)) AS cantidad_neta
 FROM pesco_sbo_pescousd.oinm m
 INNER JOIN pesco_sbo_pescousd.oitm t
     ON t.itemcode = m.itemcode
@@ -264,8 +264,8 @@ SELECT
     gr.docnum                                            AS nro_entrada,
     SUBSTR(CAST(gr.docdate AS VARCHAR), 1, 10)           AS fecha_entrada,
     DATE_DIFF('day', CAST(o.docdate AS DATE), CAST(gr.docdate AS DATE)) AS dias_entrega,
-    CAST(l.quantity AS DECIMAL(12, 2))                   AS cantidad_oc,
-    CAST(gl.quantity AS DECIMAL(12, 2))                  AS cantidad_recibida
+    CAST(l.quantity AS DECIMAL(18, 2))                   AS cantidad_oc,
+    CAST(gl.quantity AS DECIMAL(18, 2))                  AS cantidad_recibida
 FROM pesco_sbo_pescousd.opdn gr
 INNER JOIN pesco_sbo_pescousd.pdn1 gl
     ON gl.docentry = gr.docentry
@@ -291,9 +291,9 @@ SELECT
     t0.itemcode                                          AS codigo_sku,
     COALESCE(t0.cardcode, '')                            AS proveedor_preferido,
     COALESCE(t0.leadtime, 0)                             AS lead_time_maestro,
-    CAST(COALESCE(t0.minordrqty, 0) AS DECIMAL(12, 2))   AS min_compra,
-    CAST(COALESCE(t0.ordrmulti, 0) AS DECIMAL(12, 2))    AS multiplo_compra,
-    CAST(COALESCE(t0.purpackun, 0) AS DECIMAL(12, 2))    AS unidades_por_paquete,
+    CAST(COALESCE(t0.minordrqty, 0) AS DECIMAL(18, 2))   AS min_compra,
+    CAST(COALESCE(t0.ordrmulti, 0) AS DECIMAL(18, 2))    AS multiplo_compra,
+    CAST(COALESCE(t0.purpackun, 0) AS DECIMAL(18, 2))    AS unidades_por_paquete,
     COALESCE(t0.invntryuom, '')                          AS unidad_medida,
     t0.frozenfor                                         AS congelado,
     t0.validfor                                          AS vigente
@@ -330,9 +330,9 @@ SELECT
     a.status                                             AS estado,
     l.agrlinenum                                         AS linea_acuerdo,
     l.itemcode                                           AS codigo_sku,
-    CAST(l.planqty AS DECIMAL(14, 2))                    AS cantidad_plan,   -- OAT1.PlanQty (no plannedqty, que es de WOR1)
-    CAST(l.cumqty AS DECIMAL(14, 2))                     AS cantidad_acumulada,
-    CAST(l.unitprice AS DECIMAL(14, 4))                  AS precio_unitario
+    CAST(l.planqty AS DECIMAL(18, 2))                    AS cantidad_plan,   -- OAT1.PlanQty (no plannedqty, que es de WOR1)
+    CAST(l.cumqty AS DECIMAL(18, 2))                     AS cantidad_acumulada,
+    CAST(l.unitprice AS DECIMAL(18, 4))                  AS precio_unitario
 FROM pesco_sbo_pescousd.ooat a
 INNER JOIN pesco_sbo_pescousd.oat1 l
     ON l.agrno = a.absid
@@ -349,7 +349,7 @@ SELECT
     l.itemcode                                           AS codigo_sku,
     l.whscode                                            AS bodega,
     SUBSTR(CAST(h.docdate AS VARCHAR), 1, 7)             AS mes,
-    CAST(SUM(l.quantity) AS DECIMAL(14, 2))              AS cantidad_of
+    CAST(SUM(l.quantity) AS DECIMAL(18, 2))              AS cantidad_of
 FROM pesco_sbo_pescousd.oige h
 INNER JOIN pesco_sbo_pescousd.ige1 l
     ON l.docentry = h.docentry
