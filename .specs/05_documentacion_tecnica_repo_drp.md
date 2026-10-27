@@ -1,3 +1,7 @@
+> **OBSOLETO (27-oct-2026).** Describe el DRP por bodega (COMPRAR / TRASLADAR / MIXTO). Lo
+> reemplaza SPEC-11 (una compra por artículo para la red + traslados). El motor descrito sigue
+> corriendo solo como "escenario actual" del panel de indicadores (SPEC-15, SPEC-18).
+
 # Documentación Técnica & Operativa: Motor S&OP REPO + DRP de Abastecimiento
 
 **Proyecto:** Sistema de Proyección y Recomendación de Compras S&OP  

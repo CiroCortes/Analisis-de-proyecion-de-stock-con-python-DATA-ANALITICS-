@@ -54,3 +54,43 @@ Bodegas permitidas en el arnés:
 - `suggested_buy_units`: IntegerField(default=0) # Unidades a comprar recomendadas
 - `urgency_level`: CharField(max_length=20, choices=[('URGENTE', 'Urgente'), ('MEDIO', 'Medio'), ('NORMAL', 'Normal')])
 - `calculated_at`: DateTimeField(auto_now=True)
+
+> La lista fija de bodegas de §2.2 está superada: las zonas y bodegas no físicas se definen en
+> `apps/data_ingestion/warehouses.py` (SPEC-07 §4).
+
+## 3. Campos agregados en octubre 2026 (`inventory`)
+
+| Modelo | Campo | Uso |
+|---|---|---|
+| Category | `tipo` | Tipo de material del grupo SAP (`group_types.py`): define si se abastece |
+| ProductSKU | `sap_group_code`, `sap_group_name` | Grupo de artículos SAP (`oitb`); es la "familia" de los parámetros (SPEC-14) |
+| ProductSKU | `gestiona_inventario` | `invntitem`; `N` deja el SKU inactivo |
+| ProductSKU | `es_vendible`, `fec_creacion_sap`, `clase`, `familia`, `subfamilia`, `modelo`, `sap_categoria` | Maestro v7 |
+| InventoryMetric | `stock_transito_inter` | Stock en bodegas `T…-…` acreditado a la bodega destino |
+| StockProjection | `action_type`, `suggested_transfer_units`, `transfer_source_warehouse` | DRP del motor anterior |
+| SKUClassification | `repo_category`, `rop_statistical`, … | Motor anterior; su ROP es el "escenario actual" |
+
+## 4. Modelos de la Calculadora (`apps/calculadora/models.py`)
+
+| Grupo | Modelo | Contenido |
+|---|---|---|
+| Datos de origen | `Proveedor` | Código, nombre, país, congelado, calendario (frecuencia, fecha ancla), comprador |
+| | `ConsumoMensual` | Artículo × bodega × mes × origen (VENTA / OF / SALIDA), cantidad |
+| | `PlazoOC` | Una recepción por línea de OC: fechas y `dias_entrega` |
+| | `OCAbierta` | Línea de OC con pendiente y fecha comprometida |
+| | `CompromisoAbierto` | Línea abierta de PC u OF con fecha |
+| | `ParametroCompra` | Proveedor preferido, lead time maestro, mínimo, múltiplo, unidad, bloqueado |
+| | `AcuerdoGlobal` | Línea de acuerdo global: vigencia, plan, acumulado, precio (`saldo` calculado) |
+| | `CargaDatos` | Registro de cada carga (tabla, archivo, filas, fuente, nota) |
+| Configuración | `ArticuloConfig` | E, mínimo declarado, crítico, mínimo de nuevo, proveedor alternativo |
+| | `Equivalencia` | Código antiguo → nuevo (la historia se suma al nuevo) |
+| | `ParametroValor`, `ParametroCambio` | Parámetros por nivel y su registro de cambios |
+| | `EventoComercial` | Ajuste de demanda propuesto / aprobado |
+| Resultados | `Corrida` | Cada ejecución: fecha, estado, fuente de consumo, resumen |
+| | `ResultadoArticulo` | Diccionario de campos §4 por artículo (red), incluye simulación |
+| | `ResultadoBodega`, `TrasladoSugerido` | Acción por bodega y traslados |
+| | `HistorialMensual` | Foto mensual: letra, ABC, stock máximo y su valor |
+| | `SolicitudCompra`, `LineaSolicitud` | Solicitudes por proveedor y sus líneas |
+| | `Alerta` | Alertas con estado, responsable y vigencia |
+
+Detalle de cada campo: SPEC-08 (origen), SPEC-10 a SPEC-16 (cálculo y uso).

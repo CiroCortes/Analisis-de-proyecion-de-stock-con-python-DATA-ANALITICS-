@@ -1,3 +1,7 @@
+> **OBSOLETO (27-oct-2026).** Describe el motor anterior (ROP por bodega, DPD, lista fija de
+> bodegas). Lo reemplazan SPEC-10 (motor de cálculo), SPEC-11 (red y distribución) y SPEC-07
+> (bodegas). Se conserva como referencia histórica.
+
 # SPEC-02: Reglas de Negocio ROP y Algoritmo de Proyección
 
 ## 1. Reglas Generales

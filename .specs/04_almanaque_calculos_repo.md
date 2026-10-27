@@ -1,3 +1,7 @@
+> **OBSOLETO (27-oct-2026).** Reglas de clasificación del motor anterior (R = 2 meses, E por
+> servicio de pañol, ABC por frecuencia). Lo reemplazan SPEC-09 (clasificación) y SPEC-10
+> (cálculo). Se conserva como referencia histórica.
+
 # ALMANAQUE Y MANUAL DE CÁLCULOS S&OP - PESCO S.A.
 **Guía Oficial en Lenguaje Claro y Práctico para Abastecimiento y Operaciones**
 
