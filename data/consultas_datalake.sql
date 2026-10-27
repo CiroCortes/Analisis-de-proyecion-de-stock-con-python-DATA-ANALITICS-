@@ -330,7 +330,7 @@ SELECT
     a.status                                             AS estado,
     l.agrlinenum                                         AS linea_acuerdo,
     l.itemcode                                           AS codigo_sku,
-    CAST(l.plannedqty AS DECIMAL(14, 2))                 AS cantidad_plan,
+    CAST(l.planqty AS DECIMAL(14, 2))                    AS cantidad_plan,   -- OAT1.PlanQty (no plannedqty, que es de WOR1)
     CAST(l.cumqty AS DECIMAL(14, 2))                     AS cantidad_acumulada,
     CAST(l.unitprice AS DECIMAL(14, 4))                  AS precio_unitario
 FROM pesco_sbo_pescousd.ooat a
