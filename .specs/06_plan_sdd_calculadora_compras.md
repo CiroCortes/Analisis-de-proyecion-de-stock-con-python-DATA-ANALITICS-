@@ -153,7 +153,7 @@ Flujo por cada módulo: **spec → criterios de aceptación → tests → implem
 1. **Fase 0 – Especificación** (en curso): cerrar decisiones, actualizar el documento y las specs.
 2. **Fase 3 – Cálculo** (puede empezar ya, no necesita datos nuevos): módulo puro `apps/calc/`,
    fórmulas del §4 y tests dorados 1 a 5.
-3. **Fase 1 – Datos** (en paralelo): validar en Athena `data/consultas_calculadora_compras.sql`
+3. **Fase 1 – Datos** (en paralelo): validar en Athena `data/consultas_datalake.sql`
    (consumo mensual 24 meses, plazos de OC, parámetros de compra, proveedores, acuerdos, traslados).
    Cuadrar el consumo de 30 artículos contra el informe de auditoría de stock de B1 por bodega.
 4. **Fase 2 – Clasificación** mensual con historial; reclasificar dos cierres.
@@ -166,7 +166,7 @@ Criterios de aceptación por fase: los del documento §13.
 
 ## 8. Archivos de apoyo creados el 26-oct-2026
 
-- `data/consultas_calculadora_compras.sql` — consultas 8 a 14 (borrador, sin validar en Athena).
+- `data/consultas_datalake.sql` — consultas 8 a 14 (borrador, sin validar en Athena).
 - `.specs/07_reglas_negocio_acordadas.md` — reglas de negocio vigentes.
 - `.specs/00_PENDIENTES.md` — lista priorizada de pendientes.
 - `.specs/fuente_requerimientos_calculadora_compras5.txt` — texto del documento fuente.

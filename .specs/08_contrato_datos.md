@@ -20,7 +20,14 @@ Estado: implementado el 27-oct-2026. Consultas 8 a 14 **sin validar en Athena**.
 
 ## 2. Archivos
 
-### 2.1 Pipeline actual (`consultas_optimizadas_datalake.sql`, 7 consultas)
+**Archivo único y oficial: `data/consultas_datalake.sql`** (14 consultas, 27-oct-2026; reemplaza a
+`consultas_optimizadas_datalake.sql`, `consultas_calculadora_compras.sql` y
+`consultas_sql_sap_athena.sql`). Cada consulta declara su TXT en una línea `-- ARCHIVO:`, que
+también usa el conector `manage.py sync_datalake`. `tests/test_consultas_datalake.py` verifica que
+cada nombre coincida con lo que buscan los cargadores. Prioridad: 1–9 imprescindibles, 10–12
+recomendadas, 13–14 opcionales.
+
+### 2.1 Pipeline (consultas 1 a 7)
 
 | TXT (nombre largo) | Prefijo | Consulta | Cargador | Destino |
 |---|---|---|---|---|
@@ -30,20 +37,21 @@ Estado: implementado el 27-oct-2026. Consultas 8 a 14 **sin validar en Athena**.
 | Pedidos de Clientes (PC).txt | `ordr_rdr1` | 4 | `ingest_datalake_pedidos` + `cargar_compromisos` | `SalesOrderMovement`, compromisos PC, `CompromisoAbierto` |
 | Órdenes de Compra en Tránsito (OC).txt | `opor_por1` | 5 | `ingest_datalake_ocs` + `cargar_oc_abiertas` | tránsito OC, `OCAbierta`, `Proveedor` |
 | Solicitudes de Compra (SC).txt | `oprq_prq1` | 6 | `ingest_datalake_scs` | SC abiertas en `InventoryMetric.sc_qty` |
-| Entradas de Mercancías.txt | `opdn_pdn1` | 7 | `_proveedor_por_historia` (respaldo de proveedor) | `Proveedor` |
+| Entradas de Mercancias (EM).txt | `opdn_pdn1` | 7 | `ingest_datalake_entradas` + `_proveedor_por_historia` | `GoodsReceipt` (dashboard, inventario histórico), `Proveedor` |
 
-### 2.2 Calculadora (`consultas_calculadora_compras.sql`, borrador)
+### 2.2 Calculadora (consultas 8 a 14)
 
 | TXT | Prefijo | Consulta | Columnas | Cargador | Destino |
 |---|---|---|---|---|---|
 | Consumo Mensual.txt | `consumo_mensual` | 8 | codigo_sku, bodega, mes, origen, cantidad_neta | `cargar_consumo_mensual` | `ConsumoMensual` |
-| Consumo OF Mensual.txt | `consumo_of_mensual` | 8b (opcional) | codigo_sku, bodega, mes, cantidad_of | idem (mueve SALIDA → OF) | `ConsumoMensual` |
 | Plazos de Entrega OC.txt | `plazos_oc` | 9 | nro_oc, codigo_sku, codigo_proveedor, bodega_oc, fecha_oc, fecha_comprometida, nro_entrada, fecha_entrada, dias_entrega, cantidad_oc, cantidad_recibida | `cargar_plazos_oc` | `PlazoOC` |
 | Parametros de Compra.txt | `parametros_compra` | 10 | codigo_sku, proveedor_preferido, lead_time_maestro, min_compra, multiplo_compra, unidades_por_paquete, unidad_medida, congelado, vigente | `cargar_parametros_compra` | `ParametroCompra` |
 | Proveedores.txt | `ocrd` | 11 | codigo_proveedor, nombre_proveedor, pais, congelado | `cargar_proveedores` | `Proveedor` (no toca el calendario) |
-| Bodegas.txt | `owhs` | 12 | codigo_bodega, nombre_bodega, inactiva | `cargar_bodegas` | `Warehouse.name` |
-| Traslados Abiertos.txt | — | 13 | — | **no se carga**: solo para validar que el tránsito por bodegas `T` no se duplica | — |
-| Acuerdos Globales.txt | `ooat_oat1` | 14 | nro_acuerdo, codigo_proveedor, fecha_inicio, fecha_termino, estado, linea_acuerdo, codigo_sku, cantidad_plan, cantidad_acumulada, precio_unitario | `cargar_acuerdos` | `AcuerdoGlobal` |
+| Acuerdos Globales.txt | `ooat_oat1` | 12 | nro_acuerdo, codigo_proveedor, fecha_inicio, fecha_termino, estado, linea_acuerdo, codigo_sku, cantidad_plan, cantidad_acumulada, precio_unitario | `cargar_acuerdos` | `AcuerdoGlobal` |
+| Consumo OF Mensual.txt | `consumo_of_mensual` | 13 (opcional) | codigo_sku, bodega, mes, cantidad_of | idem consumo (mueve SALIDA → OF) | `ConsumoMensual` |
+| Bodegas.txt | `owhs` | 14 (opcional) | codigo_bodega, nombre_bodega, inactiva | `cargar_bodegas` | `Warehouse.name` |
+
+La antigua consulta de traslados abiertos (OWTQ) se retiró: la plataforma no la cargaba.
 
 `cargar_todo()` corre en este orden: OC abiertas → compromisos → proveedores → bodegas →
 parámetros de compra → plazos → acuerdos → consumo. Se llama al final del pipeline actual
@@ -56,7 +64,7 @@ parámetros de compra → plazos → acuerdos → consumo. Se llama al final del
 | Consulta 8 (consumo) | Se reconstruye desde PC cerrados (VENTA, por fecha de entrega) y OF cerradas (OF, por fecha de cierre) | `fuente = 'PC_OF'` (provisional) |
 | Consulta 10 (parámetros) | Proveedor preferido = último proveedor que entregó el artículo (Entradas de Mercancías) o el de su OC abierta más reciente. Sin mínimo ni múltiplo | `fuente = 'RESPALDO'` |
 | Consulta 9 (plazos) | `OITM.LeadTime` del maestro con variación del 25% (SPEC-10 §2) | `fuente = 'SIN_ARCHIVO'` |
-| Consulta 14 (acuerdos) | Todas las líneas quedan "sin contrato" y se valorizan al costo | `fuente = 'SIN_ARCHIVO'` |
+| Consulta 12 (acuerdos) | Todas las líneas quedan "sin contrato" y se valorizan al costo | `fuente = 'SIN_ARCHIVO'` |
 
 - Proveedor interno excluido del respaldo: `96877150P` (PEÑA SPOERER, recepciones de producción propia).
 - Con la consulta 10 cargada, los SKUs sin `proveedor_preferido` igual reciben el respaldo.

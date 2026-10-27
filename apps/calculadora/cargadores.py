@@ -296,7 +296,7 @@ def cargar_proveedores(data_dir=None):
 
 
 def cargar_bodegas(data_dir=None):
-    """Consulta 12: nombres reales de bodega (el tipo y la zona se definen en la plataforma)."""
+    """Consulta 14: nombres reales de bodega (el tipo y la zona se definen en la plataforma)."""
     ruta = archivo('bodegas', data_dir)
     if not os.path.exists(ruta):
         return 0
@@ -308,10 +308,10 @@ def cargar_bodegas(data_dir=None):
 
 
 def cargar_acuerdos(data_dir=None):
-    """Consulta 14: lineas de acuerdos globales."""
+    """Consulta 12: lineas de acuerdos globales."""
     ruta = archivo('acuerdos', data_dir)
     if not os.path.exists(ruta):
-        _registrar('acuerdos', '', 0, fuente='SIN_ARCHIVO', nota='Sin consulta 14: todas las lineas quedan sin contrato')
+        _registrar('acuerdos', '', 0, fuente='SIN_ARCHIVO', nota='Sin consulta 12: todas las lineas quedan sin contrato')
         return 0
     skus = _skus()
     filas = []

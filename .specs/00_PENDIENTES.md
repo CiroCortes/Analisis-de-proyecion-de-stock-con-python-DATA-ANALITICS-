@@ -2,7 +2,7 @@
 
 ## Próximo paso (datos)
 
-1. **Validar en Athena `data/consultas_calculadora_compras.sql`** con `LIMIT 5` (checklist SPEC-08 §5):
+1. **Exportar `data/consultas_datalake.sql`** (archivo único, paso a paso en su cabecera; probar con `LIMIT 5`) (checklist SPEC-08 §5):
    bloque 0 (DESCRIBE), **consulta 8 consumo mensual** (la más importante: hoy el consumo es
    provisional desde PC/OF), **consulta 9 plazos reales** (hoy todo usa `OITM.LeadTime`), 10, 11, 12, 14.
 2. **Cuadrar el consumo** de 30 artículos contra el informe de auditoría de stock de B1, por bodega

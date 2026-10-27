@@ -98,7 +98,7 @@ class ParametroCompra(models.Model):
 
 
 class AcuerdoGlobal(models.Model):
-    """Linea de un acuerdo global (contrato) con proveedor (consulta 14)."""
+    """Linea de un acuerdo global (contrato) con proveedor (consulta 12)."""
     nro_acuerdo = models.CharField(max_length=30)
     linea = models.IntegerField(default=0)
     proveedor_codigo = models.CharField(max_length=30, db_index=True)

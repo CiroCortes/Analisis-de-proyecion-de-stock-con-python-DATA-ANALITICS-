@@ -54,7 +54,7 @@ DATALAKE_FILES = [
         'id': 'dl_scs',
         'name': 'Solicitudes de Compra SC (Datalake)',
         'filename': 'Solicitudes de Compra (SC).txt',
-        'description': 'SC abiertas aún sin OC. Suman al Disponible Futuro (consulta 6 del SQL optimizado). Si falta, SC = 0.',
+        'description': 'SC abiertas aún sin OC. Suman al Disponible Futuro (consulta 6 de data/consultas_datalake.sql). Si falta, SC = 0.',
         'target_model': 'SC (InventoryMetric)',
         'optional': True,
     },

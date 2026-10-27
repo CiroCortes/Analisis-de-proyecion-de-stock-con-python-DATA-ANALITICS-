@@ -503,7 +503,7 @@ def ingest_datalake_scs(file_path):
     print(f"\n[DATALAKE] Solicitudes de Compra (SC) abiertas: {file_path}", flush=True)
     if not os.path.exists(file_path):
         print("  [AVISO] Archivo de SC no encontrado: SC = 0 en el Disponible Futuro. "
-              "Ejecutar la consulta 6 de consultas_optimizadas_datalake.sql.", flush=True)
+              "Ejecutar la consulta 6 de consultas_datalake.sql.", flush=True)
         return {}
 
     all_skus = set(ProductSKU.objects.values_list('code', flat=True))
@@ -544,7 +544,7 @@ def ingest_datalake_entradas(file_path):
     print(f"\n[DATALAKE] Entradas de Mercancias: {file_path}", flush=True)
     if not os.path.exists(file_path):
         print("  [AVISO] Archivo de entradas no encontrado: se conservan las ya cargadas. "
-              "Ejecutar la consulta 7 de consultas_optimizadas_datalake.sql.", flush=True)
+              "Ejecutar la consulta 7 de consultas_datalake.sql.", flush=True)
         return 0
 
     all_skus = set(ProductSKU.objects.values_list('code', flat=True))

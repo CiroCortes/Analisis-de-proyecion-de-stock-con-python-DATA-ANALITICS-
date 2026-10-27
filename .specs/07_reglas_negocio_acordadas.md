@@ -16,9 +16,9 @@ Estado: vigente al 26-oct-2026. Reemplaza lo que contradiga en SPEC-02 y HARNESS
   `manage.py check_athena`, `manage.py sync_datalake`) quedó construido pero sin probar y sin uso.
 - Los nombres de archivo pueden venir como `oitm_oitb.txt`, `oitw-1793037653080.txt`, etc.
   El cargador (`datalake_ingest._find_file`) toma el más reciente de cada tabla.
-- Consultas vigentes: `data/consultas_optimizadas_datalake.sql` (las 7 actuales; el conector
+- Consultas vigentes: `data/consultas_datalake.sql` (las 7 actuales; el conector
   espera exactamente 7). Consultas nuevas de la Calculadora:
-  `data/consultas_calculadora_compras.sql` (borrador).
+  `data/consultas_datalake.sql` (borrador).
 - Escribir en SAP (Service Layer, campos de usuario U_RPEO / U_CRITICO) **está descartado** hasta
   que se solicite y apruebe la habilitación de Service Layer.
 

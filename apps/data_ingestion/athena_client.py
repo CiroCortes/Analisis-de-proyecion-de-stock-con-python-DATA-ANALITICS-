@@ -13,18 +13,10 @@ from urllib.parse import urlparse
 
 from django.conf import settings
 
-SQL_FILE = os.path.join(settings.BASE_DIR, 'data', 'consultas_optimizadas_datalake.sql')
+SQL_FILE = os.path.join(settings.BASE_DIR, 'data', 'consultas_datalake.sql')
 
-# Orden = numero de consulta en el .sql
-OUTPUT_FILES = [
-    'Maestro de Artículos & Costos.txt',
-    'Stock Físico por Bodega.txt',
-    'Órdenes de Fabricación (OF).txt',
-    'Pedidos de Clientes (PC).txt',
-    'Órdenes de Compra en Tránsito (OC).txt',
-    'Solicitudes de Compra (SC).txt',
-    'Entradas de Mercancias (EM).txt',
-]
+# Cada consulta declara su TXT de salida en un comentario "-- ARCHIVO: <nombre>"
+ARCHIVO_RE = re.compile(r'^--\s*ARCHIVO:\s*(.+?)\s*$', re.MULTILINE)
 
 
 def _load_dotenv():
@@ -41,10 +33,23 @@ def _load_dotenv():
 
 
 def load_queries(sql_file=SQL_FILE):
-    """Devuelve las consultas del .sql en orden (sin comentarios)."""
+    """Devuelve [(archivo_txt, sql)] en el orden del .sql. Cada consulta debe llevar su
+    linea "-- ARCHIVO:"; los bloques solo de comentarios (anexo) se ignoran."""
     with open(sql_file, encoding='utf-8') as fp:
-        text = re.sub(r'--[^\n]*', '', fp.read())
-    return [s.strip() for s in text.split(';') if s.strip()]
+        texto = fp.read()
+    # Los comentarios se quitan antes de separar (pueden traer ';'); la marca ARCHIVO se conserva
+    texto = ARCHIVO_RE.sub(lambda m: f'\x00{m.group(1)}\x00', texto)
+    texto = re.sub(r'--[^\n]*', '', texto)
+    consultas = []
+    for bloque in texto.split(';'):
+        archivos = re.findall(r'\x00(.+?)\x00', bloque)
+        sql = re.sub(r'\x00.+?\x00', '', bloque).strip()
+        if not sql:
+            continue
+        if not archivos:
+            raise RuntimeError(f'Consulta sin linea "-- ARCHIVO:" en {sql_file}: {sql[:60]}...')
+        consultas.append((archivos[-1], sql))
+    return consultas
 
 
 def _clients():
@@ -95,10 +100,8 @@ def sync_datalake(only=None, out_dir=None, log=print):
     """Ejecuta las consultas (todas o las numeradas en `only`) y escribe los TXT."""
     out_dir = out_dir or os.path.join(settings.BASE_DIR, 'data')
     queries = load_queries()
-    if len(queries) != len(OUTPUT_FILES):
-        raise RuntimeError(f'Se esperaban {len(OUTPUT_FILES)} consultas y el .sql trae {len(queries)}.')
     athena, s3 = _clients()
-    for n, (sql, fname) in enumerate(zip(queries, OUTPUT_FILES), start=1):
+    for n, (fname, sql) in enumerate(queries, start=1):
         if only and n not in only:
             continue
         t0 = time.time()
