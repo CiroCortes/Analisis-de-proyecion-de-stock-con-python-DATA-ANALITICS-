@@ -29,7 +29,7 @@ ARCHIVOS = {
     'oc_abiertas': ('Órdenes de Compra en Tránsito (OC).txt', 'opor_por1.txt'),
     'pedidos': ('Pedidos de Clientes (PC).txt', 'ordr_rdr1.txt'),
     'ofs': ('Órdenes de Fabricación (OF).txt', 'owor_wor1.txt'),
-    'entradas': ('Entradas de Mercancías.txt', 'opdn_pdn1.txt'),
+    'entradas': ('Entradas de Mercancias (EM).txt', 'opdn_pdn1.txt'),
 }
 
 # Recepciones internas (produccion propia): no son un proveedor al que se le compre

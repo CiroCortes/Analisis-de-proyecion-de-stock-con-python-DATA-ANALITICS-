@@ -2,6 +2,16 @@
 -- PESCO S.A. - CONSULTAS OPTIMIZADAS PARA DATALAKE (AWS ATHENA / SAP B1)
 -- Base de datos: pesco_sbo_pescousd
 -- Diseñadas para: MÍNIMO CONSUMO DE DATOS (BAJO COSTO EN ATHENA) Y MÁXIMA VELOCIDAD
+--
+-- Exportar desde DBeaver como TXT (tabla con pipes |, con cabecera) a data/ con estos nombres:
+--   1 -> Maestro de Artículos & Costos.txt
+--   2 -> Stock Físico por Bodega.txt
+--   3 -> Órdenes de Fabricación (OF).txt
+--   4 -> Pedidos de Clientes (PC).txt
+--   5 -> Órdenes de Compra en Tránsito (OC).txt
+--   6 -> Solicitudes de Compra (SC).txt
+--   7 -> Entradas de Mercancias (EM).txt
+-- No agregar, quitar ni reordenar columnas: la plataforma las lee por posicion.
 -- ============================================================================
 
 -- ============================================================================
@@ -176,8 +186,9 @@ WHERE prq.docstatus = 'O'
 
 
 -- ============================================================================
--- 7. ENTRADAS DE MERCANCIAS (GoodsReceipt) - ULTIMOS 365 DIAS
--- Objetivo: Ingresos mensuales valorizados del dashboard (reemplaza ENTRADA MERCANCIAS.xlsx)
+-- 7. ENTRADAS DE MERCANCIAS (GoodsReceipt) - 12 MESES CERRADOS + MES EN CURSO
+-- Objetivo: Ingresos mensuales valorizados del dashboard (reemplaza ENTRADA MERCANCIAS.xlsx),
+--   inventario historico del detalle de la Calculadora y proveedor de respaldo por articulo
 -- Modelo destino: inventory.GoodsReceipt (document_number, product, quantity,
 --                 posting_date, supplier_name, total_lines_cost)
 -- Archivo de salida esperado: data/Entradas de Mercancias (EM).txt
@@ -198,4 +209,4 @@ INNER JOIN pesco_sbo_pescousd.pdn1 gr_l
 WHERE gr.canceled = 'N'
   AND gr_l.itemcode IS NOT NULL
   AND gr_l.quantity > 0
-  AND SUBSTR(CAST(gr.docdate AS VARCHAR), 1, 10) >= CAST(DATE_ADD('day', -365, CURRENT_DATE) AS VARCHAR);
+  AND SUBSTR(CAST(gr.docdate AS VARCHAR), 1, 10) >= CAST(DATE_ADD('month', -13, DATE_TRUNC('month', CURRENT_DATE)) AS VARCHAR);

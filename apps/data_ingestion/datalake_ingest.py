@@ -7,7 +7,7 @@ from django.db import transaction
 from apps.inventory.models import (
     ProductSKU, Category, Warehouse, InventoryMetric,
     ProductionOrderMovement, SalesOrderMovement, StockProjection,
-    SKUClassification
+    SKUClassification, GoodsReceipt
 )
 from apps.inventory.stock_actual_models import StockActual
 from apps.inventory.classification_engine import run_classification_engine
@@ -533,6 +533,39 @@ def ingest_datalake_scs(file_path):
     return sc_by_sku_wh
 
 
+def ingest_datalake_entradas(file_path):
+    """
+    Ingesta Entradas de Mercancias (consulta 7) en GoodsReceipt: ingresos del dashboard e
+    inventario historico del detalle de la Calculadora. Reemplaza la carga anterior.
+    Columnas: nro_documento, codigo_sku, fecha_contabilizacion, codigo_proveedor,
+              nombre_proveedor, cantidad, total_linea
+    Si el archivo no existe se conservan las entradas ya cargadas.
+    """
+    print(f"\n[DATALAKE] Entradas de Mercancias: {file_path}", flush=True)
+    if not os.path.exists(file_path):
+        print("  [AVISO] Archivo de entradas no encontrado: se conservan las ya cargadas. "
+              "Ejecutar la consulta 7 de consultas_optimizadas_datalake.sql.", flush=True)
+        return 0
+
+    all_skus = set(ProductSKU.objects.values_list('code', flat=True))
+    filas = []
+    for cols in iter_txt_rows(file_path, 7):
+        sku, cantidad = cols[1], _clean_num(cols[5])
+        if sku not in all_skus or cantidad <= 0:
+            continue
+        filas.append(GoodsReceipt(
+            document_number=cols[0].replace(',', ''), product_id=sku, quantity=cantidad,
+            posting_date=parse_date(cols[2]), supplier_name=cols[4][:200],
+            total_lines_cost=_clean_num(cols[6]),
+        ))
+
+    with transaction.atomic():
+        GoodsReceipt.objects.all().delete()
+        GoodsReceipt.objects.bulk_create(filas, batch_size=5000)
+    print(f"  [OK] Entradas de mercancias cargadas: {len(filas)} lineas.", flush=True)
+    return len(filas)
+
+
 def run_full_datalake_pipeline():
     """
     Ejecuta el pipeline completo desde los 5 archivos TXT exportados del Datalake.
@@ -552,6 +585,7 @@ def run_full_datalake_pipeline():
     f_pedidos = _find_file('Pedidos de Clientes (PC).txt', 'ordr_rdr1.txt')
     f_ocs     = _find_file('Órdenes de Compra en Tránsito (OC).txt', 'opor_por1.txt')
     f_scs     = _find_file('Solicitudes de Compra (SC).txt', 'oprq_prq1.txt')
+    f_ems     = _find_file('Entradas de Mercancias (EM).txt', 'opdn_pdn1.txt')
 
     print("=" * 70, flush=True)
     print("[DATALAKE] INICIANDO SINCRONIZACION OFICIAL DESDE DATALAKE PESCO (TXT)", flush=True)
@@ -576,6 +610,9 @@ def run_full_datalake_pipeline():
 
     # 5b. SC abiertas
     sc_map = ingest_datalake_scs(f_scs)
+
+    # 5c. Entradas de mercancias (ingresos del dashboard e inventario historico)
+    ingest_datalake_entradas(f_ems)
 
     # 6. Consolidar InventoryMetric para las Bodegas Operativas Activas
     print("\n[DATALAKE] Consolidando métricas de inventario multi-bodega...", flush=True)

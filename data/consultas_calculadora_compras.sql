@@ -2,18 +2,23 @@
 -- PESCO S.A. - CONSULTAS PARA LA CALCULADORA DE COMPRAS (AWS ATHENA / SAP B1)
 -- Base de datos: pesco_sbo_pescousd
 --
--- ESTADO: BORRADOR del 26-oct-2026. NO VALIDADO en Athena.
+-- ESTADO: listo para exportar (27-oct-2026). Primera ejecucion real en Athena pendiente.
 -- Origen: Requerimientos_Calculadora_Compras5.docx (secciones 2, 4 y 6).
--- Complementa a consultas_optimizadas_datalake.sql (las 7 consultas actuales NO se tocan:
+-- Complementa a consultas_optimizadas_datalake.sql (consultas 1 a 7, que NO se tocan aca:
 -- el cargador athena_client.py espera exactamente 7 en ese archivo).
 --
--- COMO USARLO MANANA
---   1. Correr primero el bloque 0 (verificar que existen las tablas y sus columnas).
---      Los nombres de columna de abajo son los estandar de SAP B1; si Athena dice
---      COLUMN_NOT_FOUND, ajustar con el resultado del DESCRIBE.
---   2. Cada consulta termina en LIMIT 5 para probar barato. Si el top 5 se ve bien,
---      quitar el LIMIT y exportar completa.
---   3. Guardar cada resultado como TXT en data/ con el nombre indicado en su cabecera.
+-- COMO EXPORTAR
+--   1. Si una consulta falla con COLUMN_NOT_FOUND, correr el bloque 0 (DESCRIBE) y ajustar.
+--   2. Probar barato: agregar LIMIT 5 antes del punto y coma; si se ve bien, quitarlo.
+--   3. Exportar desde DBeaver como TXT (tabla con pipes |, con la fila de cabecera) y
+--      guardar en data/ con el nombre EXACTO de la cabecera de cada consulta.
+--      El orden de las columnas importa: no agregar, quitar ni reordenar columnas.
+--
+-- PRIORIDAD
+--   Imprescindibles: 8 (consumo real) y 9 (plazos reales).
+--   Recomendadas:    10 (proveedor, minimo y multiplo), 11 (proveedores), 14 (contratos).
+--   Opcionales:      8b (separa OF de otras salidas), 12 (nombres de bodega).
+--   13 (traslados abiertos) es solo de control: la plataforma no la carga.
 --
 -- DECISIONES YA TOMADAS (ver .specs/06 y .specs/07)
 --   * Costo = lastpurprc (no avgprice). Va en la consulta 1 del otro archivo.
@@ -83,7 +88,7 @@ GROUP BY
          WHEN m.transtype = 60                THEN 'SALIDA'
          ELSE 'OTRO' END
 HAVING SUM(COALESCE(m.outqty, 0) - COALESCE(m.inqty, 0)) <> 0
-LIMIT 5;   -- QUITAR para carga completa
+;   -- para probar barato, agregar LIMIT 5 antes del punto y coma
 
 
 -- ============================================================================
@@ -109,7 +114,7 @@ GROUP BY
     l.itemcode,
     l.whscode,
     SUBSTR(CAST(h.docdate AS VARCHAR), 1, 7)
-LIMIT 5;   -- QUITAR para carga completa
+;   -- para probar barato, agregar LIMIT 5 antes del punto y coma
 
 
 -- ============================================================================
@@ -151,7 +156,7 @@ WHERE gr.canceled = 'N'
   AND o.canceled  = 'N'
   AND l.quantity > 0
   AND SUBSTR(CAST(gr.docdate AS VARCHAR), 1, 10) >= CAST(DATE_ADD('month', -24, CURRENT_DATE) AS VARCHAR)
-LIMIT 5;   -- QUITAR para carga completa
+;   -- para probar barato, agregar LIMIT 5 antes del punto y coma
 
 
 -- ============================================================================
@@ -178,7 +183,7 @@ FROM pesco_sbo_pescousd.oitm t0
 WHERE t0.itemcode IS NOT NULL
   AND t0.itemcode <> ''
   AND t0.invntitem = 'Y'
-LIMIT 5;   -- QUITAR para carga completa
+;   -- para probar barato, agregar LIMIT 5 antes del punto y coma
 
 
 -- ============================================================================
@@ -193,7 +198,7 @@ SELECT
     c.frozenfor                                          AS congelado
 FROM pesco_sbo_pescousd.ocrd c
 WHERE c.cardtype = 'S'
-LIMIT 5;   -- QUITAR para carga completa
+;   -- para probar barato, agregar LIMIT 5 antes del punto y coma
 
 
 -- ============================================================================
@@ -208,7 +213,7 @@ SELECT
     w.whsname                                            AS nombre_bodega,
     w.inactive                                           AS inactiva
 FROM pesco_sbo_pescousd.owhs w
-LIMIT 5;   -- QUITAR para carga completa
+;   -- para probar barato, agregar LIMIT 5 antes del punto y coma
 
 
 -- ============================================================================
@@ -233,7 +238,7 @@ INNER JOIN pesco_sbo_pescousd.wtq1 l
 WHERE q.docstatus = 'O'
   AND l.linestatus = 'O'
   AND l.openqty > 0
-LIMIT 5;   -- QUITAR para carga completa
+;   -- para probar barato, agregar LIMIT 5 antes del punto y coma
 
 
 -- ============================================================================
@@ -260,4 +265,4 @@ FROM pesco_sbo_pescousd.ooat a
 INNER JOIN pesco_sbo_pescousd.oat1 l
     ON l.agrno = a.absid
 WHERE l.itemcode IS NOT NULL
-LIMIT 5;   -- QUITAR para carga completa
+;   -- para probar barato, agregar LIMIT 5 antes del punto y coma

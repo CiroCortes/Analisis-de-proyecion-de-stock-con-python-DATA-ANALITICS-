@@ -86,7 +86,7 @@ class CargadoresTest(TestCase):
         self.assertEqual(Proveedor.objects.get(codigo='P9').nombre, 'PROVEEDOR NUEVE')
 
     def test_parametros_respaldo_toma_proveedor_de_la_ultima_entrada_sin_internos(self):
-        _txt(self.dir, 'Entradas de Mercancías.txt',
+        _txt(self.dir, 'Entradas de Mercancias (EM).txt',
              ['nro_documento', 'codigo_sku', 'fecha_contabilizacion', 'codigo_proveedor', 'nombre_proveedor',
               'cantidad', 'total_linea'], [
                  ['1', 'A1', '2026-01-01', 'P1', 'UNO', '1', '10'],
@@ -95,6 +95,19 @@ class CargadoresTest(TestCase):
              ])
         cargadores.cargar_parametros_compra(self.dir)
         self.assertEqual(ParametroCompra.objects.get(product_id='A1').proveedor_preferido, 'P2')
+
+    def test_entradas_de_mercancias_se_cargan_en_goods_receipt(self):
+        from apps.data_ingestion.datalake_ingest import ingest_datalake_entradas
+        from apps.inventory.models import GoodsReceipt
+        _txt(self.dir, 'Entradas de Mercancias (EM).txt',
+                    ['nro_documento', 'codigo_sku', 'fecha_contabilizacion', 'codigo_proveedor', 'nombre_proveedor',
+                     'cantidad', 'total_linea'], [
+                        ['1,204', 'A1', '2026-05-01', 'P2', 'DOS', '3', '30'],
+                        ['1,205', 'NOEXISTE', '2026-05-01', 'P2', 'DOS', '3', '30'],
+                    ])
+        self.assertEqual(ingest_datalake_entradas(os.path.join(self.dir, 'Entradas de Mercancias (EM).txt')), 1)
+        gr = GoodsReceipt.objects.get()
+        self.assertEqual((gr.document_number, gr.quantity, str(gr.posting_date)), ('1204', 3, '2026-05-01'))
 
     def test_compromisos_con_fecha_y_atribucion(self):
         _txt(self.dir, 'Pedidos de Clientes (PC).txt',
