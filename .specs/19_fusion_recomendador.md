@@ -74,9 +74,9 @@ Consecuencia visible: el "quiebre USD" del Dashboard pasa de la brecha contra el
 
 | Clase | Regla | Lectura |
 |---|---|---|
-| X | cv ≤ `corte_xyz_x` (0,5) | Estable: se puede automatizar |
-| Y | cv ≤ `corte_xyz_y` (1,0) | Variable: revisar en cada compra |
-| Z | cv > 1,0 o sin consumo | Errático o esporádico: criterio del comprador |
+| X | cv ≤ `corte_xyz_x` (1,0; antes 0,5) | Estable: se puede automatizar |
+| Y | cv ≤ `corte_xyz_y` (1,75; antes 1,0) | Variable: revisar en cada compra |
+| Z | cv > 1,75 o sin consumo | Errático o esporádico: criterio del comprador |
 
 Parámetros nuevos (SPEC-14): `corte_xyz_x`, `corte_xyz_y`, nivel GENERAL.
 Se guarda en `ResultadoArticulo.xyz` y `HistorialMensual.xyz`.

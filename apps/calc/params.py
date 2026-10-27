@@ -48,8 +48,10 @@ class Params:
     # la regla literal del documento (consumo en 1-2 meses O compromiso activo).
     p_solo_con_compromiso: bool = True
     # Eje XYZ por coeficiente de variacion del consumo mensual (SPEC-19 §3.1)
-    corte_xyz_x: float = 0.5
-    corte_xyz_y: float = 1.0
+    # Cortes calibrados con el consumo real de repuestos (27-oct-2026): con 0,5 / 1,0 el 83% de
+    # los R caia en Z; 1,0 / 1,75 los reparte en tercios (SPEC-19)
+    corte_xyz_x: float = 1.0
+    corte_xyz_y: float = 1.75
 
     # Proyeccion diaria
     horizonte_proyeccion_dias: int = 120

@@ -20,9 +20,9 @@ HOY = datetime.date(2026, 10, 27)
 class XYZTest(TestCase):
     def test_cortes(self):
         assert clase_xyz(10, 2, P) == 'X'      # cv 0,2
-        assert clase_xyz(10, 5, P) == 'X'      # cv 0,5 (incluido)
-        assert clase_xyz(10, 8, P) == 'Y'
-        assert clase_xyz(10, 15, P) == 'Z'
+        assert clase_xyz(10, 10, P) == 'X'     # cv 1,0 (incluido)
+        assert clase_xyz(10, 15, P) == 'Y'     # cv 1,5
+        assert clase_xyz(10, 20, P) == 'Z'     # cv 2,0
         assert clase_xyz(0, 0, P) == 'Z'
 
 
