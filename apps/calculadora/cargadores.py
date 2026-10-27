@@ -308,27 +308,32 @@ def cargar_bodegas(data_dir=None):
 
 
 def cargar_acuerdos(data_dir=None):
-    """Consulta 12: lineas de acuerdos globales."""
+    """Consulta 12: lineas de acuerdos globales. El precio debe venir en USD (columna 10, con la
+    moneda original en la 11). Un archivo sin columna de moneda trae el precio en la moneda del
+    acuerdo (CLP): el precio se descarta y la linea se valoriza al costo del maestro."""
     ruta = archivo('acuerdos', data_dir)
     if not os.path.exists(ruta):
         _registrar('acuerdos', '', 0, fuente='SIN_ARCHIVO', nota='Sin consulta 12: todas las lineas quedan sin contrato')
         return 0
     skus = _skus()
-    filas = []
+    filas, sin_moneda = [], False
     for cols in iter_txt_rows(ruta, 10):
         sku = cols[6]
         if sku not in skus:
             continue
+        sin_moneda = sin_moneda or len(cols) < 11
         filas.append(AcuerdoGlobal(
             nro_acuerdo=cols[0].replace(',', ''), proveedor_codigo=cols[1], fecha_inicio=parse_date(cols[2]),
             fecha_termino=parse_date(cols[3]), estado=cols[4][:5], linea=int(_clean_num(cols[5])),
             product_id=sku, cantidad_plan=_clean_num(cols[7]), cantidad_acumulada=_clean_num(cols[8]),
-            precio_unitario=_clean_num(cols[9]),
+            precio_unitario=_clean_num(cols[9]) if len(cols) >= 11 else 0,
         ))
     with transaction.atomic():
         AcuerdoGlobal.objects.all().delete()
         AcuerdoGlobal.objects.bulk_create(filas, batch_size=5000)
-    _registrar('acuerdos', ruta, len(filas))
+    _registrar('acuerdos', ruta, len(filas), fuente='SIN_MONEDA' if sin_moneda else 'TXT',
+               nota='Archivo sin columna de moneda: precio del acuerdo descartado, se valoriza al costo'
+               if sin_moneda else '')
     return len(filas)
 
 

@@ -34,7 +34,7 @@ ORDENES = {
     'consumo': ('-consumo_promedio_mes', 'Mayor consumo'),
     'codigo': ('product__code', 'Código'),
 }
-FUENTES_BRECHA = ('SIN_ARCHIVO', 'RESPALDO', 'PC_OF')
+FUENTES_BRECHA = ('SIN_ARCHIVO', 'RESPALDO', 'PC_OF', 'SIN_MONEDA')
 MESES_ABR = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic']
 
 
@@ -97,6 +97,8 @@ def _semaforo(cargas):
         nombre, impacto = DATOS_LEGIBLES.get(c.tabla, (c.tabla.replace('_', ' ').capitalize(), ''))
         if c.fuente == 'SIN_ARCHIVO':
             color, texto = 'rojo', f'Falta: {impacto}.' if impacto else 'Falta el archivo.'
+        elif c.fuente == 'SIN_MONEDA':
+            color, texto = 'amarillo', 'Precio de los acuerdos sin moneda: se valoriza al costo. Re-exportar la consulta 12.'
         elif c.fuente in ('RESPALDO', 'PC_OF'):
             color, texto = 'amarillo', f'Provisional: {impacto}.' if impacto else 'Provisional.'
         else:

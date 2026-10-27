@@ -321,6 +321,9 @@ WHERE c.cardtype = 'S';
 -- 12. ACUERDOS GLOBALES (CONTRATOS)                                 [RECOMENDADA]
 -- ARCHIVO: Acuerdos Globales.txt
 -- Contrato, precio y saldo por articulo. Con mas de un acuerdo se toma el de menor precio.
+-- El precio de OAT1 viene en la moneda del acuerdo (en general CLP): se lleva a USD con el
+-- ultimo tipo de cambio de ORTT, igual que el costo de la consulta 1. Las columnas 11 y 12
+-- (moneda y precio original) son de control.
 -- ============================================================================
 SELECT
     a.number                                             AS nro_acuerdo,
@@ -336,10 +339,18 @@ SELECT
     -- "sin cantidad planificada" y no controla saldo (precio y contrato si se usan).
     CAST(0 AS DECIMAL(18, 2))                            AS cantidad_plan,
     CAST(l.cumqty AS DECIMAL(18, 2))                     AS cantidad_acumulada,
-    CAST(l.unitprice AS DECIMAL(18, 4))                  AS precio_unitario
+    CAST(CASE WHEN COALESCE(l.currency, '') IN ('', 'USD') THEN l.unitprice
+              ELSE l.unitprice * fx.rate END AS DECIMAL(18, 4))  AS precio_unitario_usd,
+    COALESCE(l.currency, '')                             AS moneda,
+    CAST(l.unitprice AS DECIMAL(18, 4))                  AS precio_moneda_original
 FROM pesco_sbo_pescousd.ooat a
 INNER JOIN pesco_sbo_pescousd.oat1 l
     ON l.agrno = a.absid
+LEFT JOIN (
+    SELECT currency, MAX_BY(rate, ratedate) AS rate
+    FROM pesco_sbo_pescousd.ortt
+    GROUP BY currency
+) fx ON fx.currency = l.currency
 WHERE l.itemcode IS NOT NULL;
 
 

@@ -34,3 +34,15 @@ class ConsultasDatalakeTest(SimpleTestCase):
     def test_sin_nombres_repetidos(self):
         archivos = [a for a, _ in load_queries()]
         self.assertEqual(len(archivos), len(set(archivos)))
+
+
+class BuscarArchivoTest(SimpleTestCase):
+    def test_ignora_tildes_y_mayusculas(self):
+        import os
+        import tempfile
+        from apps.data_ingestion.datalake_ingest import find_data_file
+        with tempfile.TemporaryDirectory() as d:
+            ruta = os.path.join(d, 'Stock Fisico por Bodega.txt')
+            open(ruta, 'w').close()
+            self.assertEqual(find_data_file('Stock Físico por Bodega.txt', 'oitw.txt', d), ruta)
+            self.assertFalse(os.path.exists(find_data_file('Órdenes de Fabricación (OF).txt', 'owor_wor1.txt', d)))

@@ -14,16 +14,24 @@ from apps.inventory.classification_engine import run_classification_engine
 from apps.data_ingestion.warehouses import WAREHOUSE_NAMES, transit_destination, commitment_bodega, purchase_bodega
 
 
+def _sin_tildes(nombre):
+    import unicodedata
+    return ''.join(c for c in unicodedata.normalize('NFKD', nombre) if not unicodedata.combining(c)).lower()
+
+
 def find_data_file(long_name, alt_name, data_dir=None):
-    """Devuelve el archivo mas reciente entre el nombre largo, el nombre de tabla
-    (oitm.txt) y las variantes que genera el task (oitm_oitb.txt, oitw-1793....txt).
+    """Devuelve el archivo mas reciente entre el nombre largo (sin importar tildes ni
+    mayusculas: 'Stock Fisico por Bodega.txt' vale), el nombre de tabla (oitm.txt) y las
+    variantes que genera el task (oitm_oitb.txt, oitw-1793....txt).
     Si no existe ninguno devuelve la ruta del nombre largo (el cargador avisa)."""
     import glob
     if data_dir is None:
         from django.conf import settings
         data_dir = os.path.join(settings.BASE_DIR, 'data')
     stem = alt_name[:-4]
-    cands = [os.path.join(data_dir, long_name)]
+    buscado = _sin_tildes(long_name)
+    cands = [os.path.join(data_dir, f) for f in os.listdir(data_dir) if _sin_tildes(f) == buscado] \
+        if os.path.isdir(data_dir) else []
     cands += glob.glob(os.path.join(data_dir, glob.escape(stem) + '*.txt'))
     cands = [c for c in cands if os.path.exists(c)]
     if not cands:
