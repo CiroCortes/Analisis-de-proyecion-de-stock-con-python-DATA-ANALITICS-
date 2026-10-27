@@ -1,0 +1,192 @@
+{% extends 'base.html' %}
+{% load inventory_tags %}
+
+{% block title %}Indicadores de gestión | Calculadora Pesco{% endblock %}
+
+{% block content %}
+<div class="w-full space-y-6">
+    {% include 'calculadora/_subnav.html' %}
+
+    <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 border-l-8 border-l-pesco-cyan">
+        <span class="text-xs font-bold text-pesco-cyan uppercase tracking-wider">Calculadora de Compras</span>
+        <h1 class="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight mt-1">Indicadores: escenario actual vs propuesto</h1>
+        <p class="text-sm text-slate-500 mt-1">
+            <b>Actual</b> = regla anterior (comprar hasta el punto de pedido, sin calendario, plazo del maestro + 2 días).
+            <b>Propuesto</b> = esta calculadora (comprar hasta el stock máximo, cada 15 días por proveedor).
+            Simulación diaria a 12 meses con el consumo histórico de cada artículo; no es un pronóstico.
+        </p>
+    </div>
+
+    <form method="get" class="bg-white p-4 rounded-3xl shadow-sm border border-slate-200 grid grid-cols-2 md:grid-cols-5 gap-3 text-xs items-end">
+        <div class="col-span-2">
+            <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Grupo SAP (familia)</label>
+            <select name="familia" class="w-full border border-slate-300 rounded-xl px-3 py-2">
+                <option value="">Todos</option>
+                {% for cod, nombre in familias %}<option value="{{ cod }}" {% if f.familia == cod %}selected{% endif %}>{{ cod }} · {{ nombre }}</option>{% endfor %}
+            </select>
+        </div>
+        <div>
+            <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Proveedor</label>
+            <input type="text" name="proveedor" value="{{ f.proveedor }}" placeholder="Código o nombre" class="w-full border border-slate-300 rounded-xl px-3 py-2">
+        </div>
+        <div class="grid grid-cols-2 gap-2">
+            <div>
+                <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Letra</label>
+                <select name="letra" class="w-full border border-slate-300 rounded-xl px-2 py-2">
+                    <option value="">Todas</option>
+                    {% for k, v in letras %}<option value="{{ k }}" {% if f.letra == k %}selected{% endif %}>{{ k }}</option>{% endfor %}
+                </select>
+            </div>
+            <div>
+                <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">ABC</label>
+                <select name="abc" class="w-full border border-slate-300 rounded-xl px-2 py-2">
+                    <option value="">Todas</option>
+                    {% for k in 'ABC' %}<option value="{{ k }}" {% if f.abc == k %}selected{% endif %}>{{ k }}</option>{% endfor %}
+                </select>
+            </div>
+        </div>
+        <div class="flex gap-2">
+            <a href="{% url 'calculadora:indicadores' %}" class="px-4 py-2 rounded-full border border-slate-300 font-bold hover:bg-slate-50">Limpiar</a>
+            <button class="bg-pesco-cyan hover:bg-pesco-darkcyan text-white font-bold px-5 py-2 rounded-full"><i class="fa-solid fa-filter"></i> Filtrar</button>
+        </div>
+    </form>
+
+    <!-- Inventario proyectado -->
+    <div class="bg-white rounded-3xl border border-slate-200 shadow-sm p-5">
+        <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3">Inventario proyectado (USD)</div>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {% for corte, act, prop, dif in inv %}
+            <div class="rounded-2xl border border-slate-200 p-4">
+                <div class="text-xs font-black text-slate-700 uppercase">A {{ corte }}</div>
+                <div class="flex justify-between mt-2 text-xs"><span class="text-slate-500">Actual</span><span class="font-mono font-bold" title="{{ act|full_usd }}">{{ act|compact_usd }}</span></div>
+                <div class="flex justify-between text-xs"><span class="text-slate-500">Propuesto</span><span class="font-mono font-bold" title="{{ prop|full_usd }}">{{ prop|compact_usd }}</span></div>
+                <div class="flex justify-between mt-2 pt-2 border-t border-slate-100 text-sm"><span class="font-bold">Diferencia</span>
+                    <span class="font-mono font-black {% if dif > 0 %}text-amber-700{% else %}text-emerald-700{% endif %}">{% if dif > 0 %}+{% endif %}{{ dif|compact_usd }}</span></div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
+        <!-- Quiebres -->
+        <div class="bg-white rounded-3xl border border-slate-200 shadow-sm p-5">
+            <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3">Quiebres proyectados (12 meses)</div>
+            <table class="w-full text-xs">
+                <thead class="text-[10px] uppercase text-slate-500"><tr><th class="text-left py-1"></th><th class="text-right">Actual</th><th class="text-right">Propuesto</th></tr></thead>
+                <tbody class="divide-y divide-slate-100">
+                    <tr><td class="py-2">Artículos con quiebre</td><td class="text-right font-mono font-bold">{{ quiebre.act.articulos }}</td><td class="text-right font-mono font-bold">{{ quiebre.prop.articulos }}</td></tr>
+                    <tr><td class="py-2">Días en quiebre (suma)</td><td class="text-right font-mono">{{ quiebre.act.dias|floatformat:"0g" }}</td><td class="text-right font-mono">{{ quiebre.prop.dias|floatformat:"0g" }}</td></tr>
+                    <tr><td class="py-2">Valor no atendido</td><td class="text-right font-mono">{{ quiebre.act.valor|compact_usd }}</td><td class="text-right font-mono">{{ quiebre.prop.valor|compact_usd }}</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <!-- Cobertura -->
+        <div class="bg-white rounded-3xl border border-slate-200 shadow-sm p-5 xl:col-span-2">
+            <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3">Cobertura a 6 meses (meses de consumo, ponderada por valor)</div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {% for titulo, filas in cobs %}
+                <table class="w-full text-xs">
+                    <thead class="text-[10px] uppercase text-slate-500"><tr><th class="text-left py-1">{{ titulo }}</th><th class="text-right">Actual</th><th class="text-right">Propuesto</th></tr></thead>
+                    <tbody class="divide-y divide-slate-100">
+                    {% for k, prop, act in filas %}<tr><td class="py-1.5 font-black">{{ k }}</td><td class="text-right font-mono">{{ act|default:"—" }}</td><td class="text-right font-mono font-bold">{{ prop|default:"—" }}</td></tr>
+                    {% empty %}<tr><td colspan="3" class="py-2 text-slate-500">Sin datos.</td></tr>{% endfor %}
+                    </tbody>
+                </table>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Compras -->
+    <div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
+        <div class="bg-white rounded-3xl border border-slate-200 shadow-sm p-5 xl:col-span-2">
+            <div class="flex justify-between items-baseline">
+                <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Compras sugeridas por mes (USD, 6 meses)</div>
+                <div class="text-xs text-slate-500">Actual <b class="font-mono">{{ compras_total.0|compact_usd }}</b> · Propuesto <b class="font-mono">{{ compras_total.1|compact_usd }}</b></div>
+            </div>
+            <div class="h-64 mt-2"><canvas id="chartCompras"></canvas></div>
+        </div>
+        <div class="bg-white rounded-3xl border border-slate-200 shadow-sm p-5">
+            <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3">Inversión propuesta por proveedor (6 meses)</div>
+            <table class="w-full text-xs"><tbody class="divide-y divide-slate-100">
+            {% for cod, nombre, v in top_proveedores %}<tr><td class="py-1.5"><div class="font-bold truncate max-w-[14rem]">{{ nombre|default:cod }}</div><div class="text-[10px] text-slate-400 font-mono">{{ cod }}</div></td><td class="text-right font-mono font-bold">{{ v|compact_usd }}</td></tr>
+            {% empty %}<tr><td class="py-2 text-slate-500">Sin compras proyectadas.</td></tr>{% endfor %}
+            </tbody></table>
+        </div>
+    </div>
+
+    <!-- Exceso y obsolescencia -->
+    <div class="grid grid-cols-1 xl:grid-cols-2 gap-6">
+        <div class="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+            <div class="px-5 py-4 border-b border-slate-100 flex justify-between">
+                <div><div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Exceso</div><div class="text-xs text-slate-500">Disponible sobre el máximo + 3 meses de consumo</div></div>
+                <div class="text-right"><div class="font-mono font-black text-amber-700 text-lg">{{ exceso_total|compact_usd }}</div><div class="text-[10px] text-slate-500">{{ n_exceso }} artículos</div></div>
+            </div>
+            <table class="min-w-full text-xs"><tbody class="divide-y divide-slate-100">
+            {% for sku, desc, u, v in exceso %}<tr><td class="px-5 py-1.5"><a href="{% url 'calculadora:articulo' sku %}" class="font-mono font-bold text-pesco-cyan hover:underline">{{ sku }}</a> <span class="text-slate-500">{{ desc|truncatechars:50 }}</span></td><td class="text-right font-mono">{{ u|floatformat:"0g" }} u</td><td class="text-right px-5 font-mono font-bold">{{ v|compact_usd }}</td></tr>
+            {% empty %}<tr><td class="px-5 py-3 text-slate-500">Sin exceso.</td></tr>{% endfor %}
+            </tbody></table>
+        </div>
+        <div class="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+            <div class="px-5 py-4 border-b border-slate-100 flex justify-between">
+                <div><div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Obsolescencia</div><div class="text-xs text-slate-500">Stock físico de artículos O e Inmovilizados</div></div>
+                <div class="text-right"><div class="font-mono font-black text-rose-700 text-lg">{{ obsoleto_total|compact_usd }}</div><div class="text-[10px] text-slate-500">{{ n_obsoleto }} artículos</div></div>
+            </div>
+            <table class="min-w-full text-xs"><tbody class="divide-y divide-slate-100">
+            {% for sku, desc, u, v, inmov in obsoleto %}<tr><td class="px-5 py-1.5"><a href="{% url 'calculadora:articulo' sku %}" class="font-mono font-bold text-pesco-cyan hover:underline">{{ sku }}</a> <span class="text-slate-500">{{ desc|truncatechars:50 }}</span>{% if inmov %} <span class="text-[9px] px-1 rounded bg-slate-200 font-bold">INMOV</span>{% endif %}</td><td class="text-right font-mono">{{ u|floatformat:"0g" }} u</td><td class="text-right px-5 font-mono font-bold">{{ v|compact_usd }}</td></tr>
+            {% empty %}<tr><td class="px-5 py-3 text-slate-500">Sin obsolescencia valorizada.</td></tr>{% endfor %}
+            </tbody></table>
+        </div>
+    </div>
+
+    <!-- Intervencion e impacto -->
+    <div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
+        <div class="bg-white rounded-3xl border border-slate-200 shadow-sm p-5">
+            <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3">Intervención del comprador</div>
+            {% if intervencion.lineas %}
+            <div class="grid grid-cols-2 gap-3 text-center">
+                <div class="rounded-2xl bg-slate-50 border p-3"><div class="text-[10px] uppercase font-bold text-slate-400">Líneas modificadas</div><div class="text-xl font-black font-mono">{{ intervencion.pct_modificadas }}%</div><div class="text-[10px] text-slate-500">{{ intervencion.modificadas }} de {{ intervencion.lineas }}</div></div>
+                <div class="rounded-2xl bg-slate-50 border p-3"><div class="text-[10px] uppercase font-bold text-slate-400">Fuera de calendario</div><div class="text-xl font-black font-mono">{{ intervencion.pct_excepcion }}%</div></div>
+            </div>
+            <ul class="mt-3 text-xs space-y-1">
+                {% for nombre, d in intervencion.por_comprador.items %}<li class="flex justify-between"><span>{{ nombre }}</span><span class="font-mono">{{ d.modificadas }}/{{ d.lineas }}</span></li>{% endfor %}
+            </ul>
+            {% if intervencion.por_causa %}<div class="mt-3 text-[11px] text-slate-500">Causas: {% for c, n in intervencion.por_causa.items %}{{ c }} ({{ n }}){% if not forloop.last %}, {% endif %}{% endfor %}</div>{% endif %}
+            {% else %}
+            <p class="text-sm text-slate-500">Aún no hay solicitudes aprobadas. La meta de marcha blanca es menos de 20% de líneas ajustadas a mano.</p>
+            {% endif %}
+        </div>
+        <div class="bg-white rounded-3xl border border-slate-200 shadow-sm p-5 xl:col-span-2">
+            <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3">Reporte de impacto: valor del stock máximo vs mes anterior</div>
+            {% if impacto.disponible %}
+            <p class="text-xs text-slate-500 mb-3">{{ impacto.anterior|date:"m-Y" }} → {{ impacto.actual|date:"m-Y" }}</p>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <table class="w-full text-xs"><thead class="text-[10px] uppercase text-slate-500"><tr><th class="text-left">Grupo SAP</th><th class="text-right">Antes</th><th class="text-right">Ahora</th><th class="text-right">Δ</th></tr></thead>
+                <tbody class="divide-y divide-slate-100">{% for fam, a, b, d in impacto.familias %}<tr><td class="py-1 truncate max-w-[10rem]">{{ fam }}</td><td class="text-right font-mono">{{ a|compact_usd }}</td><td class="text-right font-mono">{{ b|compact_usd }}</td><td class="text-right font-mono font-bold {% if d > 0 %}text-amber-700{% else %}text-emerald-700{% endif %}">{{ d|compact_usd }}</td></tr>{% endfor %}</tbody></table>
+                <table class="w-full text-xs"><thead class="text-[10px] uppercase text-slate-500"><tr><th class="text-left">Top 20 artículos</th><th class="text-right">Antes</th><th class="text-right">Ahora</th><th class="text-right">Δ</th></tr></thead>
+                <tbody class="divide-y divide-slate-100">{% for sku, desc, a, b, d in impacto.top %}<tr><td class="py-1"><a href="{% url 'calculadora:articulo' sku %}" class="font-mono font-bold text-pesco-cyan hover:underline">{{ sku }}</a></td><td class="text-right font-mono">{{ a|compact_usd }}</td><td class="text-right font-mono">{{ b|compact_usd }}</td><td class="text-right font-mono font-bold {% if d > 0 %}text-amber-700{% else %}text-emerald-700{% endif %}">{{ d|compact_usd }}</td></tr>{% endfor %}</tbody></table>
+            </div>
+            {% else %}
+            <p class="text-sm text-slate-500">Se necesita al menos un cierre de mes anterior para comparar. El historial mensual comenzó {% if impacto.meses %}en {{ impacto.meses.0|date:"m-Y" }}{% else %}con la primera corrida{% endif %}; la comparación aparece el próximo mes.</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+    var d = {{ grafico_compras|safe }};
+    new Chart(document.getElementById('chartCompras'), {
+        type: 'bar',
+        data: { labels: d.labels, datasets: [
+            { label: 'Actual', data: d.act, backgroundColor: '#94A3B8' },
+            { label: 'Propuesto', data: d.prop, backgroundColor: '#0099DE' }
+        ] },
+        options: { maintainAspectRatio: false, scales: { y: { beginAtZero: true } },
+                   plugins: { legend: { labels: { boxWidth: 12, font: { size: 10 } } } } }
+    });
+})();
+</script>
+{% endblock %}

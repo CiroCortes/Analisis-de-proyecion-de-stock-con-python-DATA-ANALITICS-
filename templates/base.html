@@ -35,7 +35,7 @@
 
     <!-- Official Pesco Top Black Bar -->
     <div class="bg-pesco-dark text-white text-[11px] py-1.5 px-4">
-        <div class="max-w-7xl mx-auto flex flex-wrap justify-between items-center gap-2">
+        <div class="max-w-[90%] mx-auto flex flex-wrap justify-between items-center gap-2">
             <div class="flex items-center space-x-4">
                 <span><i class="fa-solid fa-phone text-pesco-cyan mr-1"></i> +56232410900</span>
                 <span><i class="fa-solid fa-envelope text-pesco-cyan mr-1"></i> info@pesco.cl</span>
@@ -49,7 +49,7 @@
 
     <!-- Main Header Banner (Official Cyan & White Brand Header) -->
     <header class="bg-white border-b border-slate-200 shadow-sm sticky top-0 z-50">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex justify-between items-center h-20">
+        <div class="max-w-[90%] mx-auto px-4 sm:px-6 lg:px-8 flex justify-between items-center h-20">
             <!-- Brand Logo -->
             <div class="flex items-center space-x-3">
                 <a href="{% url 'dashboard:home' %}" class="flex items-center space-x-3 group">
@@ -83,14 +83,19 @@
                     <i class="fa-solid fa-presentation-screen {% if request.resolver_match.url_name == 'executive_report' %}text-white{% else %}text-pesco-cyan{% endif %}"></i> Gerencial
                 </a>
 
+                <!-- 2c. Calculadora de Compras (SPEC-18) -->
+                <a href="{% url 'calculadora:panel' %}" class="px-3 py-2 rounded-xl transition flex items-center gap-1.5 {% if request.resolver_match.app_name == 'calculadora' %}bg-pesco-cyan text-white shadow-sm font-black{% else %}text-slate-700 hover:bg-pesco-lightcyan hover:text-pesco-cyan{% endif %}" title="Calculadora de Compras: compra de la red, traslados, solicitudes por proveedor">
+                    <i class="fa-solid fa-calculator {% if request.resolver_match.app_name == 'calculadora' %}text-white{% else %}text-pesco-cyan{% endif %}"></i> Calculadora
+                </a>
+
                 <!-- 3. Recomendador de Compras -->
                 <a href="{% url 'purchasing:list' %}" class="px-3 py-2 rounded-xl transition flex items-center gap-1.5 {% if request.resolver_match.app_name == 'purchasing' %}bg-pesco-cyan text-white shadow-sm font-black{% else %}text-slate-700 hover:bg-pesco-lightcyan hover:text-pesco-cyan{% endif %}">
                     <i class="fa-solid fa-cart-shopping {% if request.resolver_match.app_name == 'purchasing' %}text-white{% else %}text-pesco-cyan{% endif %}"></i> Recomendador
                 </a>
 
-                <!-- 4. Grupos SKU -->
-                <a href="{% url 'inventory:configurar_grupos' %}" class="px-3 py-2 rounded-xl transition flex items-center gap-1.5 {% if request.resolver_match.url_name == 'configurar_grupos' %}bg-pesco-cyan text-white shadow-sm font-black{% else %}text-slate-700 hover:bg-pesco-lightcyan hover:text-pesco-cyan{% endif %}" title="Configuración de Grupos de Materiales">
-                    <i class="fa-solid fa-layer-group {% if request.resolver_match.url_name == 'configurar_grupos' %}text-white{% else %}text-pesco-cyan{% endif %}"></i> Grupos SKU
+                <!-- 4. Configuración S&OP -->
+                <a href="{% url 'inventory:configuracion' %}" class="px-3 py-2 rounded-xl transition flex items-center gap-1.5 {% if request.resolver_match.url_name in 'configuracion,configurar_grupos' %}bg-pesco-cyan text-white shadow-sm font-black{% else %}text-slate-700 hover:bg-pesco-lightcyan hover:text-pesco-cyan{% endif %}" title="Configuración S&OP: Bodegas a Auditar, Grupos y Parámetros">
+                    <i class="fa-solid fa-sliders {% if request.resolver_match.url_name in 'configuracion,configurar_grupos' %}text-white{% else %}text-pesco-cyan{% endif %}"></i> Configuración
                 </a>
 
                 <!-- 5. Stock SAP -->
@@ -106,11 +111,6 @@
                 <!-- 7. Asistente IA -->
                 <a href="{% url 'ai_assistant:chat' %}" class="px-3 py-2 rounded-xl transition flex items-center gap-1.5 {% if request.resolver_match.app_name == 'ai_assistant' %}bg-pesco-cyan text-white shadow-sm font-black{% else %}text-slate-700 hover:bg-pesco-lightcyan hover:text-pesco-cyan{% endif %}">
                     <i class="fa-solid fa-robot {% if request.resolver_match.app_name == 'ai_assistant' %}text-white{% else %}text-pesco-cyan{% endif %}"></i> Asistente IA
-                </a>
-
-                <!-- 8. Exportar -->
-                <a href="{% url 'reports:export_excel' %}" class="bg-slate-900 hover:bg-black text-white px-3.5 py-2 rounded-xl transition flex items-center gap-1.5 shadow-sm font-black">
-                    <i class="fa-solid fa-file-excel text-emerald-400"></i> Exportar
                 </a>
             </nav>
 
@@ -132,7 +132,7 @@
 
     <!-- Global Toast / Alert Messages -->
     {% if messages %}
-    <div class="max-w-7xl mx-auto px-4 mt-4 w-full">
+    <div class="max-w-[90%] mx-auto px-4 mt-4 w-full">
         {% for message in messages %}
         <div class="p-4 rounded-xl shadow-sm border mb-2 flex justify-between items-center {% if message.tags == 'error' %}bg-red-50 text-red-800 border-red-200{% else %}bg-emerald-50 text-emerald-800 border-emerald-200{% endif %}">
             <div class="flex items-center gap-2 font-medium text-sm">
@@ -145,7 +145,7 @@
     {% endif %}
 
     <!-- Main Content Body -->
-    <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <main class="flex-1 max-w-[90%] w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {% block content %}{% endblock %}
     </main>
 
@@ -410,7 +410,7 @@
 
     <!-- Corporate Footer -->
     <footer class="bg-pesco-dark text-slate-400 py-6 border-t border-slate-800 text-center text-xs">
-        <div class="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row justify-between items-center gap-4">
+        <div class="max-w-[90%] mx-auto px-4 flex flex-col sm:flex-row justify-between items-center gap-4">
             <div class="flex items-center gap-2 text-white font-bold">
                 <span class="text-pesco-cyan">PESCO S.A.</span> — VAMOS CONTIGO
             </div>

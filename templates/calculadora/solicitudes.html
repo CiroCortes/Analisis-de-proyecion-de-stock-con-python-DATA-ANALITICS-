@@ -1,0 +1,160 @@
+{% extends 'base.html' %}
+{% load inventory_tags %}
+
+{% block title %}Solicitudes de compra | Calculadora Pesco{% endblock %}
+
+{% block content %}
+<div class="w-full space-y-6">
+    {% include 'calculadora/_subnav.html' %}
+
+    <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 bg-white p-6 sm:p-7 rounded-3xl shadow-sm border border-slate-200 border-l-8 border-l-pesco-cyan">
+        <div>
+            <span class="text-xs font-bold text-pesco-cyan uppercase tracking-wider">Calculadora de compras · §6</span>
+            <h1 class="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight mt-1">Solicitudes de compra por proveedor</h1>
+            <p class="text-sm text-slate-500 mt-1 max-w-3xl">El día de compra de cada proveedor se arma una solicitud con todo lo que la red necesita hasta la próxima compra. Las excepciones (quiebre proyectado antes de la próxima compra normal) se arman el mismo día como <b>fuera de calendario</b>.</p>
+        </div>
+        <div class="flex flex-wrap gap-2">
+            <form method="post" action="{% url 'calculadora:solicitudes_generar' %}">
+                {% csrf_token %}
+                <button class="bg-pesco-cyan hover:bg-pesco-darkcyan text-white text-xs font-bold px-5 py-3 rounded-full shadow-md transition uppercase tracking-wider flex items-center gap-2">
+                    <i class="fa-solid fa-wand-magic-sparkles"></i> Armar solicitudes de hoy
+                </button>
+            </form>
+            <a href="{% url 'calculadora:solicitudes_exportar' %}?estado=APROBADA" class="bg-slate-900 hover:bg-slate-700 text-white text-xs font-bold px-5 py-3 rounded-full shadow-md transition uppercase tracking-wider flex items-center gap-2" title="Descarga las aprobadas y las marca como exportadas">
+                <i class="fa-solid fa-file-excel"></i> Exportar aprobadas
+            </a>
+        </div>
+    </div>
+
+    <div class="bg-amber-50 border border-amber-200 text-amber-900 text-xs rounded-2xl px-5 py-3 flex items-start gap-2">
+        <i class="fa-solid fa-circle-info mt-0.5"></i>
+        <span>La escritura directa en SAP (Service Layer) está deshabilitada hasta que IT la habilite. Al exportar se descarga una planilla con las columnas de <b>PurchaseRequests</b> para cargar con DTW o a mano; las solicitudes descargadas quedan como <b>exportadas</b>.</span>
+    </div>
+
+    <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
+        {% for clave, etiqueta, n in resumen_estados %}
+        <a href="?estado={{ clave }}" class="bg-white rounded-2xl border {% if f.estado == clave %}border-pesco-cyan ring-2 ring-pesco-lightcyan{% else %}border-slate-200{% endif %} p-4 text-center shadow-sm hover:shadow-md transition">
+            <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{{ etiqueta }}</div>
+            <div class="text-2xl font-black text-slate-900 mt-1 font-mono">{{ n }}</div>
+        </a>
+        {% endfor %}
+        <div class="bg-red-50 rounded-2xl border border-red-200 p-4 text-center shadow-sm">
+            <div class="text-[10px] font-bold text-red-600 uppercase tracking-wider">Excepciones en la corrida</div>
+            <div class="text-2xl font-black text-red-600 mt-1 font-mono">{{ n_excepciones }}</div>
+            {% if n_excepciones_sin_proveedor %}<div class="text-[10px] text-red-500 mt-0.5">{{ n_excepciones_sin_proveedor }} sin proveedor (no entran)</div>{% endif %}
+        </div>
+    </div>
+
+    <div class="bg-white p-5 sm:p-6 rounded-3xl shadow-sm border border-slate-200">
+        <div class="flex items-center justify-between mb-3">
+            <h2 class="text-sm font-black text-slate-800 uppercase tracking-wider"><i class="fa-solid fa-calendar-day text-pesco-cyan mr-1"></i> Proveedores con día de compra hoy ({{ hoy|date:"d-m-Y" }})</h2>
+            <span class="text-xs text-slate-500 font-mono">{{ n_dia_compra }} proveedores</span>
+        </div>
+        {% if dia_compra %}
+        <div class="overflow-x-auto">
+            <table class="min-w-full text-xs">
+                <thead><tr class="text-[10px] uppercase tracking-wider text-slate-400 border-b border-slate-100">
+                    <th class="text-left py-2 pr-4">Proveedor</th><th class="text-right py-2 px-3">Artículos</th><th class="text-right py-2 px-3">Entran en la compra</th><th class="text-right py-2 px-3">Valor USD</th><th></th>
+                </tr></thead>
+                <tbody>
+                {% for d in dia_compra %}
+                <tr class="border-b border-slate-50 hover:bg-slate-50">
+                    <td class="py-2 pr-4"><span class="font-mono text-slate-500">{{ d.proveedor_id }}</span> {{ d.proveedor__nombre }}</td>
+                    <td class="text-right px-3 font-mono">{{ d.n }}</td>
+                    <td class="text-right px-3 font-mono font-bold">{{ d.n_comprar }}</td>
+                    <td class="text-right px-3 font-mono" title="{{ d.valor|full_usd }}">{{ d.valor|compact_usd }}</td>
+                    <td class="text-right">
+                        <form method="post" action="{% url 'calculadora:solicitudes_generar' %}">
+                            {% csrf_token %}<input type="hidden" name="proveedor" value="{{ d.proveedor_id }}">
+                            <button class="text-pesco-cyan hover:underline font-bold">Armar solo este</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="text-sm text-slate-500">Hoy no es día de compra de ningún proveedor con artículos bajo su umbral. Las excepciones igual se arman con el botón superior.</p>
+        {% endif %}
+    </div>
+
+    <form method="get" class="bg-white p-5 rounded-3xl shadow-sm border border-slate-200 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 items-end">
+        <div>
+            <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Estado</label>
+            <select name="estado" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm">
+                <option value="">Todos</option>
+                {% for clave, etiqueta in estados %}<option value="{{ clave }}" {% if f.estado == clave %}selected{% endif %}>{{ etiqueta }}</option>{% endfor %}
+            </select>
+        </div>
+        <div>
+            <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Tipo</label>
+            <select name="tipo" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm">
+                <option value="">Todos</option>
+                {% for clave, etiqueta in tipos %}<option value="{{ clave }}" {% if f.tipo == clave %}selected{% endif %}>{{ etiqueta }}</option>{% endfor %}
+            </select>
+        </div>
+        <div>
+            <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Proveedor</label>
+            <input name="proveedor" value="{{ f.proveedor }}" placeholder="Código o nombre" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm">
+        </div>
+        <div>
+            <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Fecha</label>
+            <input type="date" name="fecha" value="{{ f.fecha }}" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm">
+        </div>
+        <div class="flex gap-2">
+            <button class="bg-pesco-cyan text-white text-xs font-bold px-5 py-2.5 rounded-full uppercase tracking-wider">Filtrar</button>
+            <a href="{% url 'calculadora:solicitudes' %}" class="text-xs font-bold text-slate-500 px-3 py-2.5">Limpiar</a>
+        </div>
+    </form>
+
+    {% for estado, lista in grupos.items %}
+    <div class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+        <div class="px-6 py-3 bg-slate-50 border-b border-slate-200 text-xs font-black uppercase tracking-wider text-slate-700">{{ estado }} <span class="text-slate-400 font-mono">({{ lista|length }})</span></div>
+        <div class="overflow-x-auto">
+        <table class="min-w-full text-xs">
+            <thead><tr class="text-[10px] uppercase tracking-wider text-slate-400 border-b border-slate-100">
+                <th class="text-left py-2 px-4">N°</th><th class="text-left py-2 px-3">Fecha</th><th class="text-left py-2 px-3">Tipo</th><th class="text-left py-2 px-3">Proveedor</th>
+                <th class="text-right py-2 px-3">Líneas</th><th class="text-right py-2 px-3">Valor USD</th><th class="text-left py-2 px-3">Revisar</th><th class="text-left py-2 px-3">Aprobada por</th><th></th>
+            </tr></thead>
+            <tbody>
+            {% for s in lista %}
+            <tr class="border-b border-slate-50 hover:bg-slate-50">
+                <td class="py-2.5 px-4 font-mono font-bold">#{{ s.pk }}</td>
+                <td class="px-3 font-mono">{{ s.fecha|date:"d-m-Y" }}</td>
+                <td class="px-3">{% if s.tipo == 'EXCEPCION' %}<span class="bg-red-100 text-red-700 px-2 py-0.5 rounded-full text-[10px] font-black uppercase">Fuera de calendario</span>{% else %}<span class="bg-pesco-lightcyan text-pesco-darkcyan px-2 py-0.5 rounded-full text-[10px] font-black uppercase">Día de compra</span>{% endif %}</td>
+                <td class="px-3"><span class="font-mono text-slate-500">{{ s.proveedor_id|default:"—" }}</span> {{ s.proveedor.nombre|truncatechars:40 }}</td>
+                <td class="px-3 text-right font-mono">{{ s.n_lineas }}</td>
+                <td class="px-3 text-right font-mono font-bold" title="{{ s.valor_total|full_usd }}">{{ s.valor_total|compact_usd }}</td>
+                <td class="px-3 space-x-1 whitespace-nowrap">
+                    {% if s.n_sin_contrato %}<span class="bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full text-[10px] font-bold" title="Líneas sin acuerdo global">{{ s.n_sin_contrato }} sin contrato</span>{% endif %}
+                    {% if s.n_saldo %}<span class="bg-orange-100 text-orange-800 px-2 py-0.5 rounded-full text-[10px] font-bold">{{ s.n_saldo }} sobre saldo</span>{% endif %}
+                    {% if s.n_duplicadas %}<span class="bg-purple-100 text-purple-800 px-2 py-0.5 rounded-full text-[10px] font-bold" title="Otra solicitud abierta del mismo artículo en 15 días">{{ s.n_duplicadas }} duplicadas</span>{% endif %}
+                    {% if s.n_excepciones %}<span class="bg-red-100 text-red-700 px-2 py-0.5 rounded-full text-[10px] font-bold">{{ s.n_excepciones }} excepción</span>{% endif %}
+                </td>
+                <td class="px-3 text-slate-500">{{ s.aprobada_por.get_username|default:"" }}</td>
+                <td class="px-3 text-right whitespace-nowrap">
+                    <a href="{% url 'calculadora:solicitud_detalle' s.pk %}" class="text-pesco-cyan font-bold hover:underline">Revisar →</a>
+                    {% if s.estado == 'APROBADA' %}<a href="{% url 'calculadora:solicitudes_exportar' %}?ids={{ s.pk }}" class="ml-2 text-slate-600 hover:text-slate-900" title="Exportar esta solicitud"><i class="fa-solid fa-file-excel"></i></a>{% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        </div>
+    </div>
+    {% empty %}
+    <div class="bg-white rounded-3xl border border-slate-200 p-10 text-center text-slate-500 text-sm">
+        No hay solicitudes con ese filtro. Usa <b>Armar solicitudes de hoy</b> después de correr la Calculadora.
+    </div>
+    {% endfor %}
+
+    {% if page_obj.paginator.num_pages > 1 %}
+    <div class="flex justify-center gap-2 text-xs font-bold">
+        {% if page_obj.has_previous %}<a class="px-3 py-2 bg-white border rounded-xl" href="?{% for k, v in f.items %}{{ k }}={{ v|urlencode }}&{% endfor %}page={{ page_obj.previous_page_number }}">← Anterior</a>{% endif %}
+        <span class="px-3 py-2">Página {{ page_obj.number }} de {{ page_obj.paginator.num_pages }}</span>
+        {% if page_obj.has_next %}<a class="px-3 py-2 bg-white border rounded-xl" href="?{% for k, v in f.items %}{{ k }}={{ v|urlencode }}&{% endfor %}page={{ page_obj.next_page_number }}">Siguiente →</a>{% endif %}
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

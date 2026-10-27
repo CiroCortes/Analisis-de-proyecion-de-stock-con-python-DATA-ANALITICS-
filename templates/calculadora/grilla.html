@@ -1,0 +1,237 @@
+{% extends 'base.html' %}
+{% load inventory_tags %}
+
+{% block title %}Grilla de Compras | Calculadora Pesco{% endblock %}
+
+{% block content %}
+<div class="w-full space-y-5">
+    {% include 'calculadora/_subnav.html' %}
+
+    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-6 rounded-3xl shadow-sm border border-slate-200 border-l-8 border-l-pesco-cyan">
+        <div>
+            <span class="text-xs font-bold text-pesco-cyan uppercase tracking-wider">Calculadora de Compras</span>
+            <h1 class="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight mt-1">Grilla de compras de la red</h1>
+            <p class="text-sm text-slate-500 mt-1">Una compra por artículo para toda la red, recibida en 013-PP. Haz clic en un artículo para ver su memoria de cálculo.</p>
+        </div>
+        <a href="{% url 'calculadora:grilla_excel' %}?{{ query }}" class="bg-pesco-cyan hover:bg-pesco-darkcyan text-white text-xs font-bold px-6 py-3.5 rounded-full shadow-md transition flex items-center gap-2 uppercase tracking-wider whitespace-nowrap">
+            <i class="fa-solid fa-file-excel"></i> Exportar a Excel
+        </a>
+    </div>
+
+    <!-- KPIs del filtro -->
+    <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 text-center shadow-sm">
+            <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Artículos</div>
+            <div class="text-2xl font-black text-slate-900 mt-1 font-mono">{{ kpi.n|default:0 }}</div>
+        </div>
+        <div class="bg-indigo-50 rounded-2xl border border-indigo-200 p-4 text-center shadow-sm">
+            <div class="text-[10px] font-bold text-indigo-700 uppercase tracking-wider">Unidades a comprar</div>
+            <div class="text-2xl font-black text-indigo-700 mt-1 font-mono">{{ kpi.unidades|default:0|floatformat:"0g" }}</div>
+        </div>
+        <div class="bg-slate-900 rounded-2xl p-4 text-center shadow-sm" title="{{ kpi.valor|full_usd }}">
+            <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">USD a comprar</div>
+            <div class="text-2xl font-black text-white mt-1 font-mono">{{ kpi.valor|compact_usd }}</div>
+        </div>
+        <div class="bg-red-50 rounded-2xl border border-red-200 p-4 text-center shadow-sm">
+            <div class="text-[10px] font-bold text-red-600 uppercase tracking-wider">Urgentes</div>
+            <div class="text-2xl font-black text-red-600 mt-1 font-mono">{{ kpi.urgentes|default:0 }}</div>
+        </div>
+        <div class="bg-orange-50 rounded-2xl border border-orange-200 p-4 text-center shadow-sm">
+            <div class="text-[10px] font-bold text-orange-700 uppercase tracking-wider">Fuera de calendario</div>
+            <div class="text-2xl font-black text-orange-700 mt-1 font-mono">{{ kpi.excepciones|default:0 }}</div>
+        </div>
+    </div>
+
+    <!-- Filtros -->
+    <form method="get" class="bg-white p-5 rounded-3xl shadow-sm border border-slate-200 space-y-3">
+        <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3 text-xs">
+            <div class="col-span-2">
+                <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Buscar</label>
+                <input type="text" name="search" value="{{ f.search }}" placeholder="Código o descripción" class="w-full border border-slate-300 rounded-xl px-3 py-2">
+            </div>
+            <div>
+                <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Acción de compra</label>
+                <select name="compra" class="w-full border border-slate-300 rounded-xl px-3 py-2">
+                    <option value="">Con alguna acción</option>
+                    <option value="comprar" {% if f.compra == 'comprar' %}selected{% endif %}>Compra hoy</option>
+                    <option value="necesita" {% if f.compra == 'necesita' %}selected{% endif %}>Necesita compra</option>
+                    <option value="excepcion" {% if f.compra == 'excepcion' %}selected{% endif %}>Fuera de calendario</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Acción en bodegas</label>
+                <select name="bodega_accion" class="w-full border border-slate-300 rounded-xl px-3 py-2">
+                    <option value="">Todas</option>
+                    {% for k, v in acciones_bodega %}<option value="{{ k }}" {% if f.bodega_accion == k %}selected{% endif %}>{{ v }}</option>{% endfor %}
+                </select>
+            </div>
+            <div>
+                <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Letra</label>
+                <select name="letra" class="w-full border border-slate-300 rounded-xl px-3 py-2">
+                    <option value="">Todas</option>
+                    {% for k, v in letras %}<option value="{{ k }}" {% if f.letra == k %}selected{% endif %}>{{ k }} · {{ v }}</option>{% endfor %}
+                </select>
+            </div>
+            <div>
+                <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Subclase</label>
+                <select name="subclase" class="w-full border border-slate-300 rounded-xl px-3 py-2">
+                    <option value="">Todas</option>
+                    <option value="REGULAR" {% if f.subclase == 'REGULAR' %}selected{% endif %}>Regular</option>
+                    <option value="INTERMITENTE" {% if f.subclase == 'INTERMITENTE' %}selected{% endif %}>Intermitente</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">ABC</label>
+                <select name="abc" class="w-full border border-slate-300 rounded-xl px-3 py-2">
+                    <option value="">Todas</option>
+                    {% for k in 'ABC' %}<option value="{{ k }}" {% if f.abc == k %}selected{% endif %}>{{ k }}</option>{% endfor %}
+                </select>
+            </div>
+            <div>
+                <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Urgencia</label>
+                <select name="urgencia" class="w-full border border-slate-300 rounded-xl px-3 py-2">
+                    <option value="">Todas</option>
+                    {% for k in urgencias %}<option value="{{ k }}" {% if f.urgencia == k %}selected{% endif %}>{{ k }}</option>{% endfor %}
+                </select>
+            </div>
+            <div>
+                <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Método</label>
+                <select name="metodo" class="w-full border border-slate-300 rounded-xl px-3 py-2">
+                    <option value="">Todos</option>
+                    {% for k, v in metodos %}<option value="{{ k }}" {% if f.metodo == k %}selected{% endif %}>{{ v }}</option>{% endfor %}
+                </select>
+            </div>
+            <div class="col-span-2">
+                <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Grupo SAP (familia)</label>
+                <select name="familia" class="w-full border border-slate-300 rounded-xl px-3 py-2">
+                    <option value="">Todos</option>
+                    {% for cod, nombre in familias %}<option value="{{ cod }}" {% if f.familia == cod %}selected{% endif %}>{{ cod }} · {{ nombre }}</option>{% endfor %}
+                </select>
+            </div>
+            <div>
+                <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Proveedor</label>
+                <input type="text" name="proveedor" value="{{ f.proveedor }}" placeholder="Código o nombre" class="w-full border border-slate-300 rounded-xl px-3 py-2">
+            </div>
+            <div>
+                <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Ordenar por</label>
+                <select name="orden" class="w-full border border-slate-300 rounded-xl px-3 py-2">
+                    {% for k, v in ordenes %}<option value="{{ k }}" {% if f.orden == k %}selected{% endif %}>{{ v }}</option>{% endfor %}
+                </select>
+            </div>
+        </div>
+        <div class="flex flex-wrap items-center gap-4 text-xs text-slate-600">
+            <label class="flex items-center gap-1.5"><input type="checkbox" name="todo" value="1" {% if f.todo %}checked{% endif %} class="rounded"> Mostrar también artículos sin acción</label>
+            <label class="flex items-center gap-1.5"><input type="checkbox" name="nuevo" value="1" {% if f.nuevo %}checked{% endif %} class="rounded"> Nuevos</label>
+            <label class="flex items-center gap-1.5"><input type="checkbox" name="inmovilizado" value="1" {% if f.inmovilizado %}checked{% endif %} class="rounded"> Inmovilizados</label>
+            <label class="flex items-center gap-1.5"><input type="checkbox" name="critico" value="1" {% if f.critico %}checked{% endif %} class="rounded"> Críticos</label>
+            <div class="ml-auto flex gap-2">
+                <a href="{% url 'calculadora:grilla' %}" class="px-4 py-2 rounded-full border border-slate-300 font-bold hover:bg-slate-50">Limpiar</a>
+                <button class="bg-pesco-cyan hover:bg-pesco-darkcyan text-white font-bold px-5 py-2 rounded-full"><i class="fa-solid fa-filter"></i> Filtrar</button>
+            </div>
+        </div>
+    </form>
+
+    <!-- Tabla -->
+    <div class="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+        <div class="overflow-x-auto">
+        <table class="min-w-full text-[11px]">
+            <thead class="text-[9px] uppercase tracking-wider text-slate-500">
+                <tr class="bg-slate-100 border-b border-slate-200">
+                    <th colspan="3" class="px-3 py-1.5 text-left">Identificación</th>
+                    <th colspan="3" class="px-3 py-1.5 text-center bg-blue-50 text-blue-700">Consumo</th>
+                    <th colspan="2" class="px-3 py-1.5 text-center">Plazo</th>
+                    <th colspan="4" class="px-3 py-1.5 text-center bg-indigo-50 text-indigo-700">Cálculo</th>
+                    <th colspan="5" class="px-3 py-1.5 text-center">Posición de la red</th>
+                    <th colspan="5" class="px-3 py-1.5 text-center bg-emerald-50 text-emerald-700">Acción</th>
+                </tr>
+                <tr class="bg-slate-50">
+                    <th class="px-3 py-2 text-left">Artículo</th>
+                    <th class="px-2 py-2">Clase</th>
+                    <th class="px-2 py-2 text-left">Proveedor</th>
+                    <th class="px-2 py-2 text-right bg-blue-50/50">Prom/mes</th>
+                    <th class="px-2 py-2 text-right bg-blue-50/50">Variac.</th>
+                    <th class="px-2 py-2 bg-blue-50/50">12 meses</th>
+                    <th class="px-2 py-2 text-right">Días</th>
+                    <th class="px-2 py-2">Origen</th>
+                    <th class="px-2 py-2 text-right bg-indigo-50/50">Factor</th>
+                    <th class="px-2 py-2 text-right bg-indigo-50/50">SS</th>
+                    <th class="px-2 py-2 text-right bg-indigo-50/50">P. pedido</th>
+                    <th class="px-2 py-2 text-right bg-indigo-50/50">Máximo</th>
+                    <th class="px-2 py-2 text-right">Físico</th>
+                    <th class="px-2 py-2 text-right">Tránsito</th>
+                    <th class="px-2 py-2 text-right">Compr.</th>
+                    <th class="px-2 py-2 text-right">Disponible</th>
+                    <th class="px-2 py-2 text-right">Cobert. días</th>
+                    <th class="px-2 py-2 bg-emerald-50/50">Estado</th>
+                    <th class="px-2 py-2 text-right bg-emerald-50/50">Cantidad</th>
+                    <th class="px-2 py-2 text-right bg-emerald-50/50">USD</th>
+                    <th class="px-2 py-2 bg-emerald-50/50">Urgencia</th>
+                    <th class="px-2 py-2 bg-emerald-50/50">Llegada / próx.</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100">
+            {% for r in page_obj %}
+            <tr class="hover:bg-slate-50 align-top">
+                <td class="px-3 py-2 max-w-[16rem]">
+                    <a href="{% url 'calculadora:articulo' r.product_id %}" class="font-mono font-bold text-pesco-cyan hover:underline">{{ r.product_id }}</a>
+                    <div class="text-slate-600 truncate" title="{{ r.product.description }}">{{ r.product.description }}</div>
+                    <div class="text-[9px] text-slate-400 truncate">{{ r.product.sap_group_name }}</div>
+                </td>
+                <td class="px-2 py-2 text-center whitespace-nowrap">
+                    <span class="font-black {% if r.letra == 'R' %}text-blue-700{% elif r.letra == 'E' %}text-purple-700{% elif r.letra == 'P' %}text-amber-700{% else %}text-rose-700{% endif %}">{{ r.letra }}</span>{% if r.subclase %}<span class="text-[9px] text-slate-400">·{{ r.subclase|slice:":3" }}</span>{% endif %}
+                    <span class="ml-1 px-1.5 rounded bg-slate-100 font-bold">{{ r.abc }}</span>
+                    <div class="mt-0.5 space-x-0.5">
+                        {% if r.es_critico %}<span class="text-[9px] px-1 rounded bg-red-100 text-red-700 font-bold">CRÍT</span>{% endif %}
+                        {% if r.es_nuevo %}<span class="text-[9px] px-1 rounded bg-sky-100 text-sky-700 font-bold">NUEVO</span>{% endif %}
+                        {% if r.es_inmovilizado %}<span class="text-[9px] px-1 rounded bg-slate-200 text-slate-600 font-bold">INMOV</span>{% endif %}
+                    </div>
+                </td>
+                <td class="px-2 py-2 max-w-[10rem] truncate text-slate-600" title="{{ r.proveedor.nombre }}">{% if r.proveedor %}{{ r.proveedor.nombre|default:r.proveedor_id }}{% else %}<span class="text-amber-600 font-bold">sin proveedor</span>{% endif %}</td>
+                <td class="px-2 py-2 text-right font-mono bg-blue-50/30">{{ r.consumo_promedio_mes|floatformat:1 }}</td>
+                <td class="px-2 py-2 text-right font-mono bg-blue-50/30">{{ r.variacion_consumo|floatformat:1 }}</td>
+                <td class="px-2 py-2 bg-blue-50/30">{% if r.spark %}<svg width="84" height="22" class="block"><polyline points="{{ r.spark }}" fill="none" stroke="#0099DE" stroke-width="1.5"/></svg>{% else %}<span class="text-slate-300">—</span>{% endif %}</td>
+                <td class="px-2 py-2 text-right font-mono">{{ r.dias_entrega_promedio|floatformat:0 }}</td>
+                <td class="px-2 py-2 text-center"><span class="text-[9px] font-bold px-1.5 py-0.5 rounded {% if r.origen_plazo == 'REAL' %}bg-emerald-100 text-emerald-700{% else %}bg-slate-100 text-slate-500{% endif %}">{{ r.origen_plazo }}{% if r.n_oc %} {{ r.n_oc }}{% endif %}</span></td>
+                <td class="px-2 py-2 text-right font-mono bg-indigo-50/30">{{ r.factor_servicio|floatformat:2 }}</td>
+                <td class="px-2 py-2 text-right font-mono bg-indigo-50/30">{{ r.stock_seguridad }}</td>
+                <td class="px-2 py-2 text-right font-mono bg-indigo-50/30">{{ r.punto_pedido }}</td>
+                <td class="px-2 py-2 text-right font-mono bg-indigo-50/30 font-bold">{{ r.stock_maximo }}</td>
+                <td class="px-2 py-2 text-right font-mono">{{ r.stock_fisico|floatformat:"0g" }}</td>
+                <td class="px-2 py-2 text-right font-mono">{{ r.en_transito|floatformat:"0g" }}</td>
+                <td class="px-2 py-2 text-right font-mono">{{ r.comprometido|floatformat:"0g" }}</td>
+                <td class="px-2 py-2 text-right font-mono font-bold {% if r.disponible_futuro <= 0 %}text-red-600{% endif %}">{{ r.disponible_futuro|floatformat:"0g" }}</td>
+                <td class="px-2 py-2 text-right font-mono">{% if r.cobertura_dias is not None %}{{ r.cobertura_dias|floatformat:0 }}{% else %}—{% endif %}</td>
+                <td class="px-2 py-2 bg-emerald-50/30 whitespace-nowrap">
+                    {% if r.comprar %}<span class="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-bold text-[9px]">COMPRA HOY</span>
+                    {% elif r.excepcion %}<span class="px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 font-bold text-[9px]">EXCEPCIÓN</span>
+                        <div class="text-[9px] text-slate-500 mt-0.5">{{ r.causa_txt }}</div>
+                    {% elif r.necesita_compra %}<span class="px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 font-bold text-[9px]">ESPERA DÍA</span>
+                    {% else %}<span class="text-slate-400">—</span>{% endif %}
+                </td>
+                <td class="px-2 py-2 text-right font-mono font-bold bg-emerald-50/30">{% if r.cant_accion %}{{ r.cant_accion|floatformat:"0g" }}{% elif r.necesita_compra %}<span class="text-slate-400" title="Cantidad que entrará el día de compra">{{ r.cantidad_sugerida }}</span>{% else %}—{% endif %}</td>
+                <td class="px-2 py-2 text-right font-mono bg-emerald-50/30">{% if r.valor_accion %}{{ r.valor_accion|compact_usd }}{% else %}—{% endif %}</td>
+                <td class="px-2 py-2 text-center bg-emerald-50/30">
+                    <span class="px-2 py-0.5 rounded-full text-[9px] font-black {% if r.urgencia == 'URGENTE' %}bg-red-100 text-red-700{% elif r.urgencia == 'MEDIO' %}bg-amber-100 text-amber-700{% else %}bg-emerald-100 text-emerald-700{% endif %}">{{ r.urgencia }}</span>
+                </td>
+                <td class="px-2 py-2 bg-emerald-50/30 whitespace-nowrap text-slate-600">
+                    {{ r.fecha_llegada_estimada|date:"d-m" }}<div class="text-[9px] text-slate-400">próx. {{ r.proxima_fecha_compra|date:"d-m" }}</div>
+                </td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="22" class="px-4 py-8 text-center text-slate-500">Sin artículos para este filtro. {% if not f.todo %}Prueba con «Mostrar también artículos sin acción».{% endif %}</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        </div>
+        {% if page_obj.paginator.num_pages > 1 %}
+        <div class="flex justify-between items-center px-5 py-3 border-t border-slate-100 text-xs">
+            <span class="text-slate-500">Página {{ page_obj.number }} de {{ page_obj.paginator.num_pages }}</span>
+            <div class="flex gap-2">
+                {% if page_obj.has_previous %}<a href="?{{ query }}&page=1" class="px-3 py-1.5 rounded-full border border-slate-300 hover:bg-slate-50">« Primera</a><a href="?{{ query }}&page={{ page_obj.previous_page_number }}" class="px-3 py-1.5 rounded-full border border-slate-300 hover:bg-slate-50">‹ Anterior</a>{% endif %}
+                {% if page_obj.has_next %}<a href="?{{ query }}&page={{ page_obj.next_page_number }}" class="px-3 py-1.5 rounded-full border border-slate-300 hover:bg-slate-50">Siguiente ›</a><a href="?{{ query }}&page={{ page_obj.paginator.num_pages }}" class="px-3 py-1.5 rounded-full border border-slate-300 hover:bg-slate-50">Última »</a>{% endif %}
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

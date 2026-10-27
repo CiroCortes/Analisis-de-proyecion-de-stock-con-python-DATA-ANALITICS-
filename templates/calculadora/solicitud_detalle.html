@@ -1,0 +1,153 @@
+{% extends 'base.html' %}
+{% load inventory_tags %}
+
+{% block title %}Solicitud #{{ s.pk }} | Calculadora Pesco{% endblock %}
+
+{% block content %}
+<div class="w-full space-y-6">
+    {% include 'calculadora/_subnav.html' %}
+
+    <div class="bg-white p-6 sm:p-7 rounded-3xl shadow-sm border border-slate-200 border-l-8 {% if s.tipo == 'EXCEPCION' %}border-l-red-500{% else %}border-l-pesco-cyan{% endif %}">
+        <div class="flex flex-col lg:flex-row justify-between gap-4">
+            <div>
+                <a href="{% url 'calculadora:solicitudes' %}" class="text-xs font-bold text-pesco-cyan hover:underline">← Solicitudes</a>
+                <h1 class="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight mt-1">Solicitud #{{ s.pk }} · {{ s.proveedor.nombre|default:s.proveedor_id }}</h1>
+                <div class="flex flex-wrap gap-2 mt-2 text-[10px] font-black uppercase">
+                    <span class="px-3 py-1 rounded-full {% if s.estado == 'BORRADOR' %}bg-amber-100 text-amber-800{% elif s.estado == 'APROBADA' %}bg-emerald-100 text-emerald-800{% elif s.estado == 'EXPORTADA' %}bg-slate-200 text-slate-700{% else %}bg-rose-100 text-rose-700{% endif %}">{{ s.get_estado_display }}</span>
+                    <span class="px-3 py-1 rounded-full {% if s.tipo == 'EXCEPCION' %}bg-red-100 text-red-700{% else %}bg-pesco-lightcyan text-pesco-darkcyan{% endif %}">{{ s.get_tipo_display }}</span>
+                    <span class="px-3 py-1 rounded-full bg-slate-100 text-slate-600">Entrega {{ s.bodega_entrega }}</span>
+                    <span class="px-3 py-1 rounded-full bg-slate-100 text-slate-600">Fecha {{ s.fecha|date:"d-m-Y" }}</span>
+                </div>
+                <p class="text-xs text-slate-500 mt-2">
+                    Proveedor <span class="font-mono">{{ s.proveedor_id }}</span>{% if s.proveedor.es_importado %} · importado ({{ s.proveedor.pais }}){% endif %}
+                    {% if s.creada_por %} · armada por {{ s.creada_por.get_username }}{% endif %}
+                    {% if s.aprobada_por %} · aprobada por {{ s.aprobada_por.get_username }} el {{ s.aprobada_en|date:"d-m-Y H:i" }}{% endif %}
+                    {% if s.comentario %} · {{ s.comentario }}{% endif %}
+                </p>
+            </div>
+            <div class="grid grid-cols-3 gap-3 text-center self-start">
+                <div class="bg-slate-50 rounded-2xl border border-slate-200 px-4 py-3">
+                    <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Líneas</div>
+                    <div class="text-2xl font-black font-mono">{{ n_activas }}</div>
+                </div>
+                <div class="bg-slate-900 rounded-2xl px-4 py-3" title="{{ valor_total|full_usd }}">
+                    <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Valor USD</div>
+                    <div class="text-2xl font-black font-mono text-white">{{ valor_total|compact_usd }}</div>
+                </div>
+                <div class="bg-amber-50 rounded-2xl border border-amber-200 px-4 py-3">
+                    <div class="text-[10px] font-bold text-amber-700 uppercase tracking-wider">Sin contrato</div>
+                    <div class="text-2xl font-black font-mono text-amber-800">{{ n_sin_contrato }}</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {% if hay_duplicadas and editable %}
+    <div class="bg-purple-50 border border-purple-200 text-purple-900 text-xs rounded-2xl px-5 py-3 flex items-start gap-2">
+        <i class="fa-solid fa-clone mt-0.5"></i>
+        <span>Algunas líneas tienen <b>otra solicitud abierta del mismo artículo creada en los últimos 15 días</b>. Revisa que no estés comprando dos veces; para aprobar tendrás que confirmarlo.</span>
+    </div>
+    {% endif %}
+    {% if n_saldo %}
+    <div class="bg-orange-50 border border-orange-200 text-orange-900 text-xs rounded-2xl px-5 py-3">
+        <i class="fa-solid fa-scale-unbalanced mr-1"></i> {{ n_saldo }} línea(s) piden más que el saldo del acuerdo global. Ajusta la cantidad o gestiona la ampliación del contrato.
+    </div>
+    {% endif %}
+
+    <div class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+        <div class="overflow-x-auto">
+        <table class="min-w-full text-xs">
+            <thead><tr class="text-[10px] uppercase tracking-wider text-slate-400 bg-slate-50 border-b border-slate-200">
+                <th class="text-left py-3 px-4">Artículo</th>
+                <th class="text-left py-3 px-3">Urgencia</th>
+                <th class="text-right py-3 px-3">Sugerida</th>
+                <th class="text-left py-3 px-3 min-w-[260px]">Cantidad final y motivo</th>
+                <th class="text-right py-3 px-3">Precio USD</th>
+                <th class="text-right py-3 px-3">Valor USD</th>
+                <th class="text-left py-3 px-3">Contrato</th>
+                <th class="text-left py-3 px-3">Notas</th>
+            </tr></thead>
+            <tbody>
+            {% for l in lineas %}
+            <tr class="border-b border-slate-50 align-top {% if l.estado == 'DESCARTADA' %}opacity-50 bg-slate-50{% elif l.excepcion %}bg-red-50/40{% endif %}">
+                <td class="py-3 px-4">
+                    <a href="{% url 'calculadora:articulo' l.product_id %}" class="font-mono font-bold text-pesco-cyan hover:underline">{{ l.product_id }}</a>
+                    <div class="text-slate-500 max-w-xs">{{ l.product.description|truncatechars:60 }}</div>
+                </td>
+                <td class="px-3 py-3">
+                    <span class="px-2 py-0.5 rounded-full text-[10px] font-black {% if l.urgencia == 'URGENTE' %}bg-red-100 text-red-700{% elif l.urgencia == 'MEDIO' %}bg-amber-100 text-amber-800{% else %}bg-emerald-100 text-emerald-700{% endif %}">{{ l.urgencia }}</span>
+                </td>
+                <td class="px-3 py-3 text-right font-mono">{{ l.cantidad_sugerida|floatformat:"-2" }}</td>
+                <td class="px-3 py-3">
+                    {% if editable %}
+                    <form method="post" action="{% url 'calculadora:solicitud_linea' s.pk l.pk %}" class="flex flex-col gap-1">
+                        {% csrf_token %}
+                        <div class="flex gap-1">
+                            <input name="cantidad" type="number" step="any" min="0" value="{{ l.cantidad_final|stringformat:'g' }}" class="w-24 border border-slate-200 rounded-lg px-2 py-1 font-mono text-right" title="0 = descartar la línea">
+                            <button class="bg-slate-800 hover:bg-slate-900 text-white rounded-lg px-3 text-[10px] font-bold uppercase">Guardar</button>
+                        </div>
+                        <input name="motivo" value="{{ l.motivo }}" placeholder="Motivo (obligatorio si cambias la cantidad)" class="border border-slate-200 rounded-lg px-2 py-1">
+                    </form>
+                    {% else %}
+                    <span class="font-mono font-bold">{{ l.cantidad_final|floatformat:"-2" }}</span>
+                    {% if l.motivo %}<div class="text-slate-500">{{ l.motivo }}</div>{% endif %}
+                    {% endif %}
+                    {% if l.estado == 'DESCARTADA' %}<div class="text-rose-600 font-bold mt-1">Descartada</div>{% elif l.modificada %}<div class="text-amber-700 font-bold mt-1">Modificada por el comprador</div>{% endif %}
+                </td>
+                <td class="px-3 py-3 text-right font-mono">{{ l.precio_unitario|floatformat:2 }}</td>
+                <td class="px-3 py-3 text-right font-mono font-bold">{{ l.valor|compact_usd }}</td>
+                <td class="px-3 py-3 whitespace-nowrap">
+                    {% if l.sin_contrato %}<span class="bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full text-[10px] font-bold">Sin contrato</span>
+                    {% else %}<span class="font-mono">{{ l.nro_acuerdo }}</span>{% if l.linea_acuerdo is not None %} / {{ l.linea_acuerdo }}{% endif %}{% endif %}
+                    {% if l.saldo_insuficiente %}<div class="mt-1"><span class="bg-orange-100 text-orange-800 px-2 py-0.5 rounded-full text-[10px] font-bold">Sobre saldo</span></div>{% endif %}
+                </td>
+                <td class="px-3 py-3 space-y-1">
+                    {% if l.excepcion %}<div><span class="bg-red-100 text-red-700 px-2 py-0.5 rounded-full text-[10px] font-black">Fuera de calendario</span> <span class="text-slate-600">{{ l.causa_excepcion|default:"" }}</span></div>{% endif %}
+                    {% if l.duplicada_reciente %}<div><span class="bg-purple-100 text-purple-800 px-2 py-0.5 rounded-full text-[10px] font-bold">Otra solicitud en 15 días</span></div>{% endif %}
+                </td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="8" class="text-center py-10 text-slate-500">La solicitud no tiene líneas.</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        </div>
+    </div>
+
+    {% if editable %}
+    <div class="grid md:grid-cols-2 gap-4">
+        <form method="post" action="{% url 'calculadora:solicitud_aprobar' s.pk %}" class="bg-white p-5 rounded-3xl shadow-sm border border-emerald-200 space-y-3">
+            {% csrf_token %}
+            <h2 class="text-sm font-black text-emerald-800 uppercase tracking-wider"><i class="fa-solid fa-check-double mr-1"></i> Aprobar solicitud</h2>
+            <p class="text-xs text-slate-500">Al aprobar, las cantidades pasan a contar como tránsito en el próximo cálculo y la solicitud queda lista para exportar.</p>
+            {% if hay_duplicadas %}
+            <label class="flex items-start gap-2 text-xs text-purple-900">
+                <input type="checkbox" name="confirmar_duplicadas" value="1" class="mt-0.5">
+                Revisé las líneas con otra solicitud abierta en los últimos 15 días y confirmo que no es una compra duplicada.
+            </label>
+            {% endif %}
+            {% if puede_aprobar %}
+            <button class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-6 py-3 rounded-full uppercase tracking-wider">Aprobar</button>
+            {% else %}
+            <p class="text-xs font-bold text-slate-500"><i class="fa-solid fa-lock mr-1"></i> Solo el Jefe o el Administrador de Abastecimiento pueden aprobar.</p>
+            {% endif %}
+        </form>
+        <form method="post" action="{% url 'calculadora:solicitud_descartar' s.pk %}" class="bg-white p-5 rounded-3xl shadow-sm border border-rose-200 space-y-3">
+            {% csrf_token %}
+            <h2 class="text-sm font-black text-rose-700 uppercase tracking-wider"><i class="fa-solid fa-ban mr-1"></i> Descartar solicitud completa</h2>
+            <input name="motivo" required placeholder="Motivo del descarte" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm">
+            <button class="bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold px-6 py-3 rounded-full uppercase tracking-wider">Descartar</button>
+        </form>
+    </div>
+    {% elif s.estado == 'APROBADA' %}
+    <div class="flex flex-wrap gap-3">
+        <a href="{% url 'calculadora:solicitudes_exportar' %}?ids={{ s.pk }}" class="bg-slate-900 hover:bg-slate-700 text-white text-xs font-bold px-6 py-3 rounded-full uppercase tracking-wider"><i class="fa-solid fa-file-excel mr-1"></i> Exportar para DTW</a>
+        <form method="post" action="{% url 'calculadora:solicitud_descartar' s.pk %}" class="flex gap-2">
+            {% csrf_token %}
+            <input name="motivo" required placeholder="Motivo para descartar" class="border border-slate-200 rounded-xl px-3 py-2 text-xs">
+            <button class="text-rose-600 text-xs font-bold uppercase">Descartar</button>
+        </form>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

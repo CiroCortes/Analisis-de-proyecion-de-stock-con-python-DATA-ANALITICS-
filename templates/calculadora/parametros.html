@@ -1,0 +1,144 @@
+{% extends 'base.html' %}
+{% load inventory_tags %}
+
+{% block title %}Parámetros | Calculadora Pesco{% endblock %}
+
+{% block content %}
+<div class="w-full space-y-6">
+    {% include 'calculadora/_subnav.html' %}
+
+    <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 bg-white p-6 sm:p-7 rounded-3xl shadow-sm border border-slate-200 border-l-8 border-l-pesco-cyan">
+        <div>
+            <span class="text-xs font-bold text-pesco-cyan uppercase tracking-wider">Calculadora de compras · §7</span>
+            <h1 class="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight mt-1">Parámetros del cálculo</h1>
+            <p class="text-sm text-slate-500 mt-1 max-w-3xl">Ningún valor está escrito en el código: todos se cambian aquí y el próximo cálculo usa el valor nuevo. Cada parámetro tiene un valor <b>general</b> que se puede ajustar por familia (grupo SAP), proveedor, artículo o bodega; manda el más específico. Todo cambio queda registrado.</p>
+            {% if not puede_editar %}<p class="text-xs font-bold text-slate-500 mt-2"><i class="fa-solid fa-lock mr-1"></i> Solo lectura: solo el Administrador de Abastecimiento puede cambiar parámetros.</p>{% endif %}
+        </div>
+        <a href="{% url 'calculadora:parametros_historial_excel' %}" class="bg-slate-900 hover:bg-slate-700 text-white text-xs font-bold px-5 py-3 rounded-full shadow-md uppercase tracking-wider whitespace-nowrap"><i class="fa-solid fa-file-excel mr-1"></i> Registro de cambios</a>
+    </div>
+
+    {% if simulacion %}
+    <div class="bg-indigo-50 border border-indigo-200 rounded-3xl p-6 space-y-3">
+        <h2 class="text-sm font-black text-indigo-900 uppercase tracking-wider"><i class="fa-solid fa-flask mr-1"></i> Simulación: {{ simulacion.etiqueta }} de {{ simulacion.actual }} a {{ simulacion.nuevo }}</h2>
+        <p class="text-xs text-indigo-800">Se recalculó toda la red dos veces en memoria, con el valor actual y con el nuevo. <b>Nada se guardó.</b> Si te convence, guarda el valor en la tabla de abajo.</p>
+        <div class="overflow-x-auto">
+        <table class="min-w-full text-xs bg-white rounded-2xl">
+            <thead><tr class="text-[10px] uppercase tracking-wider text-slate-400 border-b border-slate-100">
+                <th class="text-left py-2 px-4">Indicador</th><th class="text-right py-2 px-3">Con el valor actual</th><th class="text-right py-2 px-3">Con el valor nuevo</th><th class="text-right py-2 px-3">Diferencia</th>
+            </tr></thead>
+            <tbody>
+            {% for m in simulacion.metricas %}
+            <tr class="border-b border-slate-50">
+                <td class="py-2 px-4 font-bold text-slate-700">{{ m.etiqueta }}</td>
+                {% if m.dinero %}
+                <td class="px-3 text-right font-mono" title="{{ m.antes|full_usd }}">{{ m.antes|compact_usd }}</td>
+                <td class="px-3 text-right font-mono" title="{{ m.despues|full_usd }}">{{ m.despues|compact_usd }}</td>
+                <td class="px-3 text-right font-mono font-bold {% if m.diferencia > 0 %}text-red-600{% elif m.diferencia < 0 %}text-emerald-600{% endif %}">{% if m.diferencia > 0 %}+{% endif %}{{ m.diferencia|compact_usd }}{% if m.pct is not None %} ({{ m.pct }}%){% endif %}</td>
+                {% else %}
+                <td class="px-3 text-right font-mono">{{ m.antes }}</td>
+                <td class="px-3 text-right font-mono">{{ m.despues }}</td>
+                <td class="px-3 text-right font-mono font-bold">{% if m.diferencia > 0 %}+{% endif %}{{ m.diferencia }}</td>
+                {% endif %}
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+        <div class="px-6 py-3 bg-slate-50 border-b border-slate-200 text-[11px] text-slate-500">
+            <i class="fa-solid fa-flask text-indigo-500 mr-1"></i> <b>Simular</b> recalcula toda la red con el valor nuevo sin guardarlo (tarda unos 20 a 30 segundos) y muestra cuánto cambia el valor del stock máximo y de la compra. Solo para valores generales.
+        </div>
+        <div class="overflow-x-auto">
+        <table class="min-w-full text-xs">
+            <thead><tr class="text-[10px] uppercase tracking-wider text-slate-400 border-b border-slate-200">
+                <th class="text-left py-3 px-4">Parámetro</th><th class="text-right py-3 px-3">Valor general</th><th class="text-right py-3 px-3">Inicial</th>
+                <th class="text-left py-3 px-3">Rango</th><th class="text-left py-3 px-3">Ajustes por nivel</th>
+                {% if puede_editar %}<th class="text-left py-3 px-3 min-w-[420px]">Cambiar</th>{% endif %}
+            </tr></thead>
+            <tbody>
+            {% for p in filas %}
+            <tr id="p-{{ p.clave }}" class="border-b border-slate-50 align-top {% if p.modificado %}bg-amber-50/40{% endif %}">
+                <td class="py-3 px-4">
+                    <div class="font-bold text-slate-800">{{ p.etiqueta }}</div>
+                    <div class="font-mono text-[10px] text-slate-400">{{ p.clave }}</div>
+                </td>
+                <td class="px-3 py-3 text-right font-mono font-black {% if p.modificado %}text-amber-700{% endif %}">{% if p.es_bool %}{{ p.valor|yesno:"Sí,No" }}{% else %}{{ p.valor }}{% endif %}</td>
+                <td class="px-3 py-3 text-right font-mono text-slate-400">{% if p.es_bool %}{{ p.defecto|yesno:"Sí,No" }}{% else %}{{ p.defecto }}{% endif %}</td>
+                <td class="px-3 py-3 font-mono text-slate-500 whitespace-nowrap">{% if p.es_bool %}Sí / No{% else %}{{ p.minimo }} – {{ p.maximo }}{% endif %}</td>
+                <td class="px-3 py-3">
+                    <div class="text-[10px] text-slate-400 mb-1">Niveles: {{ p.niveles|join:", "|lower }}</div>
+                    {% for e in p.excepciones %}
+                    <div class="flex items-center gap-2 mb-1">
+                        <span class="bg-slate-100 rounded-full px-2 py-0.5 text-[10px] font-bold">{{ e.nivel|lower }} {{ e.ambito }} = <span class="font-mono">{{ e.valor }}</span></span>
+                        {% if puede_editar %}
+                        <form method="post" action="{% url 'calculadora:parametros' %}">
+                            {% csrf_token %}
+                            <input type="hidden" name="clave" value="{{ p.clave }}"><input type="hidden" name="nivel" value="{{ e.nivel }}">
+                            <input type="hidden" name="ambito" value="{{ e.ambito }}"><input type="hidden" name="accion" value="borrar">
+                            <input type="hidden" name="motivo" value="Quitar ajuste de nivel">
+                            <button class="text-rose-500 hover:text-rose-700" title="Quitar este ajuste"><i class="fa-solid fa-xmark"></i></button>
+                        </form>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                </td>
+                {% if puede_editar %}
+                <td class="px-3 py-3">
+                    <form method="post" action="{% url 'calculadora:parametros' %}" class="grid grid-cols-6 gap-1">
+                        {% csrf_token %}
+                        <input type="hidden" name="clave" value="{{ p.clave }}">
+                        <select name="nivel" class="col-span-2 border border-slate-200 rounded-lg px-2 py-1">
+                            {% for n in p.niveles %}<option value="{{ n }}">{{ n|lower|capfirst }}</option>{% endfor %}
+                        </select>
+                        {% if p.niveles|length > 1 %}
+                        <input name="ambito" placeholder="Aplica a (si no es general)" title="{% for k, v in nivel_ayuda.items %}{{ k|lower|capfirst }}: {{ v }}. {% endfor %}" class="col-span-4 border border-slate-200 rounded-lg px-2 py-1">
+                        {% else %}<span class="col-span-4"></span>{% endif %}
+                        {% if p.es_bool %}
+                        <select name="valor" class="col-span-2 border border-slate-200 rounded-lg px-2 py-1"><option value="true" {% if p.valor %}selected{% endif %}>Sí</option><option value="false" {% if not p.valor %}selected{% endif %}>No</option></select>
+                        {% else %}
+                        <input name="valor" required value="{{ p.valor|stringformat:'s' }}" class="col-span-2 border border-slate-200 rounded-lg px-2 py-1 font-mono text-right">
+                        {% endif %}
+                        <input name="motivo" placeholder="Motivo del cambio" class="col-span-4 border border-slate-200 rounded-lg px-2 py-1">
+                        <button class="col-span-3 bg-slate-800 hover:bg-slate-900 text-white rounded-lg py-1 text-[10px] font-bold uppercase">Guardar</button>
+                        <button formaction="{% url 'calculadora:parametros_simular' %}" class="col-span-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg py-1 text-[10px] font-bold uppercase" title="Recalcula sin guardar, con el valor como general" onclick="this.textContent='Simulando…'">Simular</button>
+                    </form>
+                </td>
+                {% endif %}
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        </div>
+    </div>
+
+    <div class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+        <div class="px-6 py-3 bg-slate-50 border-b border-slate-200 text-xs font-black uppercase tracking-wider text-slate-700">Últimos cambios</div>
+        <div class="overflow-x-auto">
+        <table class="min-w-full text-xs">
+            <thead><tr class="text-[10px] uppercase tracking-wider text-slate-400 border-b border-slate-100">
+                <th class="text-left py-2 px-4">Fecha</th><th class="text-left py-2 px-3">Parámetro</th><th class="text-left py-2 px-3">Nivel</th>
+                <th class="text-right py-2 px-3">Antes</th><th class="text-right py-2 px-3">Después</th><th class="text-left py-2 px-3">Usuario</th><th class="text-left py-2 px-3">Motivo</th>
+            </tr></thead>
+            <tbody>
+            {% for c in cambios %}
+            <tr class="border-b border-slate-50">
+                <td class="py-2 px-4 font-mono whitespace-nowrap">{{ c.fecha|date:"d-m-Y H:i" }}</td>
+                <td class="px-3 font-mono">{{ c.clave }}</td>
+                <td class="px-3">{{ c.nivel|lower }} {{ c.ambito }}</td>
+                <td class="px-3 text-right font-mono text-slate-500">{{ c.valor_anterior|default:"—" }}</td>
+                <td class="px-3 text-right font-mono font-bold">{{ c.valor_nuevo|default:"(quitado)" }}</td>
+                <td class="px-3">{{ c.usuario.get_username|default:"" }}</td>
+                <td class="px-3 text-slate-600">{{ c.motivo }}</td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="7" class="text-center py-6 text-slate-500">Todavía no hay cambios: se usan los valores iniciales del documento.</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

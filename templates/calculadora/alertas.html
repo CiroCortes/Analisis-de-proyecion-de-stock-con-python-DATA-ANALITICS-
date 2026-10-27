@@ -1,0 +1,115 @@
+{% extends 'base.html' %}
+
+{% block title %}Alertas | Calculadora Pesco{% endblock %}
+
+{% block content %}
+<div class="w-full space-y-6">
+    {% include 'calculadora/_subnav.html' %}
+
+    <div class="bg-white p-6 sm:p-7 rounded-3xl shadow-sm border border-slate-200 border-l-8 border-l-pesco-cyan">
+        <span class="text-xs font-bold text-pesco-cyan uppercase tracking-wider">Calculadora de compras · §8</span>
+        <h1 class="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight mt-1">Alertas</h1>
+        <p class="text-sm text-slate-500 mt-1 max-w-3xl">Cada cálculo revisa las reglas de alerta. Si la condición sigue, la alerta se mantiene con su estado y comentario; si deja de cumplirse queda <b>no vigente</b>. Marca como <i>revisada</i> lo que ya viste y como <i>resuelta</i> lo que ya gestionaste.</p>
+    </div>
+
+    <div class="flex flex-wrap gap-2">
+        <a href="?{% if f.vigente != '1' %}vigente={{ f.vigente }}&{% endif %}estado={{ f.estado }}&severidad={{ f.severidad }}&search={{ f.search|urlencode }}"
+           class="px-3 py-1.5 rounded-full text-xs font-bold border {% if not f.tipo %}bg-pesco-cyan text-white border-pesco-cyan{% else %}bg-white text-slate-600 border-slate-200 hover:border-pesco-cyan{% endif %}">
+            Todas <span class="font-mono">{{ total }}</span>
+        </a>
+        {% for c in conteo %}
+        <a href="?tipo={{ c.tipo }}&vigente={{ f.vigente }}&estado={{ f.estado }}&severidad={{ f.severidad }}&search={{ f.search|urlencode }}"
+           class="px-3 py-1.5 rounded-full text-xs font-bold border {% if f.tipo == c.tipo %}bg-pesco-cyan text-white border-pesco-cyan{% else %}bg-white text-slate-600 border-slate-200 hover:border-pesco-cyan{% endif %}">
+            {{ c.etiqueta }} <span class="font-mono">{{ c.n }}</span>
+        </a>
+        {% endfor %}
+    </div>
+
+    <form method="get" class="bg-white p-5 rounded-3xl shadow-sm border border-slate-200 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4 items-end">
+        <input type="hidden" name="tipo" value="{{ f.tipo }}">
+        <div>
+            <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Estado</label>
+            <select name="estado" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm">
+                <option value="">Abiertas (nueva y revisada)</option>
+                {% for c, e in estados %}<option value="{{ c }}" {% if f.estado == c %}selected{% endif %}>{{ e }}</option>{% endfor %}
+            </select>
+        </div>
+        <div>
+            <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Severidad</label>
+            <select name="severidad" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm">
+                <option value="">Todas</option>
+                {% for s in severidades %}<option {% if f.severidad == s %}selected{% endif %}>{{ s }}</option>{% endfor %}
+            </select>
+        </div>
+        <div>
+            <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Vigencia</label>
+            <select name="vigente" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm">
+                <option value="1" {% if f.vigente == '1' %}selected{% endif %}>Vigentes</option>
+                <option value="0" {% if f.vigente == '0' %}selected{% endif %}>No vigentes</option>
+                <option value="" {% if f.vigente == '' %}selected{% endif %}>Todas</option>
+            </select>
+        </div>
+        <div class="lg:col-span-2">
+            <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Buscar</label>
+            <input name="search" value="{{ f.search }}" placeholder="Artículo, proveedor o texto" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm">
+        </div>
+        <div class="flex gap-2">
+            <button class="bg-pesco-cyan text-white text-xs font-bold px-5 py-2.5 rounded-full uppercase tracking-wider">Filtrar</button>
+            <a href="{% url 'calculadora:alertas' %}" class="text-xs font-bold text-slate-500 px-3 py-2.5">Limpiar</a>
+        </div>
+    </form>
+
+    <div class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+        <div class="overflow-x-auto">
+        <table class="min-w-full text-xs">
+            <thead><tr class="text-[10px] uppercase tracking-wider text-slate-400 bg-slate-50 border-b border-slate-200">
+                <th class="text-left py-3 px-4">Severidad</th><th class="text-left py-3 px-3">Tipo</th><th class="text-left py-3 px-3">Artículo</th>
+                <th class="text-left py-3 px-3">Mensaje</th><th class="text-left py-3 px-3 min-w-[340px]">Seguimiento</th>
+            </tr></thead>
+            <tbody>
+            {% for a in page_obj %}
+            <tr class="border-b border-slate-50 align-top {% if not a.vigente %}opacity-60{% endif %}">
+                <td class="py-3 px-4">
+                    <span class="px-2 py-0.5 rounded-full text-[10px] font-black {% if a.severidad == 'ALTA' %}bg-red-100 text-red-700{% elif a.severidad == 'MEDIA' %}bg-amber-100 text-amber-800{% else %}bg-slate-100 text-slate-600{% endif %}">{{ a.severidad }}</span>
+                    {% if not a.vigente %}<div class="text-[10px] text-slate-400 mt-1">No vigente</div>{% endif %}
+                </td>
+                <td class="px-3 py-3 font-bold text-slate-700 whitespace-nowrap">{{ a.get_tipo_display }}
+                    <div class="text-[10px] text-slate-400 font-normal">{{ a.creada_en|date:"d-m-Y" }}</div></td>
+                <td class="px-3 py-3">
+                    {% if a.product_id %}
+                    <a href="{% url 'calculadora:articulo' a.product_id %}" class="font-mono font-bold text-pesco-cyan hover:underline">{{ a.product_id }}</a>
+                    <div class="text-slate-500 max-w-[220px]">{{ a.product.description|truncatechars:45 }}</div>
+                    {% endif %}
+                    {% if a.proveedor_codigo %}<div class="text-[10px] text-slate-400">Prov. {{ a.proveedor_codigo }}</div>{% endif %}
+                </td>
+                <td class="px-3 py-3 text-slate-700 max-w-md">{{ a.mensaje }}</td>
+                <td class="px-3 py-3">
+                    <form method="post" action="{% url 'calculadora:alerta_actualizar' a.pk %}" class="grid grid-cols-2 gap-1">
+                        {% csrf_token %}
+                        <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                        <select name="estado" class="border border-slate-200 rounded-lg px-2 py-1">
+                            {% for c, e in estados %}<option value="{{ c }}" {% if a.estado == c %}selected{% endif %}>{{ e }}</option>{% endfor %}
+                        </select>
+                        <input name="responsable" value="{{ a.responsable }}" placeholder="Responsable" class="border border-slate-200 rounded-lg px-2 py-1">
+                        <input name="comentario" value="{{ a.comentario }}" placeholder="Comentario" class="col-span-2 border border-slate-200 rounded-lg px-2 py-1">
+                        <button class="col-span-2 bg-slate-800 hover:bg-slate-900 text-white rounded-lg py-1 text-[10px] font-bold uppercase">Guardar</button>
+                    </form>
+                </td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="5" class="text-center py-10 text-slate-500">Sin alertas con este filtro.</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        </div>
+    </div>
+
+    {% if page_obj.paginator.num_pages > 1 %}
+    <div class="flex justify-center gap-2 text-xs font-bold">
+        {% if page_obj.has_previous %}<a class="px-3 py-2 bg-white border rounded-xl" href="?{{ query_sin_pagina }}&page={{ page_obj.previous_page_number }}">← Anterior</a>{% endif %}
+        <span class="px-3 py-2">Página {{ page_obj.number }} de {{ page_obj.paginator.num_pages }}</span>
+        {% if page_obj.has_next %}<a class="px-3 py-2 bg-white border rounded-xl" href="?{{ query_sin_pagina }}&page={{ page_obj.next_page_number }}">Siguiente →</a>{% endif %}
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,258 @@
+{% extends 'base.html' %}
+{% load inventory_tags %}
+
+{% block title %}{{ p.code }} · Memoria de cálculo | Calculadora Pesco{% endblock %}
+
+{% block content %}
+<div class="w-full space-y-6">
+    {% include 'calculadora/_subnav.html' %}
+
+    <!-- Encabezado -->
+    <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 border-l-8 border-l-pesco-cyan">
+        <div class="flex flex-col lg:flex-row justify-between gap-4">
+            <div>
+                <a href="{% url 'calculadora:grilla' %}" class="text-xs font-bold text-pesco-cyan hover:underline">← Grilla de compras</a>
+                <h1 class="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight mt-1"><span class="font-mono">{{ p.code }}</span> · {{ p.description }}</h1>
+                <p class="text-sm text-slate-500 mt-1">{{ p.sap_group_code }} {{ p.sap_group_name }} · {{ e.segmento|title }} ·
+                    Proveedor: {% if proveedor %}<span class="font-bold text-slate-700">{{ proveedor.nombre|default:proveedor.codigo }}</span> ({{ proveedor.codigo }}){% else %}<span class="text-amber-600 font-bold">sin proveedor</span>{% endif %}
+                    · Próxima compra: <span class="font-bold">{{ proxima|date:"d-m-Y" }}</span>{% if e.es_dia_compra %} <span class="text-emerald-600 font-bold">(hoy)</span>{% endif %}</p>
+                <div class="flex flex-wrap gap-2 mt-3">
+                    <span class="px-3 py-1 rounded-full text-xs font-black {% if r.letra == 'R' %}bg-blue-100 text-blue-800{% elif r.letra == 'E' %}bg-purple-100 text-purple-800{% elif r.letra == 'P' %}bg-amber-100 text-amber-800{% else %}bg-rose-100 text-rose-800{% endif %}">{{ r.letra }}{% if r.clasificacion.subclase %} · {{ r.clasificacion.subclase|title }}{% endif %}</span>
+                    <span class="px-3 py-1 rounded-full text-xs font-black bg-slate-100 text-slate-700">ABC {{ e.abc }}</span>
+                    <span class="px-3 py-1 rounded-full text-xs font-black bg-slate-100 text-slate-700">Servicio {{ r.nivel_servicio|floatformat:"-3" }}</span>
+                    {% if e.es_critico %}<span class="px-3 py-1 rounded-full text-xs font-black bg-red-100 text-red-700">Crítico</span>{% endif %}
+                    {% if r.es_nuevo %}<span class="px-3 py-1 rounded-full text-xs font-black bg-sky-100 text-sky-700">Nuevo</span>{% endif %}
+                    {% if r.es_inmovilizado %}<span class="px-3 py-1 rounded-full text-xs font-black bg-slate-200 text-slate-700">Inmovilizado</span>{% endif %}
+                    <span class="px-3 py-1 rounded-full text-xs font-black {% if r.compra.urgencia == 'URGENTE' %}bg-red-100 text-red-700{% elif r.compra.urgencia == 'MEDIO' %}bg-amber-100 text-amber-700{% else %}bg-emerald-100 text-emerald-700{% endif %}">{{ r.compra.urgencia }}</span>
+                </div>
+                <p class="text-xs text-slate-500 mt-2">{{ r.clasificacion.motivo }}</p>
+            </div>
+            <div class="grid grid-cols-2 gap-3 text-center min-w-[18rem]">
+                <div class="rounded-2xl bg-slate-50 border border-slate-200 p-3"><div class="text-[10px] font-bold text-slate-400 uppercase">Disponible red</div><div class="text-xl font-black font-mono {% if r.compra.disponible_futuro <= 0 %}text-red-600{% endif %}">{{ r.compra.disponible_futuro|floatformat:"0g" }}</div></div>
+                <div class="rounded-2xl bg-slate-50 border border-slate-200 p-3"><div class="text-[10px] font-bold text-slate-400 uppercase">SS · ROP · Máx</div><div class="text-xl font-black font-mono">{{ r.politica.stock_seguridad }} · {{ r.politica.punto_pedido }} · {{ r.politica.stock_maximo }}</div></div>
+                <div class="rounded-2xl {% if r.cantidad_a_comprar %}bg-emerald-50 border-emerald-200{% else %}bg-slate-50 border-slate-200{% endif %} border p-3"><div class="text-[10px] font-bold text-slate-400 uppercase">A comprar hoy</div><div class="text-xl font-black font-mono">{{ r.cantidad_a_comprar }}</div>
+                    <div class="text-[10px] text-slate-500">{% if r.compra.comprar %}día de compra{% elif r.excepcion.excepcion %}fuera de calendario{% elif r.compra.necesita_compra %}entra el {{ proxima|date:"d-m" }} ({{ r.compra.cantidad_sugerida }} u){% else %}no necesita{% endif %}</div></div>
+                <div class="rounded-2xl bg-slate-50 border border-slate-200 p-3"><div class="text-[10px] font-bold text-slate-400 uppercase">Cobertura</div><div class="text-xl font-black font-mono">{% if r.compra.cobertura_dias is not None %}{{ r.compra.cobertura_dias|floatformat:0 }} d{% else %}—{% endif %}</div></div>
+            </div>
+        </div>
+        {% if not guardado %}
+        <div class="mt-4 bg-amber-50 border border-amber-200 rounded-2xl p-3 text-xs text-amber-900">
+            <i class="fa-solid fa-circle-info"></i> Este artículo no está en la última corrida (su grupo está excluido, está inactivo o se creó después). El cálculo de abajo se hace en vivo, solo como referencia.
+        </div>
+        {% endif %}
+        {% if r.avisos %}
+        <div class="mt-4 flex flex-wrap gap-2">{% for a in r.avisos %}<span class="text-xs px-3 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-800"><i class="fa-solid fa-triangle-exclamation"></i> {{ a }}</span>{% endfor %}</div>
+        {% endif %}
+    </div>
+
+    <!-- Graficos -->
+    <div class="grid grid-cols-1 xl:grid-cols-2 gap-6">
+        <div class="bg-white rounded-3xl border border-slate-200 shadow-sm p-5">
+            <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Consumo mensual de la red (meses cerrados)</div>
+            <div class="h-72 mt-2"><canvas id="chartConsumo"></canvas></div>
+        </div>
+        <div class="bg-white rounded-3xl border border-slate-200 shadow-sm p-5">
+            <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Stock proyectado {{ r.serie|length }} días con llegadas de OC</div>
+            {% if grafico_proyeccion %}
+            <div class="h-72 mt-2"><canvas id="chartProyeccion"></canvas></div>
+            {% else %}
+            <p class="text-sm text-slate-500 mt-6">No se proyecta: el artículo no se repone por fórmula (método {{ r.politica.metodo }}) o no tiene consumo ni compromisos.</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Memoria de calculo -->
+    <div class="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+        <div class="px-5 py-4 border-b border-slate-100">
+            <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Memoria de cálculo paso a paso</div>
+            <div class="text-xs text-slate-500">Fórmulas como en Excel, con los números de este artículo. Calculado en vivo con los datos y parámetros actuales.</div>
+        </div>
+        <div class="overflow-x-auto">
+        <table class="min-w-full text-xs">
+            <thead class="bg-slate-50 text-[10px] uppercase text-slate-500"><tr><th class="px-4 py-2 text-left">Etapa</th><th class="px-3 py-2 text-left">Campo</th><th class="px-3 py-2 text-left">Cómo se calcula</th><th class="px-3 py-2 text-right">Resultado</th></tr></thead>
+            <tbody class="divide-y divide-slate-100">
+            {% for m in memoria %}
+            <tr class="{% ifchanged m.seccion %}border-t-2 border-slate-200{% endifchanged %}">
+                <td class="px-4 py-2 font-black text-slate-400 uppercase text-[10px]">{% ifchanged m.seccion %}{{ m.seccion }}{% endifchanged %}</td>
+                <td class="px-3 py-2 font-mono font-bold text-slate-700">{{ m.campo }}</td>
+                <td class="px-3 py-2 font-mono text-slate-600">{{ m.formula }}</td>
+                <td class="px-3 py-2 text-right font-mono font-black text-slate-900 whitespace-nowrap">{{ m.valor }}</td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        </div>
+        <div class="px-5 py-3 border-t border-slate-100 text-[11px] text-slate-500">
+            Consumo usado (antiguo → reciente):
+            {% for mes, v in meses_consumo %}<span class="inline-block mr-2 font-mono">{{ mes }}: <b>{{ v|floatformat:"-2" }}</b></span>{% endfor %}
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
+        <!-- Posicion por bodega -->
+        <div class="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden xl:col-span-2">
+            <div class="px-5 py-4 border-b border-slate-100 text-[10px] font-bold text-slate-400 uppercase tracking-wider">Posición y acción por bodega (última corrida)</div>
+            <div class="overflow-x-auto">
+            <table class="min-w-full text-xs">
+                <thead class="bg-slate-50 text-[10px] uppercase text-slate-500"><tr>
+                    <th class="px-4 py-2 text-left">Bodega</th><th class="px-2 text-right">Físico</th><th class="px-2 text-right">Tránsito</th><th class="px-2 text-right">Compr.</th><th class="px-2 text-right">Disponible</th><th class="px-2 text-right">Objetivo</th><th class="px-2 text-right">Faltante</th><th class="px-2 text-right">Excedente</th><th class="px-3 text-left">Acción</th><th class="px-3 text-left">Desde</th></tr></thead>
+                <tbody class="divide-y divide-slate-100">
+                {% for b in bodegas %}
+                <tr>
+                    <td class="px-4 py-2 font-mono font-bold">{{ b.warehouse.code }}<div class="text-[10px] text-slate-400 font-sans font-normal">{{ b.warehouse.zone_label }}</div></td>
+                    <td class="px-2 text-right font-mono">{{ b.stock_fisico|floatformat:"0g" }}</td>
+                    <td class="px-2 text-right font-mono">{{ b.en_transito|floatformat:"0g" }}</td>
+                    <td class="px-2 text-right font-mono">{{ b.comprometido|floatformat:"0g" }}</td>
+                    <td class="px-2 text-right font-mono font-bold {% if b.disponible_futuro < 0 %}text-red-600{% endif %}">{{ b.disponible_futuro|floatformat:"0g" }}</td>
+                    <td class="px-2 text-right font-mono">{{ b.objetivo|floatformat:"0g" }}</td>
+                    <td class="px-2 text-right font-mono">{{ b.faltante|floatformat:"0g" }}</td>
+                    <td class="px-2 text-right font-mono">{{ b.excedente|floatformat:"0g" }}</td>
+                    <td class="px-3"><span class="px-2 py-0.5 rounded-full text-[10px] font-bold {% if b.accion == 'TRASLADAR' %}bg-cyan-100 text-cyan-700{% elif b.accion == 'TRASLADAR_PARCIAL' %}bg-sky-100 text-sky-700{% elif b.accion == 'ESPERA_COMPRA' %}bg-amber-100 text-amber-700{% else %}bg-slate-100 text-slate-500{% endif %}">{{ b.accion }}</span>
+                        {% if b.espera_compra %}<div class="text-[10px] text-amber-700">espera {{ b.espera_compra|floatformat:"0g" }} u</div>{% endif %}
+                        {% if b.sucursales_con_stock %}<div class="text-[10px] text-slate-500">stock libre en {{ b.sucursales_con_stock|join:", " }}</div>{% endif %}</td>
+                    <td class="px-3 font-mono text-[11px]">{% for o in b.origenes %}{{ o.0 }}: {{ o.1|floatformat:"0g" }}{% if not forloop.last %}, {% endif %}{% endfor %}</td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="10" class="px-4 py-4 text-center text-slate-500">Sin stock, tránsito ni compromisos en bodegas de la red.</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+            </div>
+            {% if traslados %}
+            <div class="px-5 py-3 border-t border-slate-100 text-xs">
+                <span class="font-bold text-slate-600">Traslados sugeridos:</span>
+                {% for t in traslados %}<span class="inline-block mr-3 font-mono">{{ t.origen.code }} → {{ t.destino.code }}: <b>{{ t.cantidad|floatformat:"0g" }}</b> u ({{ t.urgencia }})</span>{% endfor %}
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Marcas del articulo -->
+        <div class="bg-white rounded-3xl border border-slate-200 shadow-sm p-5">
+            <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3">Marcas del área usuaria</div>
+            {% if puede_editar %}
+            <form method="post" action="{% url 'calculadora:articulo_config' p.code %}" class="space-y-3 text-xs">
+                {% csrf_token %}
+                <label class="flex items-center gap-2"><input type="checkbox" name="es_estrategico" {% if config.es_estrategico %}checked{% endif %} class="rounded"> <span><b>Estratégico (E)</b>: se mantiene siempre</span></label>
+                <div><label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">Mínimo declarado (E)</label><input type="text" name="minimo_declarado" value="{{ config.minimo_declarado|default:0|floatformat:'-2' }}" class="w-full border border-slate-300 rounded-xl px-3 py-2 font-mono"></div>
+                <label class="flex items-center gap-2"><input type="checkbox" name="es_critico" {% if config.es_critico %}checked{% endif %} class="rounded"> <span><b>Crítico</b>: nivel de servicio mínimo 97%</span></label>
+                <div><label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">Mínimo manual si es nuevo</label><input type="text" name="minimo_nuevo" value="{{ config.minimo_nuevo|default:0|floatformat:'-2' }}" class="w-full border border-slate-300 rounded-xl px-3 py-2 font-mono"></div>
+                <div><label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">Proveedor (código, si difiere de SAP)</label><input type="text" name="proveedor" value="{{ config.proveedor_id|default:'' }}" class="w-full border border-slate-300 rounded-xl px-3 py-2 font-mono"></div>
+                <div><label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">Nota</label><input type="text" name="nota" value="{{ config.nota|default:'' }}" maxlength="255" class="w-full border border-slate-300 rounded-xl px-3 py-2"></div>
+                <button class="w-full bg-pesco-cyan hover:bg-pesco-darkcyan text-white font-bold px-5 py-2.5 rounded-full">Guardar marcas</button>
+                {% if config.actualizado_por %}<p class="text-[10px] text-slate-400">Última edición: {{ config.actualizado_por.username }}, {{ config.actualizado_en|date:"d-m-Y H:i" }}</p>{% endif %}
+            </form>
+            {% else %}
+            <ul class="text-xs space-y-1.5 text-slate-600">
+                <li>Estratégico: <b>{% if config.es_estrategico %}Sí (mínimo {{ config.minimo_declarado|floatformat:"-2" }}){% else %}No{% endif %}</b></li>
+                <li>Crítico: <b>{% if config.es_critico %}Sí{% else %}No{% endif %}</b></li>
+                <li>Mínimo nuevo: <b>{{ config.minimo_nuevo|default:0|floatformat:"-2" }}</b></li>
+                <li>Proveedor manual: <b>{{ config.proveedor_id|default:"—" }}</b></li>
+            </ul>
+            <p class="text-[11px] text-slate-400 mt-3">Solo el administrador de Abastecimiento puede cambiar estas marcas.</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 xl:grid-cols-2 gap-6">
+        <!-- OC abiertas -->
+        <div class="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+            <div class="px-5 py-3 border-b border-slate-100 text-[10px] font-bold text-slate-400 uppercase tracking-wider">OC abiertas ({{ oc_abiertas|length }})</div>
+            <table class="min-w-full text-xs"><thead class="bg-slate-50 text-[10px] uppercase text-slate-500"><tr><th class="px-4 py-1.5 text-left">OC</th><th class="text-left">Bodega</th><th class="text-left">Proveedor</th><th class="text-left">Emisión</th><th class="text-left">Comprometida</th><th class="text-right px-4">Pendiente</th></tr></thead>
+            <tbody class="divide-y divide-slate-100">
+            {% for o in oc_abiertas %}<tr class="{% if o.fecha_comprometida and o.fecha_comprometida < e.hoy %}bg-red-50{% endif %}"><td class="px-4 py-1.5 font-mono">{{ o.nro_oc }}</td><td class="font-mono">{{ o.bodega }}</td><td class="font-mono">{{ o.proveedor_codigo }}</td><td>{{ o.fecha_oc|date:"d-m-Y" }}</td><td>{{ o.fecha_comprometida|date:"d-m-Y" }}{% if o.fecha_comprometida and o.fecha_comprometida < e.hoy %} <span class="text-red-600 font-bold">atrasada</span>{% endif %}</td><td class="text-right px-4 font-mono font-bold">{{ o.cantidad_pendiente|floatformat:"-2" }}</td></tr>
+            {% empty %}<tr><td colspan="6" class="px-4 py-3 text-slate-500 text-center">Sin OC abiertas.</td></tr>{% endfor %}
+            </tbody></table>
+        </div>
+        <!-- Compromisos -->
+        <div class="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+            <div class="px-5 py-3 border-b border-slate-100 text-[10px] font-bold text-slate-400 uppercase tracking-wider">Compromisos abiertos (PC y OF)</div>
+            <div class="max-h-72 overflow-y-auto">
+            <table class="min-w-full text-xs"><thead class="bg-slate-50 text-[10px] uppercase text-slate-500 sticky top-0"><tr><th class="px-4 py-1.5 text-left">Tipo</th><th class="text-left">Número</th><th class="text-left">Bodega</th><th class="text-left">Fecha</th><th class="text-right px-4">Cantidad</th></tr></thead>
+            <tbody class="divide-y divide-slate-100">
+            {% for c in compromisos %}<tr><td class="px-4 py-1.5 font-bold">{{ c.tipo }}</td><td class="font-mono">{{ c.numero }}</td><td class="font-mono">{{ c.bodega }}</td><td>{{ c.fecha|date:"d-m-Y" }}</td><td class="text-right px-4 font-mono font-bold">{{ c.cantidad|floatformat:"-2" }}</td></tr>
+            {% empty %}<tr><td colspan="5" class="px-4 py-3 text-slate-500 text-center">Sin compromisos abiertos.</td></tr>{% endfor %}
+            </tbody></table>
+            </div>
+        </div>
+        <!-- Plazos OC -->
+        <div class="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+            <div class="px-5 py-3 border-b border-slate-100 text-[10px] font-bold text-slate-400 uppercase tracking-wider">Plazos reales de OC recibidas</div>
+            <table class="min-w-full text-xs"><thead class="bg-slate-50 text-[10px] uppercase text-slate-500"><tr><th class="px-4 py-1.5 text-left">OC</th><th class="text-left">Proveedor</th><th class="text-left">Fecha OC</th><th class="text-left">Entrada</th><th class="text-right px-4">Días</th></tr></thead>
+            <tbody class="divide-y divide-slate-100">
+            {% for pl in plazos %}<tr class="{% if pl.dias_entrega < 0 or pl.dias_entrega > 365 %}bg-red-50{% endif %}"><td class="px-4 py-1.5 font-mono">{{ pl.nro_oc }}</td><td class="font-mono">{{ pl.proveedor_codigo }}</td><td>{{ pl.fecha_oc|date:"d-m-Y" }}</td><td>{{ pl.fecha_entrada|date:"d-m-Y" }}</td><td class="text-right px-4 font-mono font-bold">{{ pl.dias_entrega }}</td></tr>
+            {% empty %}<tr><td colspan="5" class="px-4 py-3 text-slate-500 text-center">Sin historia de OC (se usa el plazo del maestro). Falta la consulta 9.</td></tr>{% endfor %}
+            </tbody></table>
+        </div>
+        <!-- Historial -->
+        <div class="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+            <div class="px-5 py-3 border-b border-slate-100 text-[10px] font-bold text-slate-400 uppercase tracking-wider">Historial mensual de clasificación</div>
+            <table class="min-w-full text-xs"><thead class="bg-slate-50 text-[10px] uppercase text-slate-500"><tr><th class="px-4 py-1.5 text-left">Mes</th><th>Letra</th><th>Antes</th><th>ABC</th><th class="text-right">Máx</th><th class="text-right">Valor máx</th><th class="text-left px-3">Motivo</th></tr></thead>
+            <tbody class="divide-y divide-slate-100">
+            {% for h in historial %}<tr><td class="px-4 py-1.5">{{ h.mes|date:"m-Y" }}</td><td class="text-center font-black">{{ h.letra }}</td><td class="text-center text-slate-500">{{ h.letra_anterior|default:"—" }}</td><td class="text-center">{{ h.abc }}</td><td class="text-right font-mono">{{ h.stock_maximo }}</td><td class="text-right font-mono">{{ h.valor_stock_maximo|compact_usd }}</td><td class="px-3 text-slate-500">{{ h.motivo }}</td></tr>
+            {% empty %}<tr><td colspan="7" class="px-4 py-3 text-slate-500 text-center">Sin historial.</td></tr>{% endfor %}
+            </tbody></table>
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 xl:grid-cols-2 gap-6">
+        <div class="bg-white rounded-3xl border border-slate-200 shadow-sm p-5">
+            <div class="flex justify-between items-center mb-3"><div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Alertas vigentes</div><a href="{% url 'calculadora:alertas' %}?search={{ p.code }}" class="text-xs font-bold text-pesco-cyan hover:underline">Gestionar →</a></div>
+            <ul class="space-y-2 text-xs">
+            {% for a in alertas %}<li class="flex gap-2"><span class="px-2 py-0.5 rounded-full text-[10px] font-bold h-fit {% if a.severidad == 'ALTA' %}bg-red-100 text-red-700{% elif a.severidad == 'MEDIA' %}bg-amber-100 text-amber-700{% else %}bg-slate-100 text-slate-600{% endif %}">{{ a.get_tipo_display }}</span><span class="text-slate-700">{{ a.mensaje }}</span><span class="ml-auto text-slate-400">{{ a.get_estado_display }}</span></li>
+            {% empty %}<li class="text-slate-500">Sin alertas.</li>{% endfor %}
+            </ul>
+        </div>
+        <div class="bg-white rounded-3xl border border-slate-200 shadow-sm p-5">
+            <div class="flex justify-between items-center mb-3"><div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Eventos comerciales</div><a href="{% url 'calculadora:eventos' %}" class="text-xs font-bold text-pesco-cyan hover:underline">Registrar evento →</a></div>
+            <ul class="space-y-2 text-xs">
+            {% for ev in eventos %}<li><span class="font-bold">{{ ev.get_tipo_display }}</span> {{ ev.mes_inicio|date:"m-Y" }} a {{ ev.mes_fin|date:"m-Y" }} · {% if ev.cantidad_adicional %}{{ ev.cantidad_adicional|floatformat:"-2" }} u{% else %}{{ ev.porcentaje|floatformat:"-1" }}%{% endif %} · <span class="text-slate-500">{{ ev.get_estado_display }}</span><div class="text-slate-500">{{ ev.comentario|truncatechars:140 }}</div></li>
+            {% empty %}<li class="text-slate-500">Sin eventos registrados para este artículo.</li>{% endfor %}
+            </ul>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+    var c = {{ grafico_consumo|safe }};
+    var n = c.labels.length;
+    function constante(v) { var a = []; for (var i = 0; i < n; i++) a.push(v); return a; }
+    var datasets = [
+        { type: 'bar', label: 'Venta / entrega', data: c.venta, backgroundColor: '#0099DE', stack: 'c' },
+        { type: 'bar', label: 'Consumo de OF', data: c.of, backgroundColor: '#F59E0B', stack: 'c' },
+        { type: 'bar', label: 'Otras salidas', data: c.salida, backgroundColor: '#94A3B8', stack: 'c' },
+        { type: 'line', label: 'Promedio mes', data: constante(c.promedio), borderColor: '#1E293B', borderWidth: 2, pointRadius: 0 },
+        { type: 'line', label: 'Rango normal (± variación)', data: constante(c.banda_alta), borderColor: 'rgba(30,41,59,0.25)', borderDash: [4, 4], pointRadius: 0, fill: false },
+        { type: 'line', label: '', data: constante(c.banda_baja), borderColor: 'rgba(30,41,59,0.25)', borderDash: [4, 4], pointRadius: 0, fill: '-1', backgroundColor: 'rgba(0,153,222,0.06)' }
+    ];
+    if (c.ajustado !== null) datasets.push({ type: 'line', label: 'Consumo ajustado (evento)', data: constante(c.ajustado), borderColor: '#9333EA', borderWidth: 2, pointRadius: 0 });
+    new Chart(document.getElementById('chartConsumo'), {
+        data: { labels: c.labels, datasets: datasets },
+        options: { maintainAspectRatio: false, scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true } },
+                   plugins: { legend: { labels: { filter: function (i) { return i.text !== ''; }, boxWidth: 12, font: { size: 10 } } } } }
+    });
+
+    {% if grafico_proyeccion %}
+    var p = {{ grafico_proyeccion|safe }};
+    var m = p.labels.length;
+    function linea(v) { var a = []; for (var i = 0; i < m; i++) a.push(v); return a; }
+    new Chart(document.getElementById('chartProyeccion'), {
+        type: 'line',
+        data: { labels: p.labels, datasets: [
+            { label: 'Stock proyectado', data: p.serie, borderColor: '#0099DE', backgroundColor: 'rgba(0,153,222,0.08)', fill: true, pointRadius: 0, borderWidth: 2 },
+            { label: 'Stock máximo', data: linea(p.max), borderColor: '#10B981', borderDash: [6, 4], pointRadius: 0, borderWidth: 1.5 },
+            { label: 'Punto de pedido', data: linea(p.rop), borderColor: '#F59E0B', borderDash: [6, 4], pointRadius: 0, borderWidth: 1.5 },
+            { label: 'Stock de seguridad', data: linea(p.ss), borderColor: '#EF4444', borderDash: [6, 4], pointRadius: 0, borderWidth: 1.5 },
+            { label: 'Llegada de OC', data: p.llegadas, showLine: false, pointRadius: 6, pointStyle: 'triangle', pointBackgroundColor: '#10B981', borderColor: '#10B981' },
+            { label: 'Quiebre', data: p.quiebre, showLine: false, pointRadius: 7, pointStyle: 'crossRot', borderColor: '#DC2626', borderWidth: 3 }
+        ] },
+        options: { maintainAspectRatio: false, spanGaps: false, interaction: { mode: 'index', intersect: false },
+                   scales: { x: { ticks: { maxTicksLimit: 12 } } },
+                   plugins: { legend: { labels: { boxWidth: 12, font: { size: 10 } } } } }
+    });
+    {% endif %}
+})();
+</script>
+{% endblock %}

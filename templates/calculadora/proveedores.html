@@ -1,0 +1,76 @@
+{% extends 'base.html' %}
+
+{% block title %}Proveedores y calendario | Calculadora Pesco{% endblock %}
+
+{% block content %}
+<div class="w-full space-y-6">
+    {% include 'calculadora/_subnav.html' %}
+
+    <div class="bg-white p-6 sm:p-7 rounded-3xl shadow-sm border border-slate-200 border-l-8 border-l-pesco-cyan">
+        <span class="text-xs font-bold text-pesco-cyan uppercase tracking-wider">Calculadora de compras · §4.6.1</span>
+        <h1 class="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight mt-1">Proveedores y calendario de compra</h1>
+        <p class="text-sm text-slate-500 mt-1 max-w-3xl">Cada proveedor se compra en días fijos: una <b>fecha de compra</b> de referencia y una <b>frecuencia</b> (general: {{ frecuencia_general }} días). Un día de compra que cae en fin de semana pasa al lunes. Si no defines la fecha, el sistema reparte a los proveedores en la semana según su código para que no caigan todos el mismo día.</p>
+        {% if not puede_editar %}<p class="text-xs font-bold text-slate-500 mt-2"><i class="fa-solid fa-lock mr-1"></i> Solo lectura: solo el Administrador de Abastecimiento cambia el calendario.</p>{% endif %}
+    </div>
+
+    <form method="get" class="flex flex-wrap gap-3 items-center">
+        <input name="search" value="{{ search }}" placeholder="Código, nombre o comprador" class="border border-slate-200 rounded-xl px-3 py-2 text-sm bg-white w-72">
+        <label class="text-xs text-slate-600 flex items-center gap-1"><input type="checkbox" name="todos" value="1" {% if todos %}checked{% endif %}> Incluir proveedores sin artículos ni OC</label>
+        <button class="bg-pesco-cyan text-white text-xs font-bold px-5 py-2.5 rounded-full uppercase tracking-wider">Filtrar</button>
+    </form>
+
+    <div class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+        <div class="overflow-x-auto">
+        <table class="min-w-full text-xs">
+            <thead><tr class="text-[10px] uppercase tracking-wider text-slate-400 bg-slate-50 border-b border-slate-200">
+                <th class="text-left py-3 px-4">Proveedor</th><th class="text-left py-3 px-3">Origen</th>
+                <th class="text-right py-3 px-3">Artículos</th><th class="text-right py-3 px-3">Bajo umbral</th><th class="text-right py-3 px-3">OC abiertas</th>
+                <th class="text-left py-3 px-3">Próxima compra</th>
+                <th class="text-left py-3 px-3 min-w-[380px]">Calendario (frecuencia · fecha de compra · comprador)</th>
+            </tr></thead>
+            <tbody>
+            {% for r in filas %}
+            <tr class="border-b border-slate-50 align-top {% if r.es_hoy %}bg-pesco-lightcyan/40{% endif %}">
+                <td class="py-3 px-4"><span class="font-mono text-slate-500">{{ r.p.codigo }}</span><div class="font-bold text-slate-800">{{ r.p.nombre|default:"(sin nombre)" }}</div></td>
+                <td class="px-3 py-3">{% if r.p.pais %}{% if r.p.es_importado %}<span class="bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full text-[10px] font-bold">Importado · {{ r.p.pais }}</span>{% else %}<span class="bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full text-[10px] font-bold">Nacional</span>{% endif %}{% else %}<span class="text-slate-400">—</span>{% endif %}</td>
+                <td class="px-3 py-3 text-right font-mono">{{ r.p.n_articulos }}</td>
+                <td class="px-3 py-3 text-right font-mono font-bold {% if r.p.n_comprar %}text-red-600{% endif %}">{{ r.p.n_comprar }}</td>
+                <td class="px-3 py-3 text-right font-mono">{{ r.n_oc }}</td>
+                <td class="px-3 py-3 whitespace-nowrap">
+                    <span class="font-mono font-bold">{{ r.proxima|date:"D d-m" }}</span>
+                    {% if r.es_hoy %}<span class="ml-1 bg-pesco-cyan text-white px-2 py-0.5 rounded-full text-[10px] font-black">HOY</span>{% endif %}
+                    <div class="text-[10px] text-slate-400">cada {{ r.frecuencia }} días{% if not r.ancla_definida %} · fecha automática{% endif %}</div>
+                </td>
+                <td class="px-3 py-3">
+                    {% if puede_editar %}
+                    <form method="post" class="flex flex-wrap gap-1 items-center">
+                        {% csrf_token %}
+                        <input type="hidden" name="codigo" value="{{ r.p.codigo }}">
+                        <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                        <input name="frecuencia_compra_dias" type="number" min="1" max="180" value="{{ r.p.frecuencia_compra_dias|default_if_none:'' }}" placeholder="{{ frecuencia_general }}" class="w-16 border border-slate-200 rounded-lg px-2 py-1 font-mono text-right" title="Días entre compras (vacío = general)">
+                        <input name="fecha_ancla" type="date" value="{{ r.p.fecha_ancla|date:'Y-m-d' }}" class="border border-slate-200 rounded-lg px-2 py-1" title="Un día de compra; los siguientes cada frecuencia (vacío = automática)">
+                        <input name="comprador" value="{{ r.p.comprador }}" placeholder="Comprador" class="w-28 border border-slate-200 rounded-lg px-2 py-1">
+                        <button class="bg-slate-800 hover:bg-slate-900 text-white rounded-lg px-3 py-1 text-[10px] font-bold uppercase">Guardar</button>
+                    </form>
+                    {% else %}
+                    {{ r.frecuencia }} días · {{ r.ancla|date:"d-m-Y" }}{% if r.p.comprador %} · {{ r.p.comprador }}{% endif %}
+                    {% endif %}
+                </td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="7" class="text-center py-10 text-slate-500">No hay proveedores con ese filtro. Se crean al cargar OC y entradas de mercancía.</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        </div>
+    </div>
+
+    {% if page_obj.paginator.num_pages > 1 %}
+    <div class="flex justify-center gap-2 text-xs font-bold">
+        {% if page_obj.has_previous %}<a class="px-3 py-2 bg-white border rounded-xl" href="?search={{ search|urlencode }}{% if todos %}&todos=1{% endif %}&page={{ page_obj.previous_page_number }}">← Anterior</a>{% endif %}
+        <span class="px-3 py-2">Página {{ page_obj.number }} de {{ page_obj.paginator.num_pages }}</span>
+        {% if page_obj.has_next %}<a class="px-3 py-2 bg-white border rounded-xl" href="?search={{ search|urlencode }}{% if todos %}&todos=1{% endif %}&page={{ page_obj.next_page_number }}">Siguiente →</a>{% endif %}
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

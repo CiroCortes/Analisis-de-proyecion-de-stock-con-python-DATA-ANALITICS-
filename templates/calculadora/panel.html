@@ -1,0 +1,236 @@
+{% extends 'base.html' %}
+{% load inventory_tags %}
+
+{% block title %}Panel Calculadora de Compras | Pesco S.A.{% endblock %}
+
+{% block content %}
+<div class="w-full space-y-6">
+    {% include 'calculadora/_subnav.html' %}
+
+    <!-- Encabezado -->
+    <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 bg-white p-6 sm:p-7 rounded-3xl shadow-sm border border-slate-200 border-l-8 border-l-pesco-cyan">
+        <div>
+            <span class="text-xs font-bold text-pesco-cyan uppercase tracking-wider">Calculadora de Compras · Compra única para la red</span>
+            <h1 class="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight mt-1">Panel de la corrida</h1>
+            {% if ultima_ok %}
+            <p class="text-sm text-slate-500 mt-1">
+                Último cálculo: <span class="font-bold text-slate-700">{{ ultima_ok.fecha_calculo|date:"d-m-Y" }}</span>
+                ({{ ultima_ok.inicio|date:"d-m-Y H:i" }}, {{ resumen.segundos|default:"—" }} s
+                {% if ultima_ok.usuario %}· {{ ultima_ok.usuario.get_full_name|default:ultima_ok.usuario.username }}{% endif %}).
+                Fuente de consumo: <span class="font-mono font-bold">{{ ultima_ok.fuente_consumo|default:"—" }}</span>
+            </p>
+            {% else %}
+            <p class="text-sm text-slate-500 mt-1">Todavía no hay un cálculo terminado. Ejecuta el primero con el botón.</p>
+            {% endif %}
+            {% if corrida and corrida.estado == 'ERROR' %}
+            <p class="text-sm text-red-600 font-bold mt-2"><i class="fa-solid fa-triangle-exclamation"></i> La última corrida ({{ corrida.inicio|date:"d-m H:i" }}) falló: {{ corrida.error|truncatechars:200 }}</p>
+            {% endif %}
+        </div>
+        <form method="post" action="{% url 'calculadora:correr' %}" class="flex flex-col items-end gap-2" onsubmit="this.querySelector('button').disabled=true;this.querySelector('button').innerHTML='<i class=\'fa-solid fa-spinner fa-spin\'></i> Calculando...';">
+            {% csrf_token %}
+            <label class="text-xs text-slate-500 flex items-center gap-2 {% if not puede_correr %}opacity-50{% endif %}">
+                <input type="checkbox" name="recargar" value="1" {% if not puede_correr %}disabled{% endif %} class="rounded">
+                Recargar antes los TXT de <span class="font-mono">data/</span>
+            </label>
+            <button type="submit" {% if not puede_correr %}disabled title="Solo Jefe o Administrador de Abastecimiento"{% endif %}
+                class="bg-pesco-cyan hover:bg-pesco-darkcyan disabled:bg-slate-300 disabled:cursor-not-allowed text-white text-xs font-bold px-6 py-3.5 rounded-full shadow-md transition flex items-center gap-2 uppercase tracking-wider whitespace-nowrap">
+                <i class="fa-solid fa-arrows-rotate"></i> Recalcular ahora
+            </button>
+        </form>
+    </div>
+
+    <!-- Avisos de datos -->
+    {% if fuente_provisional %}
+    <div class="bg-amber-50 border border-amber-300 text-amber-900 rounded-2xl p-4 text-sm flex gap-3">
+        <i class="fa-solid fa-triangle-exclamation text-amber-500 text-lg mt-0.5"></i>
+        <div>
+            <div class="font-black">Consumo provisional</div>
+            El consumo se reconstruyó con los PC y OF cerrados porque falta la consulta 8 (<span class="font-mono">Consumo Mensual.txt</span>, movimientos OINM).
+            Los resultados sirven para revisar la lógica, pero no para comprar a ciegas: no incluyen salidas de mercancía ni devoluciones.
+        </div>
+    </div>
+    {% endif %}
+    {% if brechas %}
+    <div class="bg-white rounded-3xl border border-slate-200 shadow-sm p-5">
+        <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3">Datos que faltan o usan respaldo</div>
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {% for c in brechas %}
+            <div class="rounded-2xl border {% if c.fuente == 'SIN_ARCHIVO' %}border-red-200 bg-red-50{% else %}border-amber-200 bg-amber-50{% endif %} p-3 text-xs">
+                <div class="font-black text-slate-800 uppercase">{{ c.tabla }} <span class="font-mono text-[10px] ml-1 px-2 py-0.5 rounded-full bg-white border">{{ c.fuente }}</span></div>
+                <div class="text-slate-600 mt-1">{{ c.nota|default:"Sin nota" }}</div>
+                <div class="text-slate-400 mt-1">{{ c.cargado_en|date:"d-m-Y H:i" }} · {{ c.filas }} filas</div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    {% if resumen %}
+    <!-- KPIs principales -->
+    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 text-center shadow-sm">
+            <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Artículos evaluados</div>
+            <div class="text-2xl font-black text-slate-900 mt-1 font-mono">{{ resumen.articulos|default:0 }}</div>
+        </div>
+        <a href="{% url 'calculadora:grilla' %}?compra=comprar" class="bg-emerald-50 rounded-2xl border border-emerald-200 p-4 text-center shadow-sm hover:shadow-md transition">
+            <div class="text-[10px] font-bold text-emerald-700 uppercase tracking-wider">Compran hoy</div>
+            <div class="text-2xl font-black text-emerald-700 mt-1 font-mono">{{ resumen.comprar|default:0 }}</div>
+            <div class="text-[10px] text-emerald-600">día de compra del proveedor</div>
+        </a>
+        <a href="{% url 'calculadora:grilla' %}?compra=necesita" class="bg-indigo-50 rounded-2xl border border-indigo-200 p-4 text-center shadow-sm hover:shadow-md transition">
+            <div class="text-[10px] font-bold text-indigo-700 uppercase tracking-wider">Necesitan compra</div>
+            <div class="text-2xl font-black text-indigo-700 mt-1 font-mono">{{ resumen.necesita_compra|default:0 }}</div>
+            <div class="text-[10px] text-indigo-600">bajo el umbral, esperan su día</div>
+        </a>
+        <a href="{% url 'calculadora:grilla' %}?compra=excepcion" class="bg-orange-50 rounded-2xl border border-orange-200 p-4 text-center shadow-sm hover:shadow-md transition">
+            <div class="text-[10px] font-bold text-orange-700 uppercase tracking-wider">Fuera de calendario</div>
+            <div class="text-2xl font-black text-orange-700 mt-1 font-mono">{{ resumen.excepciones|default:0 }}</div>
+            <div class="text-[10px] text-orange-600">quiebre antes de la próxima compra</div>
+        </a>
+        <a href="{% url 'calculadora:grilla' %}?urgencia=URGENTE" class="bg-red-50 rounded-2xl border border-red-200 p-4 text-center shadow-sm hover:shadow-md transition">
+            <div class="text-[10px] font-bold text-red-600 uppercase tracking-wider">Urgentes</div>
+            <div class="text-2xl font-black text-red-600 mt-1 font-mono">{{ resumen.urgentes|default:0 }}</div>
+            <div class="text-[10px] text-red-500">disponible ≤ 0</div>
+        </a>
+        <a href="{% url 'calculadora:traslados' %}" class="bg-cyan-50 rounded-2xl border border-cyan-200 p-4 text-center shadow-sm hover:shadow-md transition">
+            <div class="text-[10px] font-bold text-cyan-700 uppercase tracking-wider">Traslados</div>
+            <div class="text-2xl font-black text-cyan-800 mt-1 font-mono">{{ resumen.traslados|default:0 }}</div>
+            <div class="text-[10px] text-cyan-600">{{ resumen.unidades_trasladar|floatformat:"0g" }} unidades</div>
+        </a>
+    </div>
+
+    <!-- Montos -->
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div class="bg-slate-900 rounded-2xl p-5 shadow-sm" title="{{ resumen.valor_sugerido|full_usd }}">
+            <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">A comprar (día + excepciones)</div>
+            <div class="text-2xl font-black text-white mt-1 font-mono">{{ resumen.valor_sugerido|compact_usd }}</div>
+            <div class="text-[11px] text-slate-400 mt-1">Valor de lo que entra hoy en solicitudes</div>
+        </div>
+        <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm" title="{{ resumen.valor_stock_maximo|full_usd }}">
+            <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Valor del stock máximo</div>
+            <div class="text-2xl font-black text-slate-900 mt-1 font-mono">{{ resumen.valor_stock_maximo|compact_usd }}</div>
+            <div class="text-[11px] text-slate-500 mt-1">Plata que inmovilizaría tener todo al máximo</div>
+        </div>
+        <div class="bg-red-50 rounded-2xl border border-red-200 p-5 shadow-sm" title="{{ resumen.quiebre_real_usd|full_usd }}">
+            <div class="text-[10px] font-bold text-red-600 uppercase tracking-wider">Quiebre real</div>
+            <div class="text-2xl font-black text-red-700 mt-1 font-mono">{{ resumen.quiebre_real_usd|compact_usd }}</div>
+            <div class="text-[11px] text-red-600 mt-1">Compromisos que el stock de la red no cubre (disponible &lt; 0)</div>
+        </div>
+        <div class="bg-amber-50 rounded-2xl border border-amber-200 p-5 shadow-sm" title="{{ resumen.brecha_objetivo_usd|full_usd }}">
+            <div class="text-[10px] font-bold text-amber-700 uppercase tracking-wider">Brecha contra el máximo</div>
+            <div class="text-2xl font-black text-amber-800 mt-1 font-mono">{{ resumen.brecha_objetivo_usd|compact_usd }}</div>
+            <div class="text-[11px] text-amber-700 mt-1">Lo que falta para llegar al stock máximo. <b>No es quiebre.</b></div>
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <!-- Letras -->
+        <div class="bg-white rounded-3xl border border-slate-200 shadow-sm p-5">
+            <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3">Clasificación RPEO</div>
+            <div class="grid grid-cols-2 gap-3">
+                {% for k, nombre, n in letras %}
+                <a href="{% url 'calculadora:grilla' %}?letra={{ k }}&todo=1" class="rounded-2xl border p-3 text-center hover:shadow-md transition
+                    {% if k == 'R' %}bg-blue-50 border-blue-200 text-blue-800{% elif k == 'E' %}bg-purple-50 border-purple-200 text-purple-800{% elif k == 'P' %}bg-amber-50 border-amber-200 text-amber-800{% else %}bg-rose-50 border-rose-200 text-rose-800{% endif %}">
+                    <div class="text-[10px] font-black uppercase tracking-wider">[ {{ k }} ] {{ nombre }}</div>
+                    <div class="text-xl font-black font-mono mt-0.5">{{ n }}</div>
+                </a>
+                {% endfor %}
+            </div>
+            {% if not letras.1.2 %}
+            <p class="text-[11px] text-slate-500 mt-3">No hay artículos E: se marcan a mano en el detalle de cada artículo (área usuaria).</p>
+            {% endif %}
+        </div>
+
+        <!-- Alertas -->
+        <div class="bg-white rounded-3xl border border-slate-200 shadow-sm p-5 lg:col-span-2">
+            <div class="flex justify-between items-center mb-3">
+                <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Alertas generadas por la corrida</div>
+                <a href="{% url 'calculadora:alertas' %}" class="text-xs font-bold text-pesco-cyan hover:underline">Ver alertas →</a>
+            </div>
+            <div class="grid grid-cols-2 md:grid-cols-3 gap-2">
+                {% for nombre, n in alertas_tipo %}
+                <div class="flex justify-between items-center rounded-xl bg-slate-50 border border-slate-200 px-3 py-2 text-xs">
+                    <span class="font-bold text-slate-700">{{ nombre }}</span>
+                    <span class="font-mono font-black text-slate-900">{{ n }}</span>
+                </div>
+                {% empty %}
+                <p class="text-sm text-slate-500">Sin alertas.</p>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Top urgentes / excepciones -->
+    <div class="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+        <div class="px-5 py-4 border-b border-slate-100 flex justify-between items-center">
+            <div>
+                <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Prioridad de hoy</div>
+                <div class="font-black text-slate-900">Urgentes, fuera de calendario y compras del día</div>
+            </div>
+            <a href="{% url 'calculadora:grilla' %}" class="text-xs font-bold text-pesco-cyan hover:underline">Ir a la grilla →</a>
+        </div>
+        <div class="overflow-x-auto">
+        <table class="min-w-full text-xs">
+            <thead class="bg-slate-50 text-[10px] uppercase tracking-wider text-slate-500">
+                <tr>
+                    <th class="px-4 py-2 text-left">Artículo</th>
+                    <th class="px-3 py-2">Letra</th>
+                    <th class="px-3 py-2">Urgencia</th>
+                    <th class="px-3 py-2 text-right">Disponible</th>
+                    <th class="px-3 py-2 text-right">Punto pedido</th>
+                    <th class="px-3 py-2 text-left">Acción</th>
+                    <th class="px-3 py-2 text-right">Cantidad</th>
+                    <th class="px-3 py-2 text-right">Valor USD</th>
+                    <th class="px-3 py-2 text-left">Proveedor</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100">
+                {% for r in top %}
+                <tr class="hover:bg-slate-50">
+                    <td class="px-4 py-2"><a href="{% url 'calculadora:articulo' r.product_id %}" class="font-mono font-bold text-pesco-cyan hover:underline">{{ r.product_id }}</a>
+                        <div class="text-slate-500 truncate max-w-xs">{{ r.product.description }}</div></td>
+                    <td class="px-3 py-2 text-center font-black">{{ r.letra }}</td>
+                    <td class="px-3 py-2 text-center">
+                        <span class="px-2 py-0.5 rounded-full text-[10px] font-black {% if r.urgencia == 'URGENTE' %}bg-red-100 text-red-700{% elif r.urgencia == 'MEDIO' %}bg-amber-100 text-amber-700{% else %}bg-emerald-100 text-emerald-700{% endif %}">{{ r.urgencia }}</span>
+                    </td>
+                    <td class="px-3 py-2 text-right font-mono {% if r.disponible_futuro <= 0 %}text-red-600 font-bold{% endif %}">{{ r.disponible_futuro|floatformat:"0g" }}</td>
+                    <td class="px-3 py-2 text-right font-mono">{{ r.punto_pedido }}</td>
+                    <td class="px-3 py-2">
+                        {% if r.comprar %}<span class="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-bold text-[10px]">COMPRA HOY</span>
+                        {% elif r.excepcion %}<span class="px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 font-bold text-[10px]">EXCEPCIÓN</span>
+                            <span class="text-[10px] text-slate-500">{{ r.causa_txt }}</span>
+                        {% else %}<span class="text-slate-500">Espera día de compra ({{ r.proxima_fecha_compra|date:"d-m" }})</span>{% endif %}
+                    </td>
+                    <td class="px-3 py-2 text-right font-mono font-bold">{{ r.cant_accion|floatformat:"0g" }}</td>
+                    <td class="px-3 py-2 text-right font-mono">{{ r.valor_accion|compact_usd }}</td>
+                    <td class="px-3 py-2 text-slate-600 truncate max-w-[12rem]">{{ r.proveedor.nombre|default:"⚠ sin proveedor" }}</td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="9" class="px-4 py-6 text-center text-slate-500">Nada urgente en la última corrida.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        </div>
+    </div>
+
+    <!-- Cargas -->
+    {% if cargas %}
+    <div class="bg-white rounded-3xl border border-slate-200 shadow-sm p-5">
+        <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3">Última carga de cada dato</div>
+        <div class="overflow-x-auto">
+        <table class="min-w-full text-xs">
+            <thead class="text-[10px] uppercase text-slate-500"><tr><th class="text-left py-1">Tabla</th><th class="text-left">Archivo</th><th class="text-right">Filas</th><th class="text-left px-3">Fuente</th><th class="text-left">Cargado</th><th class="text-left">Nota</th></tr></thead>
+            <tbody class="divide-y divide-slate-100">
+            {% for c in cargas %}
+            <tr><td class="py-1.5 font-bold">{{ c.tabla }}</td><td class="font-mono text-slate-500">{{ c.archivo|default:"—" }}</td><td class="text-right font-mono">{{ c.filas }}</td>
+                <td class="px-3"><span class="px-2 py-0.5 rounded-full text-[10px] font-bold {% if c.fuente == 'SIN_ARCHIVO' %}bg-red-100 text-red-700{% elif c.fuente == 'RESPALDO' or c.fuente == 'PC_OF' %}bg-amber-100 text-amber-700{% else %}bg-emerald-100 text-emerald-700{% endif %}">{{ c.fuente }}</span></td>
+                <td>{{ c.cargado_en|date:"d-m-Y H:i" }}</td><td class="text-slate-500">{{ c.nota }}</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

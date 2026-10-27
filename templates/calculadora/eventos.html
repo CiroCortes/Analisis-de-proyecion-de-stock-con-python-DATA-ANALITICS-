@@ -1,0 +1,133 @@
+{% extends 'base.html' %}
+
+{% block title %}Eventos comerciales | Calculadora Pesco{% endblock %}
+
+{% block content %}
+<div class="w-full space-y-6">
+    {% include 'calculadora/_subnav.html' %}
+
+    <div class="bg-white p-6 sm:p-7 rounded-3xl shadow-sm border border-slate-200 border-l-8 border-l-pesco-cyan">
+        <span class="text-xs font-bold text-pesco-cyan uppercase tracking-wider">Calculadora de compras · §4.7</span>
+        <h1 class="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight mt-1">Eventos comerciales</h1>
+        <p class="text-sm text-slate-500 mt-1 max-w-3xl">Registra la información comercial que cambia la demanda futura (por ejemplo: «cerré un negocio, se venderán 200 unidades más entre marzo y mayo»). Solo los eventos <b>aprobados</b> por el Jefe de Abastecimiento afectan el cálculo: durante su vigencia suben o bajan el punto de pedido y el stock máximo. Después de aprobar, hay que <b>recalcular</b> la Calculadora.</p>
+        {% if pendientes %}<p class="text-xs font-bold text-amber-700 mt-2"><i class="fa-solid fa-hourglass-half mr-1"></i> {{ pendientes }} evento(s) esperan aprobación.</p>{% endif %}
+    </div>
+
+    <form method="post" enctype="multipart/form-data" class="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 space-y-4">
+        {% csrf_token %}
+        <h2 class="text-sm font-black text-slate-800 uppercase tracking-wider"><i class="fa-solid fa-plus text-pesco-cyan mr-1"></i> Nuevo evento</h2>
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div>
+                <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Artículo (código)</label>
+                <input name="product" placeholder="Ej. 81310204" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm font-mono">
+            </div>
+            <div>
+                <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">o Familia (grupo SAP)</label>
+                <input name="familia" placeholder="Ej. 101" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm">
+            </div>
+            <div>
+                <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Bodega (opcional)</label>
+                <select name="bodega" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm">
+                    <option value="">Toda la red</option>
+                    {% for w in bodegas %}<option value="{{ w.code }}">{{ w.code }} · {{ w.city }}</option>{% endfor %}
+                </select>
+            </div>
+            <div>
+                <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Tipo</label>
+                <select name="tipo" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm">
+                    {% for c, e in tipos %}<option value="{{ c }}">{{ e }}</option>{% endfor %}
+                </select>
+            </div>
+            <div>
+                <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Cantidad adicional (total del período)</label>
+                <input name="cantidad_adicional" type="number" step="any" min="0" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm font-mono">
+            </div>
+            <div>
+                <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">o % sobre el consumo promedio</label>
+                <input name="porcentaje" type="number" step="any" min="0" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm font-mono">
+            </div>
+            <div>
+                <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Desde (mes)</label>
+                <input name="mes_inicio" type="month" required value="{{ mes_actual }}" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm">
+            </div>
+            <div>
+                <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Hasta (mes)</label>
+                <input name="mes_fin" type="month" required value="{{ mes_actual }}" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm">
+            </div>
+            <div class="sm:col-span-2 lg:col-span-3">
+                <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Comentario (cliente, negocio, de dónde viene la información)</label>
+                <textarea name="comentario" rows="2" required class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm"></textarea>
+            </div>
+            <div>
+                <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Adjunto (correo, PDF)</label>
+                <input name="adjunto" type="file" class="w-full text-xs">
+            </div>
+        </div>
+        <button class="bg-pesco-cyan hover:bg-pesco-darkcyan text-white text-xs font-bold px-6 py-3 rounded-full uppercase tracking-wider">Registrar evento</button>
+    </form>
+
+    <form method="get" class="flex flex-wrap gap-3 items-end">
+        <select name="estado" class="border border-slate-200 rounded-xl px-3 py-2 text-sm bg-white">
+            <option value="">Todos los estados</option>
+            {% for c, e in estados %}<option value="{{ c }}" {% if estado == c %}selected{% endif %}>{{ e }}</option>{% endfor %}
+        </select>
+        <input name="search" value="{{ search }}" placeholder="Artículo, familia o texto" class="border border-slate-200 rounded-xl px-3 py-2 text-sm bg-white">
+        <button class="bg-pesco-cyan text-white text-xs font-bold px-5 py-2.5 rounded-full uppercase tracking-wider">Filtrar</button>
+    </form>
+
+    <div class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+        <div class="overflow-x-auto">
+        <table class="min-w-full text-xs">
+            <thead><tr class="text-[10px] uppercase tracking-wider text-slate-400 bg-slate-50 border-b border-slate-200">
+                <th class="text-left py-3 px-4">#</th><th class="text-left py-3 px-3">Aplica a</th><th class="text-left py-3 px-3">Tipo</th>
+                <th class="text-right py-3 px-3">Ajuste</th><th class="text-left py-3 px-3">Vigencia</th><th class="text-left py-3 px-3">Comentario</th>
+                <th class="text-left py-3 px-3">Estado</th><th class="text-left py-3 px-3"></th>
+            </tr></thead>
+            <tbody>
+            {% for ev in page_obj %}
+            <tr class="border-b border-slate-50 align-top">
+                <td class="py-3 px-4 font-mono">{{ ev.pk }}</td>
+                <td class="px-3 py-3">
+                    {% if ev.product_id %}<a href="{% url 'calculadora:articulo' ev.product_id %}" class="font-mono font-bold text-pesco-cyan hover:underline">{{ ev.product_id }}</a>
+                    <div class="text-slate-500">{{ ev.product.description|truncatechars:40 }}</div>
+                    {% else %}Familia <b>{{ ev.familia }}</b>{% endif %}
+                    {% if ev.bodega %}<div class="text-[10px] text-slate-400">Bodega {{ ev.bodega }}</div>{% endif %}
+                </td>
+                <td class="px-3 py-3">{{ ev.get_tipo_display }}</td>
+                <td class="px-3 py-3 text-right font-mono">{% if ev.cantidad_adicional %}{{ ev.cantidad_adicional|floatformat:"-2" }} u{% elif ev.porcentaje %}{{ ev.porcentaje|floatformat:"-1" }} %{% else %}—{% endif %}</td>
+                <td class="px-3 py-3 whitespace-nowrap">{{ ev.mes_inicio|date:"m-Y" }} → {{ ev.mes_fin|date:"m-Y" }}<div class="text-[10px] text-slate-400">{{ ev.meses_vigencia }} mes(es)</div></td>
+                <td class="px-3 py-3 text-slate-700 max-w-sm">{{ ev.comentario|truncatechars:160 }}
+                    {% if ev.adjunto %}<div><a href="{{ ev.adjunto.url }}" class="text-pesco-cyan hover:underline"><i class="fa-solid fa-paperclip"></i> adjunto</a></div>{% endif %}
+                    <div class="text-[10px] text-slate-400">{{ ev.autor.get_username|default:"" }} · {{ ev.creado_en|date:"d-m-Y" }}</div>
+                </td>
+                <td class="px-3 py-3">
+                    <span class="px-2 py-0.5 rounded-full text-[10px] font-black {% if ev.estado == 'APROBADO' %}bg-emerald-100 text-emerald-700{% elif ev.estado == 'RECHAZADO' %}bg-rose-100 text-rose-700{% else %}bg-amber-100 text-amber-800{% endif %}">{{ ev.get_estado_display }}</span>
+                    {% if ev.aprobado_por %}<div class="text-[10px] text-slate-400 mt-1">{{ ev.aprobado_por.get_username }}</div>{% endif %}
+                </td>
+                <td class="px-3 py-3 whitespace-nowrap">
+                    {% if puede_aprobar and ev.estado == 'PROPUESTO' %}
+                    <form method="post" action="{% url 'calculadora:evento_estado' ev.pk %}" class="flex gap-1">
+                        {% csrf_token %}
+                        <button name="accion" value="aprobar" class="bg-emerald-600 text-white rounded-lg px-3 py-1 text-[10px] font-bold uppercase">Aprobar</button>
+                        <button name="accion" value="rechazar" class="bg-rose-600 text-white rounded-lg px-3 py-1 text-[10px] font-bold uppercase">Rechazar</button>
+                    </form>
+                    {% endif %}
+                </td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="8" class="text-center py-10 text-slate-500">Aún no hay eventos comerciales registrados.</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        </div>
+    </div>
+
+    {% if page_obj.paginator.num_pages > 1 %}
+    <div class="flex justify-center gap-2 text-xs font-bold">
+        {% if page_obj.has_previous %}<a class="px-3 py-2 bg-white border rounded-xl" href="?estado={{ estado }}&search={{ search|urlencode }}&page={{ page_obj.previous_page_number }}">← Anterior</a>{% endif %}
+        <span class="px-3 py-2">Página {{ page_obj.number }} de {{ page_obj.paginator.num_pages }}</span>
+        {% if page_obj.has_next %}<a class="px-3 py-2 bg-white border rounded-xl" href="?estado={{ estado }}&search={{ search|urlencode }}&page={{ page_obj.next_page_number }}">Siguiente →</a>{% endif %}
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

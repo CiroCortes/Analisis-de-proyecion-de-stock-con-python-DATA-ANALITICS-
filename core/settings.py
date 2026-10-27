@@ -27,6 +27,7 @@ INSTALLED_APPS = [
     'apps.ai_assistant.apps.AiAssistantConfig',
     'apps.reports.apps.ReportsConfig',
     'apps.authentication.apps.AuthenticationConfig',
+    'apps.calculadora.apps.CalculadoraConfig',
 ]
 
 MIDDLEWARE = [
@@ -52,6 +53,7 @@ TEMPLATES = [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
+                'apps.calculadora.context_processors.calculadora',
             ],
             'libraries': {
                 'inventory_tags': 'apps.inventory.templatetags.inventory_tags',
