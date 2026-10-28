@@ -86,6 +86,24 @@ class CompromisoAbierto(models.Model):
     cantidad = models.FloatField(default=0)
 
 
+class CompromisoDetalle(models.Model):
+    """Linea de PC u OF abierta con responsable, cliente y referencia (consulta 16). Alimenta el
+    informe de antiguedad de compromisos abiertos (SPEC-23 §3); el calculo usa CompromisoAbierto."""
+    tipo = models.CharField(max_length=2, db_index=True)
+    numero = models.CharField(max_length=30, db_index=True)
+    codigo_sku = models.CharField(max_length=50, db_index=True)
+    bodega = models.CharField(max_length=20, blank=True, default='')
+    nodo = models.CharField(max_length=20, blank=True, default='', db_index=True)
+    fecha_emision = models.DateField(null=True, db_index=True)
+    fecha_entrega = models.DateField(null=True)
+    codigo_cliente = models.CharField(max_length=30, blank=True, default='')
+    nombre_cliente = models.CharField(max_length=200, blank=True, default='')
+    responsable = models.CharField(max_length=120, blank=True, default='', db_index=True)
+    referencia = models.CharField(max_length=100, blank=True, default='')
+    cantidad = models.FloatField(default=0)
+    costo_unitario = models.FloatField(default=0)
+
+
 class ParametroCompra(models.Model):
     """Complemento del maestro (consulta 10): proveedor preferido, minimo y multiplo."""
     product = models.OneToOneField(ProductSKU, on_delete=models.CASCADE, primary_key=True,
@@ -309,6 +327,11 @@ class ResultadoArticulo(models.Model):
     simulacion = models.JSONField(default=dict)
 
     avisos = models.JSONField(default=list)
+
+    # Calculo hibrido de compromisos (SPEC-23): unidades de PC/OF emitidos antes del corte y la
+    # cantidad a comprar con la otra base (None si el articulo no tiene compromisos antiguos)
+    comprometido_antiguo = models.FloatField(default=0)
+    cantidad_otra_base = models.IntegerField(null=True, blank=True)
 
     class Meta:
         indexes = [models.Index(fields=['letra', 'urgencia']), models.Index(fields=['proveedor', 'comprar'])]

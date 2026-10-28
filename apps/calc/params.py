@@ -60,6 +60,11 @@ class Params:
     # consumo de estos dias (= ciclo de compra) antes de entregar stock
     dias_reserva_traslado: int = 15
 
+    # Compromisos (SPEC-23): con True el calculo descuenta solo los PC/OF emitidos en los
+    # ultimos N meses; los antiguos se informan aparte. La corrida calcula ambas bases.
+    solo_compromisos_recientes: bool = False
+    meses_compromisos_recientes: int = 3
+
     # Alertas
     alerta_bajo_ss_dias: int = 15
     alerta_contrato_vence_dias: int = 60
@@ -108,6 +113,8 @@ CATALOGO = {
     'corte_xyz_y': ('Corte XYZ clase Y (coef. de variacion maximo)', (GENERAL,), 0.1, 5),
     'horizonte_proyeccion_dias': ('Horizonte de proyeccion diaria (dias)', (GENERAL,), 30, 365),
     'dias_reserva_traslado': ('Reserva de consumo propio antes de trasladar (dias)', (GENERAL,), 0, 180),
+    'solo_compromisos_recientes': ('Calcular solo con compromisos recientes (PC/OF)', (GENERAL,), 0, 1),
+    'meses_compromisos_recientes': ('Antiguedad maxima de un compromiso reciente (meses)', (GENERAL,), 1, 24),
     'alerta_bajo_ss_dias': ('Alerta bajo SS proyectado (dias)', (GENERAL,), 1, 90),
     'alerta_contrato_vence_dias': ('Alerta contrato por vencer (dias)', (GENERAL,), 1, 365),
     'alerta_sobrestock_meses': ('Sobrestock: meses sobre el maximo', (GENERAL,), 0, 24),

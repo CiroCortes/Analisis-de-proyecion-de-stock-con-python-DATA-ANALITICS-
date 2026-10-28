@@ -104,7 +104,20 @@ def commitment_bodega(code):
 # (~1.061 lineas de OC y ~450 de SC). Las demas bodegas sin zona no se tocan.
 def purchase_bodega(code):
     code = (code or '').strip().upper()
-    return '013-PP' if code in ('', '013') else code
+    if code in ('', '013'):
+        return '013-PP'
+    return prebodega_destino(code) or code
+
+
+# Pre-bodegas de importacion (SPEC-22 §2): lo que se compra o llega a una pre-bodega va en
+# camino a su sucursal. Antes no se acreditaba a ningun nodo.
+PRE_BODEGAS = {'000': '013-PP', '000-002': '002', '000-003': '003', '000-008': '008',
+               '000-010': '010', '000-022': '002-02'}
+
+
+def prebodega_destino(code):
+    """Bodega destino de una pre-bodega 000-xxx; None si no es pre-bodega."""
+    return PRE_BODEGAS.get((code or '').strip().upper())
 
 
 # Nodos de la Calculadora (SPEC-21): Santiago es un solo stock (todas las 013-xx, la 013 y lo

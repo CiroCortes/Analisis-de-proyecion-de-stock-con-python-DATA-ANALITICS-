@@ -11,10 +11,10 @@ from collections import defaultdict
 from django.db import transaction
 
 from apps.data_ingestion.datalake_ingest import _clean_num, find_data_file, iter_txt_rows, parse_date
-from apps.data_ingestion.warehouses import commitment_bodega, purchase_bodega
+from apps.data_ingestion.warehouses import commitment_bodega, nodo_red, purchase_bodega
 from apps.inventory.models import ProductionOrderMovement, ProductSKU, SalesOrderMovement, Warehouse
 
-from .models import (AcuerdoGlobal, CargaDatos, CompromisoAbierto, ConsumoMensual, OCAbierta, ParametroCompra,
+from .models import (AcuerdoGlobal, CargaDatos, CompromisoAbierto, CompromisoDetalle, ConsumoMensual, OCAbierta, ParametroCompra,
                      PlazoOC, Proveedor)
 
 # tabla -> (nombre largo del archivo, prefijo alternativo del task de DBeaver)
@@ -30,6 +30,8 @@ ARCHIVOS = {
     'pedidos': ('Pedidos de Clientes (PC).txt', 'ordr_rdr1.txt'),
     'ofs': ('Órdenes de Fabricación (OF).txt', 'owor_wor1.txt'),
     'entradas': ('Entradas de Mercancias (EM).txt', 'opdn_pdn1.txt'),
+    'notas_credito': ('Notas de Credito.txt', 'orin_rin1.txt'),
+    'compromisos_detalle': ('Compromisos Abiertos.txt', 'ordr_owor_abiertos.txt'),
 }
 
 # Recepciones internas (produccion propia): no son un proveedor al que se le compre
@@ -76,9 +78,13 @@ def cargar_consumo_mensual(data_dir=None):
 
     skus = _skus()
     acumulado = defaultdict(float)
+    nc_oinm = defaultdict(float)       # (sku, bodega, mes) -> NC registradas por OINM (negativo)
     for cols in iter_txt_rows(ruta, 5):
         sku, bodega, mes, origen = cols[0], cols[1], _mes(cols[2]), (cols[3] or 'VENTA').upper()
         if sku not in skus or mes is None:
+            continue
+        if origen == 'NC':
+            nc_oinm[(sku, bodega, mes)] += _clean_num(cols[4])
             continue
         origen = origen if origen in (ConsumoMensual.VENTA, ConsumoMensual.OF) else ConsumoMensual.SALIDA
         acumulado[(sku, bodega, mes, origen)] += _clean_num(cols[4])
@@ -96,6 +102,8 @@ def cargar_consumo_mensual(data_dir=None):
                     acumulado[clave] -= mover
                     acumulado[(sku, bodega, mes, ConsumoMensual.OF)] += mover
 
+    aplicar_notas_credito(acumulado, nc_oinm, skus, data_dir)
+
     filas = [ConsumoMensual(product_id=s, bodega=b, mes=m, origen=o, cantidad=q)
              for (s, b, m, o), q in acumulado.items() if q]
     with transaction.atomic():
@@ -103,6 +111,47 @@ def cargar_consumo_mensual(data_dir=None):
         ConsumoMensual.objects.bulk_create(filas, batch_size=5000)
     _registrar('consumo_mensual', ruta, len(filas), fuente='OINM')
     return 'OINM'
+
+
+def aplicar_notas_credito(acumulado, nc_oinm, skus, data_dir=None):
+    """SPEC-22 §1. `nc_oinm`: lo que OINM registro como nota de credito (TransType 14, origen 'NC'
+    de la consulta 8) por (sku, bodega, mes). Esa cantidad se resta en la bodega y el mes de la
+    factura o entrega de origen (consulta 15) en vez de donde se registro la NC (casi siempre la
+    013-NC, que cae en Santiago). Solo se reubica lo que OINM registro: una NC que no movio stock
+    (por ejemplo, sobre una factura de reserva) no tiene venta que anular. Lo que no se puede
+    ligar a un origen queda donde estaba. Nunca se resta mas de lo que el origen tiene: si la venta
+    original no esta en la consulta 8 (mes incompleto en el Datalake), la NC queda donde se
+    registro. `acumulado` se modifica en el lugar."""
+    if not nc_oinm:
+        _registrar('notas_credito', '', 0, fuente='SIN_MARCA',
+                   nota='La consulta 8 no separa las NC (origen NC): re-exportarla; las NC quedan donde se registraron')
+        return 0
+    ruta = archivo('notas_credito', data_dir)
+    lineas = defaultdict(list)          # (sku, bodega_nc, mes_nc) -> [(cantidad, bodega_origen, mes_origen)]
+    if os.path.exists(ruta):
+        for cols in iter_txt_rows(ruta, 10):
+            sku, q, mes_nc, mes_origen = cols[1], _clean_num(cols[4]), _mes(cols[3]), _mes(cols[7])
+            if sku in skus and q > 0 and cols[5] in ('13', '15') and cols[6] and mes_nc and mes_origen:
+                lineas[(sku, cols[2], mes_nc)].append((q, cols[6], mes_origen))
+    reubicadas = 0.0
+    for (sku, bodega, mes), cantidad in nc_oinm.items():
+        pendiente = -cantidad
+        for q, bodega_origen, mes_origen in lineas.get((sku, bodega, mes), ()):
+            if pendiente <= 0:
+                break
+            origen = (sku, bodega_origen, mes_origen, ConsumoMensual.VENTA)
+            mover = min(q, pendiente, max(0.0, acumulado.get(origen, 0.0)))
+            if mover <= 0:
+                continue
+            acumulado[origen] -= mover
+            pendiente -= mover
+            reubicadas += mover
+        # Lo no ligado a un origen (o una NC sin consulta 15) queda como devolucion donde ocurrio
+        acumulado[(sku, bodega, mes, ConsumoMensual.VENTA)] -= pendiente
+    nota = (f'{reubicadas:,.0f} u restadas en la bodega y el mes de su factura' if os.path.exists(ruta)
+            else 'Sin consulta 15: las NC quedan en la bodega y el mes en que se registraron')
+    _registrar('notas_credito', ruta if os.path.exists(ruta) else '', len(nc_oinm), nota=nota)
+    return reubicadas
 
 
 def reconstruir_consumo_desde_movimientos():
@@ -206,6 +255,33 @@ def cargar_compromisos(data_dir=None):
         CompromisoAbierto.objects.all().delete()
         CompromisoAbierto.objects.bulk_create(filas, batch_size=5000)
     _registrar('compromisos', ruta_pc, len(filas))
+    return len(filas)
+
+
+def cargar_compromisos_detalle(data_dir=None):
+    """Consulta 16: PC y OF abiertos con responsable, para el informe de antiguedad (SPEC-23 §3).
+    Solo articulos del alcance de la Calculadora: los servicios y grupos excluidos (montajes de OF,
+    por ejemplo) no afectan la planificacion y su "costo" distorsiona el valor."""
+    ruta = archivo('compromisos_detalle', data_dir)
+    if not os.path.exists(ruta):
+        _registrar('compromisos_detalle', '', 0, fuente='SIN_ARCHIVO', nota='Sin consulta 16: informe de antiguedad vacio')
+        return 0
+    costos = {c: float(v or 0) for c, v in ProductSKU.objects.filter(is_active=True, category__is_active=True)
+              .values_list('code', 'unit_cost_usd')}
+    filas = []
+    for cols in iter_txt_rows(ruta, 11):
+        q = _clean_num(cols[10])
+        if q <= 0 or cols[2] not in costos:
+            continue
+        filas.append(CompromisoDetalle(
+            tipo=cols[0][:2], numero=cols[1].replace(',', ''), codigo_sku=cols[2], bodega=cols[3][:20],
+            nodo=nodo_red(cols[3] or '013'), fecha_emision=parse_date(cols[4]), fecha_entrega=parse_date(cols[5]),
+            codigo_cliente=cols[6][:30], nombre_cliente=cols[7][:200], responsable=cols[8][:120],
+            referencia=cols[9][:100], cantidad=q, costo_unitario=costos[cols[2]]))
+    with transaction.atomic():
+        CompromisoDetalle.objects.all().delete()
+        CompromisoDetalle.objects.bulk_create(filas, batch_size=5000)
+    _registrar('compromisos_detalle', ruta, len(filas))
     return len(filas)
 
 
@@ -343,6 +419,7 @@ def cargar_todo(data_dir=None):
     resumen = {
         'oc_abiertas': cargar_oc_abiertas(data_dir),
         'compromisos': cargar_compromisos(data_dir),
+        'compromisos_detalle': cargar_compromisos_detalle(data_dir),
         'proveedores': cargar_proveedores(data_dir),
         'bodegas': cargar_bodegas(data_dir),
         'parametros_compra': cargar_parametros_compra(data_dir),

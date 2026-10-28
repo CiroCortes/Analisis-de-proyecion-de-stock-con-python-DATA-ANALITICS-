@@ -10,7 +10,7 @@ from collections import OrderedDict
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
-from django.db.models import Case, Count, IntegerField, Q, Sum, Value, When
+from django.db.models import Case, CharField, Count, F, FloatField, IntegerField, Max, Min, Q, Sum, Value, When
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
@@ -23,7 +23,7 @@ from apps.inventory.models import ProductSKU, Warehouse
 from . import parametros as par
 from . import solicitudes as sol
 from .excel import respuesta_excel
-from .models import (Alerta, EventoComercial, LineaSolicitud, OCAbierta, ParametroCambio, ParametroValor, Proveedor,
+from .models import (Alerta, CompromisoDetalle, Corrida, EventoComercial, LineaSolicitud, OCAbierta, ParametroCambio, ParametroValor, Proveedor,
                      ResultadoArticulo, SolicitudCompra, TrasladoSugerido)
 
 
@@ -241,6 +241,113 @@ def traslados_excel(request):
         'Descripcion': t.product.description, 'Cantidad': t.cantidad, 'Urgencia': t.urgencia, 'Estado': t.estado,
     } for t in qs]
     return respuesta_excel(f'traslados_sugeridos_{timezone.localdate():%Y%m%d}.xlsx', filas, 'Traslados')
+
+
+# ── Antiguedad de compromisos abiertos (SPEC-23 §3) ─────────────────────────
+
+TRAMOS = [('0-3', '0 a 3 meses'), ('3-6', '3 a 6 meses'), ('6-12', '6 a 12 meses'), ('12+', 'Más de 12 meses')]
+
+
+def _tramo_expr(hoy):
+    from .servicio import _restar_meses
+    c3, c6, c12 = (_restar_meses(hoy, m) for m in (3, 6, 12))
+    return Case(When(fecha_emision__gte=c3, then=Value('0-3')), When(fecha_emision__gte=c6, then=Value('3-6')),
+                When(fecha_emision__gte=c12, then=Value('6-12')), default=Value('12+'), output_field=CharField())
+
+
+def _compromisos_filtrados(request):
+    f = {k: request.GET.get(k, '').strip() for k in ('tipo', 'tramo', 'nodo', 'responsable', 'search')}
+    qs = CompromisoDetalle.objects.annotate(
+        tramo=_tramo_expr(timezone.localdate()),
+        valor=F('cantidad') * F('costo_unitario'))
+    if f['tipo']:
+        qs = qs.filter(tipo=f['tipo'])
+    if f['tramo']:
+        qs = qs.filter(tramo=f['tramo'])
+    if f['nodo']:
+        qs = qs.filter(nodo=f['nodo'])
+    if f['responsable']:
+        qs = qs.filter(responsable=f['responsable'])
+    if f['search']:
+        qs = qs.filter(Q(numero=f['search'].replace('.', '').replace(',', '')) | Q(codigo_sku__icontains=f['search'])
+                       | Q(nombre_cliente__icontains=f['search']) | Q(referencia__icontains=f['search']))
+    return qs, f
+
+
+def _documentos(qs):
+    return (qs.values('tipo', 'numero')
+            .annotate(emision=Min('fecha_emision'), entrega=Max('fecha_entrega'), cliente=Max('nombre_cliente'),
+                      responsable_doc=Max('responsable'), referencia_doc=Max('referencia'), nodo_doc=Max('nodo'),
+                      tramo_doc=Max('tramo'), lineas=Count('pk'), unidades=Sum('cantidad'),
+                      valor_doc=Sum('valor', output_field=FloatField()))
+            .order_by('emision', 'numero'))
+
+
+@login_required
+def compromisos(request):
+    qs, f = _compromisos_filtrados(request)
+    hoy = timezone.localdate()
+    resumen = {(r['tramo'], r['tipo']): r for r in qs.values('tramo', 'tipo').annotate(
+        lineas=Count('pk'), documentos=Count('numero', distinct=True), unidades=Sum('cantidad'),
+        valor_t=Sum('valor', output_field=FloatField()))}
+    tabla = []
+    for clave, etiqueta in TRAMOS:
+        fila = {'clave': clave, 'etiqueta': etiqueta}
+        for tipo in ('PC', 'OF'):
+            fila[tipo] = resumen.get((clave, tipo))
+        fila['valor'] = sum((fila[t] or {}).get('valor_t') or 0 for t in ('PC', 'OF'))
+        tabla.append(fila)
+    total_valor = sum(t['valor'] for t in tabla)
+    for t in tabla:
+        t['pct'] = 100 * t['valor'] / total_valor if total_valor else 0
+
+    responsables = list(qs.values('responsable').annotate(
+        documentos=Count('numero', distinct=True), lineas=Count('pk'),
+        valor_r=Sum('valor', output_field=FloatField()),
+        valor_12=Sum(Case(When(tramo='12+', then=F('valor')), default=Value(0.0), output_field=FloatField())),
+    ).order_by('-valor_12', '-valor_r')[:15])
+
+    page_obj = Paginator(_documentos(qs), 50).get_page(request.GET.get('page'))
+    for d in page_obj.object_list:
+        d['dias'] = (hoy - d['emision']).days if d['emision'] else None
+    params = request.GET.copy()
+    params.pop('page', None)
+
+    # Cuanto cambia la compra sugerida segun la base de compromisos (calculo hibrido, SPEC-23 §2)
+    corrida = Corrida.objects.filter(estado=Corrida.OK).first()
+    res = corrida.resumen if corrida else {}
+    impacto = None
+    if res.get('valor_otra_base') is not None:
+        recientes = res.get('solo_compromisos_recientes', False)
+        impacto = {'recientes': recientes,
+                   'todos': res['valor_otra_base'] if recientes else res.get('valor_sugerido', 0),
+                   'solo_recientes': res.get('valor_sugerido', 0) if recientes else res['valor_otra_base']}
+        impacto['diferencia'] = impacto['todos'] - impacto['solo_recientes']
+
+    base = CompromisoDetalle.objects
+    return render(request, 'calculadora/compromisos.html', {
+        'f': f, 'tabla': tabla, 'total_valor': total_valor, 'tramos': TRAMOS, 'responsables': responsables,
+        'page_obj': page_obj, 'query': params.urlencode(), 'impacto': impacto,
+        'nodos': sorted(n for n in base.values_list('nodo', flat=True).distinct() if n),
+        'lista_responsables': sorted(r for r in base.values_list('responsable', flat=True).distinct() if r),
+        'hay_datos': base.exists(),
+    })
+
+
+@login_required
+def compromisos_excel(request):
+    qs, _ = _compromisos_filtrados(request)
+    hoy = timezone.localdate()
+    etiquetas = dict(TRAMOS)
+    filas = [{
+        'Tipo': d['tipo'], 'Numero': d['numero'], 'Emision': d['emision'],
+        'Dias abierto': (hoy - d['emision']).days if d['emision'] else '',
+        'Antiguedad': etiquetas.get(d['tramo_doc'], ''), 'Entrega comprometida': d['entrega'],
+        'Nodo': 'Santiago' if d['nodo_doc'] == '013' else d['nodo_doc'], 'Cliente': d['cliente'],
+        'Responsable': d['responsable_doc'], 'Referencia': d['referencia_doc'], 'Lineas': d['lineas'],
+        'Unidades pendientes': round(d['unidades'] or 0, 2), 'Valor USD': round(d['valor_doc'] or 0, 2),
+    } for d in _documentos(qs)]
+    return respuesta_excel(f'compromisos_abiertos_{hoy:%Y%m%d}.xlsx', filas, 'Compromisos abiertos')
 
 
 # ── Alertas ──────────────────────────────────────────────────────────────────

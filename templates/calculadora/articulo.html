@@ -32,7 +32,8 @@
                 <div class="rounded-2xl bg-slate-50 border border-slate-200 p-3"><div class="text-[10px] font-bold text-slate-400 uppercase">Disponible red</div><div class="text-xl font-black font-mono {% if r.compra.disponible_futuro <= 0 %}text-red-600{% endif %}">{{ r.compra.disponible_futuro|floatformat:"0g" }}</div></div>
                 <div class="rounded-2xl bg-slate-50 border border-slate-200 p-3"><div class="text-[10px] font-bold text-slate-400 uppercase">SS · ROP · Máx</div><div class="text-xl font-black font-mono">{{ r.politica.stock_seguridad }} · {{ r.politica.punto_pedido }} · {{ r.politica.stock_maximo }}</div></div>
                 <div class="rounded-2xl {% if r.cantidad_a_comprar %}bg-emerald-50 border-emerald-200{% else %}bg-slate-50 border-slate-200{% endif %} border p-3"><div class="text-[10px] font-bold text-slate-400 uppercase">A comprar hoy</div><div class="text-xl font-black font-mono">{{ r.cantidad_a_comprar }}</div>
-                    <div class="text-[10px] text-slate-500">{% if r.compra.comprar %}día de compra{% elif r.excepcion.excepcion %}fuera de calendario{% elif r.compra.necesita_compra %}entra el {{ proxima|date:"d-m" }} ({{ r.compra.cantidad_sugerida }} u){% else %}no necesita{% endif %}</div></div>
+                    <div class="text-[10px] text-slate-500">{% if r.compra.comprar %}día de compra{% elif r.excepcion.excepcion %}fuera de calendario{% elif r.compra.necesita_compra %}entra el {{ proxima|date:"d-m" }} ({{ r.compra.cantidad_sugerida }} u){% else %}no necesita{% endif %}</div>
+                    {% if guardado.cantidad_otra_base is not None %}<div class="text-[10px] text-amber-700 mt-1" title="Cálculo híbrido: la otra base de compromisos">{% if solo_recientes %}con todos los compromisos{% else %}solo recientes{% endif %}: <b class="font-mono">{{ guardado.cantidad_otra_base }}</b> u {% ayuda 'compromisos_recientes' %}</div>{% endif %}</div>
                 <div class="rounded-2xl bg-slate-50 border border-slate-200 p-3"><div class="text-[10px] font-bold text-slate-400 uppercase">Cobertura</div><div class="text-xl font-black font-mono">{% if r.compra.cobertura_dias is not None %}{{ r.compra.cobertura_dias|floatformat:0 }} d{% else %}—{% endif %}</div></div>
             </div>
         </div>
@@ -222,12 +223,12 @@
         </div>
         <!-- Compromisos -->
         <div class="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
-            <div class="px-5 py-3 border-b border-slate-100 text-[10px] font-bold text-slate-400 uppercase tracking-wider">Compromisos abiertos (PC y OF)</div>
+            <div class="px-5 py-3 border-b border-slate-100 text-[10px] font-bold text-slate-400 uppercase tracking-wider">Compromisos abiertos (PC y OF){% if guardado.comprometido_antiguo %} · <span class="text-amber-700 normal-case">{{ guardado.comprometido_antiguo|floatformat:"0g" }} u emitidas antes del {{ corte_recientes|date:"d-m-Y" }}{% if solo_recientes %}, fuera del cálculo{% endif %}</span>{% endif %}</div>
             <div class="max-h-72 overflow-y-auto">
-            <table class="min-w-full text-xs"><thead class="bg-slate-50 text-[10px] uppercase text-slate-500 sticky top-0"><tr><th class="px-4 py-1.5 text-left">Tipo</th><th class="text-left">Número</th><th class="text-left">Bodega</th><th class="text-left">Fecha</th><th class="text-right px-4">Cantidad</th></tr></thead>
+            <table class="min-w-full text-xs"><thead class="bg-slate-50 text-[10px] uppercase text-slate-500 sticky top-0"><tr><th class="px-4 py-1.5 text-left">Tipo</th><th class="text-left">Número</th><th class="text-left">Bodega</th><th class="text-left">Emisión</th><th class="text-left">Entrega</th><th class="text-right px-4">Cantidad</th></tr></thead>
             <tbody class="divide-y divide-slate-100">
-            {% for c in compromisos %}<tr><td class="px-4 py-1.5 font-bold">{{ c.tipo }}</td><td class="font-mono">{{ c.numero }}</td><td class="font-mono">{{ c.bodega }}</td><td>{{ c.fecha|date:"d-m-Y" }}</td><td class="text-right px-4 font-mono font-bold">{{ c.cantidad|floatformat:"-2" }}</td></tr>
-            {% empty %}<tr><td colspan="5" class="px-4 py-3 text-slate-500 text-center">Sin compromisos abiertos.</td></tr>{% endfor %}
+            {% for c in compromisos %}<tr{% if c.fecha_emision and c.fecha_emision < corte_recientes %} class="bg-amber-50/60" title="Compromiso antiguo"{% endif %}><td class="px-4 py-1.5 font-bold">{{ c.tipo }}</td><td class="font-mono">{{ c.numero }}</td><td class="font-mono">{{ c.bodega }}</td><td>{{ c.fecha_emision|date:"d-m-Y" }}</td><td>{{ c.fecha|date:"d-m-Y" }}</td><td class="text-right px-4 font-mono font-bold">{{ c.cantidad|floatformat:"-2" }}</td></tr>
+            {% empty %}<tr><td colspan="6" class="px-4 py-3 text-slate-500 text-center">Sin compromisos abiertos.</td></tr>{% endfor %}
             </tbody></table>
             </div>
         </div>

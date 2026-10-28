@@ -1,7 +1,7 @@
 -- ============================================================================
 -- PESCO S.A. - CONSULTAS OFICIALES DEL DATALAKE (AWS ATHENA / SAP B1)
 -- Base de datos: pesco_sbo_pescousd
--- Version: 27-oct-2026. Es el UNICO archivo de consultas de la plataforma.
+-- Version: 28-oct-2026. Es el UNICO archivo de consultas de la plataforma.
 --
 -- COMO EXPORTAR (DBeaver)
 --   1. Copiar UNA consulta (desde SELECT hasta el punto y coma) y ejecutarla.
@@ -20,6 +20,7 @@
 --
 -- PRIORIDAD
 --   1 a 9   IMPRESCINDIBLES (sin ellas el calculo es provisional)
+--   15 y 16 IMPRESCINDIBLES desde el 28-oct (notas de credito y compromisos con responsable)
 --   10 a 12 RECOMENDADAS   (proveedor, minimo/multiplo, contratos)
 --   13 y 14 OPCIONALES
 --
@@ -143,7 +144,8 @@ AND t1.itemcode IS NOT NULL;
 -- ============================================================================
 -- 5. ORDENES DE COMPRA (OC) EN TRANSITO                             [IMPRESCINDIBLE]
 -- ARCHIVO: Órdenes de Compra en Tránsito (OC).txt
--- Lineas de OC abiertas de los ultimos 180 dias (lo que viene en camino).
+-- Todas las lineas de OC abiertas (lo que viene en camino). Reunion 28-oct: se quito el corte de
+-- 180 dias; las OC antiguas a pre-bodegas (000-xxx) quedaban fuera. La antiguedad la informa la plataforma.
 -- Se excluyen proveedores internos terminados en PE.
 -- ============================================================================
 SELECT
@@ -162,7 +164,6 @@ INNER JOIN pesco_sbo_pescousd.por1 oc_l
 WHERE oc.docstatus = 'O'
   AND oc_l.linestatus = 'O'
   AND oc_l.openqty > 0
-  AND SUBSTR(CAST(oc.docdate AS VARCHAR), 1, 10) >= CAST(DATE_ADD('day', -180, CURRENT_DATE) AS VARCHAR)
   AND (oc.cardcode IS NULL OR oc.cardcode NOT LIKE '%PE');
 
 
@@ -221,12 +222,15 @@ WHERE gr.canceled = 'N'
 --   16 Devolucion de venta · 60 Salida de mercancia (incluye emisiones a OF).
 --   No se incluyen 67 (traslados), 59 (entradas) ni 18/19/20/21 (compras).
 -- cantidad_neta = salidas - entradas (devoluciones restan en el mes en que ocurren).
+-- origen 'NC' (28-oct, SPEC-22): las notas de credito van aparte; la plataforma las reemplaza por la
+-- consulta 15, que las resta en la bodega y el mes de su factura de origen.
 -- ============================================================================
 SELECT
     m.itemcode                                           AS codigo_sku,
     m.warehouse                                          AS bodega,
     SUBSTR(CAST(m.docdate AS VARCHAR), 1, 7)             AS mes,
-    CASE WHEN m.transtype IN (13, 14, 15, 16) THEN 'VENTA'
+    CASE WHEN m.transtype = 14                THEN 'NC'
+         WHEN m.transtype IN (13, 15, 16)     THEN 'VENTA'
          WHEN m.transtype = 60                THEN 'SALIDA'
          ELSE 'OTRO' END                                 AS origen,
     CAST(SUM(COALESCE(m.outqty, 0) - COALESCE(m.inqty, 0)) AS DECIMAL(18, 2)) AS cantidad_neta
@@ -241,7 +245,8 @@ GROUP BY
     m.itemcode,
     m.warehouse,
     SUBSTR(CAST(m.docdate AS VARCHAR), 1, 7),
-    CASE WHEN m.transtype IN (13, 14, 15, 16) THEN 'VENTA'
+    CASE WHEN m.transtype = 14                THEN 'NC'
+         WHEN m.transtype IN (13, 15, 16)     THEN 'VENTA'
          WHEN m.transtype = 60                THEN 'SALIDA'
          ELSE 'OTRO' END
 HAVING SUM(COALESCE(m.outqty, 0) - COALESCE(m.inqty, 0)) <> 0;
@@ -391,6 +396,94 @@ FROM pesco_sbo_pescousd.owhs w;
 
 
 -- ============================================================================
+-- 15. NOTAS DE CREDITO DE CLIENTE CON SU DOCUMENTO DE ORIGEN (24 meses) [IMPRESCINDIBLE]
+-- ARCHIVO: Notas de Credito.txt
+-- Reunion 28-oct: se factura en una sucursal, se despacha desde otra y se emite una NC.
+-- La NC debe restar el consumo en la bodega y el mes de la factura/entrega ORIGINAL,
+-- no donde se registro la NC (a veces 013-NC, que esta excluida).
+-- tipo_origen: 13 = factura, 15 = entrega, -1 = sin documento base.
+-- sin_movimiento_stock = 'Y': NC solo financiera (no devolvio unidades a bodega).
+-- ============================================================================
+SELECT
+    nc.docnum                                            AS nc_numero,
+    l.itemcode                                           AS codigo_sku,
+    l.whscode                                            AS bodega_nc,
+    SUBSTR(CAST(nc.docdate AS VARCHAR), 1, 10)           AS fecha_nc,
+    CAST(l.quantity AS DECIMAL(18, 2))                   AS cantidad,
+    CAST(l.basetype AS VARCHAR)                          AS tipo_origen,
+    COALESCE(fl.whscode, el.whscode)                     AS bodega_origen,
+    SUBSTR(CAST(COALESCE(f.docdate, e.docdate) AS VARCHAR), 1, 10) AS fecha_origen,
+    COALESCE(f.docnum, e.docnum)                         AS numero_origen,
+    l.noinvtrymv                                         AS sin_movimiento_stock
+FROM pesco_sbo_pescousd.orin nc
+INNER JOIN pesco_sbo_pescousd.rin1 l
+    ON nc.docentry = l.docentry
+INNER JOIN pesco_sbo_pescousd.oitm t
+    ON t.itemcode = l.itemcode
+LEFT JOIN pesco_sbo_pescousd.inv1 fl
+    ON CAST(l.basetype AS VARCHAR) = '13' AND fl.docentry = l.baseentry AND fl.linenum = l.baseline
+LEFT JOIN pesco_sbo_pescousd.oinv f
+    ON f.docentry = fl.docentry
+LEFT JOIN pesco_sbo_pescousd.dln1 el
+    ON CAST(l.basetype AS VARCHAR) = '15' AND el.docentry = l.baseentry AND el.linenum = l.baseline
+LEFT JOIN pesco_sbo_pescousd.odln e
+    ON e.docentry = el.docentry
+WHERE nc.canceled = 'N'
+  AND t.invntitem = 'Y'
+  AND SUBSTR(CAST(nc.docdate AS VARCHAR), 1, 10) >= CAST(DATE_ADD('month', -24, DATE_TRUNC('month', CURRENT_DATE)) AS VARCHAR);
+
+
+-- ============================================================================
+-- 16. COMPROMISOS ABIERTOS CON RESPONSABLE (PC y OF)                 [IMPRESCINDIBLE]
+-- ARCHIVO: Compromisos Abiertos.txt
+-- Para el informe de antiguedad de compromisos abiertos (Contraloria): quien lo emitio,
+-- cliente y referencia. No reemplaza a las consultas 3 y 4.
+-- referencia: PC = OC del cliente (numatcard); OF = articulo fabricado.
+-- ============================================================================
+SELECT
+    'PC'                                                 AS tipo,
+    t0.docnum                                            AS numero,
+    t1.itemcode                                          AS codigo_sku,
+    t1.whscode                                           AS bodega,
+    SUBSTR(CAST(t0.docdate AS VARCHAR), 1, 10)           AS fecha_emision,
+    SUBSTR(CAST(COALESCE(t1.shipdate, t0.docduedate) AS VARCHAR), 1, 10) AS fecha_entrega,
+    t0.cardcode                                          AS codigo_cliente,
+    t0.cardname                                          AS nombre_cliente,
+    s.slpname                                            AS responsable,
+    t0.numatcard                                         AS referencia,
+    CAST(t1.openqty AS DECIMAL(18, 2))                   AS cantidad_pendiente
+FROM pesco_sbo_pescousd.ordr t0
+INNER JOIN pesco_sbo_pescousd.rdr1 t1
+    ON t0.docentry = t1.docentry
+LEFT JOIN pesco_sbo_pescousd.oslp s
+    ON s.slpcode = t0.slpcode
+WHERE t0.docstatus = 'O' AND t1.linestatus = 'O' AND t1.openqty > 0
+  AND t1.itemcode IS NOT NULL
+UNION ALL
+SELECT
+    'OF',
+    w.docnum,
+    w1.itemcode,
+    COALESCE(w1.warehouse, w.warehouse),
+    SUBSTR(CAST(w.postdate AS VARCHAR), 1, 10),
+    SUBSTR(CAST(w.duedate AS VARCHAR), 1, 10),
+    w.cardcode,
+    c.cardname,
+    u.u_name,
+    w.itemcode,
+    CAST(GREATEST(0, w1.plannedqty - w1.issuedqty) AS DECIMAL(18, 2))
+FROM pesco_sbo_pescousd.owor w
+INNER JOIN pesco_sbo_pescousd.wor1 w1
+    ON w.docentry = w1.docentry
+LEFT JOIN pesco_sbo_pescousd.ocrd c
+    ON c.cardcode = w.cardcode
+LEFT JOIN pesco_sbo_pescousd.ousr u
+    ON u.userid = w.usersign
+WHERE w.status IN ('P', 'R') AND (w1.plannedqty - w1.issuedqty) > 0
+  AND w1.itemcode IS NOT NULL;
+
+
+-- ============================================================================
 -- ANEXO. VERIFICACION DE COLUMNAS (solo si una consulta da COLUMN_NOT_FOUND)
 -- Quitar el "--" de la linea a revisar y ejecutarla sola.
 -- ============================================================================
@@ -399,3 +492,7 @@ FROM pesco_sbo_pescousd.owhs w;
 -- DESCRIBE pesco_sbo_pescousd.ooat;
 -- DESCRIBE pesco_sbo_pescousd.oat1;
 -- DESCRIBE pesco_sbo_pescousd.ige1;
+-- DESCRIBE pesco_sbo_pescousd.rin1;   -- consulta 15: basetype, baseentry, baseline, noinvtrymv
+-- DESCRIBE pesco_sbo_pescousd.dln1;
+-- DESCRIBE pesco_sbo_pescousd.oslp;   -- consulta 16
+-- DESCRIBE pesco_sbo_pescousd.ousr;   -- consulta 16 (si no existe: reemplazar u.u_name por CAST(w.usersign AS VARCHAR) y quitar el JOIN)

@@ -10,7 +10,8 @@ from apps.inventory.models import (
     SKUClassification, GoodsReceipt
 )
 from apps.inventory.stock_actual_models import StockActual
-from apps.data_ingestion.warehouses import WAREHOUSE_NAMES, transit_destination, commitment_bodega, purchase_bodega
+from apps.data_ingestion.warehouses import (WAREHOUSE_NAMES, commitment_bodega, prebodega_destino, purchase_bodega,
+                                            transit_destination)
 
 
 def _sin_tildes(nombre):
@@ -276,6 +277,11 @@ def ingest_datalake_stock_fisico(file_path):
             dest = transit_destination(wh_code)
             if dest:
                 transito_inter[(sku, dest)] += stk_fis + onorder
+            # Pre-bodegas (SPEC-22 §2): su stock va en camino al destino; lo pedido ya viene
+            # en las lineas de OC, que purchase_bodega acredita al mismo destino
+            pre = prebodega_destino(wh_code)
+            if pre and stk_fis > 0:
+                transito_inter[(sku, pre)] += stk_fis
 
             # Objeto StockActual
             stock_actual_objs.append(StockActual(

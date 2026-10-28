@@ -45,6 +45,8 @@ GLOSARIO = {
                       'Una OF necesita 3: hay 1 en 013-03 y 2 en 013-PS → Santiago tiene 3.', 'Ver el stock por bodega 013-xx en la ficha del artículo.'),
     'traslado': ('Trasladar', 'Solo entre Santiago y sucursales, y solo con stock libre: ningún nodo entrega lo que protege para sí (sus compromisos más su consumo de los días de reserva).',
                  'Santiago tiene 2 libres, en 013-03 → se mandan a Calama.', 'Generar la solicitud de traslado en SAP.'),
+    'compromisos_recientes': ('Compromisos recientes', 'PC y OF abiertos emitidos en los últimos meses (por defecto 3). Los más antiguos suelen ser pedidos que nadie cerró: inflan lo comprometido y empujan compras.',
+                              'Un PC de 2024 que sigue abierto en SAP pero que el cliente ya no espera.', 'Revisar el informe de antigüedad de compromisos y pedir su cierre o anulación.'),
     'stock_retenido': ('Stock retenido', 'Stock que un nodo tiene pero protege: cubre sus pedidos y OF abiertos más su consumo de los días de reserva. El sistema no lo sugiere; jefatura puede decidir moverlo y la compra de la red lo repone.',
                        'Antofagasta tiene 12, 8 comprometidas: se sugieren 4, quedan 8 retenidas.', 'Decisión de jefatura.'),
     'traslado_parcial': ('Trasladar parcial', 'Santiago cubre solo una parte; el resto llega con la compra de la red.', '', 'Trasladar lo disponible ahora.'),

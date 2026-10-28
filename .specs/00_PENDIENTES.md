@@ -1,7 +1,12 @@
-# PENDIENTES (actualizado 28-oct-2026)
+# PENDIENTES (actualizado 28-oct-2026, tarde)
 
 ## Próximo paso (datos)
 
+0. **Datalake: la consulta 8 no es estable** (28-oct, SPEC-22 §4). Dos exportaciones con un día de
+   diferencia traen filas muy distintas por mes; falta 2025-02 en ambas, 2025-07 en la del 28-oct y
+   2026-08 viene con 969 filas contra 4.061. Con el archivo del 28-oct la compra sugerida pasó de
+   USD 4,06 M a USD 3,36 M **por el cambio de datos, no por las NC** (las NC mueven ~4.700 u de 12
+   meses de sucursales a Santiago). Revisar con IT la carga de OINM antes de confiar en el consumo.
 1. **Cuadrar el consumo** de 30 artículos contra el informe de auditoría de stock de B1, por bodega
    (criterio de aceptación fase 1). Confirmar TransType 13, 14, 15, 16, 60. (Consultas 8 a 14 ya
    cargadas el 27-oct: consumo OINM, plazos reales, acuerdos en USD.)
@@ -12,7 +17,7 @@
 | # | Hallazgo | Acción |
 |---|---|---|
 | 1 | OC y SC posteadas en la `013` (o sin bodega) **se perdían**: ~1.061 líneas de OC (5.457 u) y ~450 de SC | **Corregido**: se acreditan a 013-PP (`purchase_bodega`). Reprocesar con Sincronizar |
-| 2 | Bodegas `000-003`, `000-010`, `000-022` reciben OC/SC (≈43, 71, 29 líneas) | Confirmar si son bodegas de posteo de sucursales y a cuál se acreditan |
+| 2 | Bodegas `000-003`, `000-010`, `000-022` reciben OC/SC (≈43, 71, 29 líneas) | **Resuelto 28-oct (SPEC-22)**: son pre-bodegas de importación; OC, SC y stock se acreditan como tránsito a su sucursal |
 | 3 | Caso 4 del documento cuenta dos veces el compromiso (SPEC-11 §3.1) | **Corregido 28-oct** (faltante real). Corregir el caso 4 en el documento |
 | 4 | Caso 3: consumo anual 146 ⇒ promedio 12,17, pero el documento calcula con 11,5 (SPEC-17) | Corregir el dato en el documento |
 | 5 | 289 artículos que necesitan compra no tienen proveedor | Consulta 10 o completar proveedor en la plataforma |
@@ -40,6 +45,16 @@ Corrida del 27-oct con consumo provisional PC/OF: 18.026 artículos; R 2.471, P 
 271 a comprar hoy, 1.047 necesitan compra, 409 excepciones, 529 traslados; USD 3,16 M sugerido;
 quiebre real USD 717 mil vs brecha contra objetivo USD 3,94 M.
 
+## Hallazgos de la reunión S&OP del 28-oct (SPEC-22 y 23)
+
+| # | Hallazgo | Acción |
+|---|---|---|
+| 16 | Las NC se restan en la 013-NC/013-IN (Santiago), no en la bodega de la factura: infla la demanda de la sucursal | SPEC-22: reubicar al origen. **Pendiente: re-exportar la consulta 8** (ahora separa las NC) |
+| 17 | En 1.014 de 2.032 celdas con NC, OINM no registra movimiento (390 mil u; una NC de 360.000 u sobre factura sin movimiento) | Solo se reubica lo que OINM registró. Confirmar con contabilidad si son facturas de reserva |
+| 18 | El corte de 180 días de la consulta 5 dejaba fuera OC antiguas pendientes (pre-bodegas: SAP 12.630 u, cargadas ~3.700) | Corregido: consulta 5 sin corte. Tránsito de los nodos: 119 mil → 143 mil u |
+| 19 | PC/OF abiertos desde 2023. En el alcance: 6% de las u de PC y 8% de las de OF tienen más de 3 meses; el volumen grande es RETAIL y servicios | SPEC-23: cálculo híbrido (compra −3,6% con solo recientes) + informe de antigüedad para Contraloría |
+| 20 | Producción pide ver Santiago también por bodega (013-PS vs 013-PP rotan distinto) | Vista tipo Slim4 con detalle 013-xx (SPEC-24, pendiente) |
+
 ## Decisiones abiertas
 
 | # | Decisión | Quién | Hoy implementado |
@@ -59,6 +74,7 @@ quiebre real USD 717 mil vs brecha contra objetivo USD 3,94 M.
 | 13 | Objetivo por bodega / doble conteo del caso 4 | Desarrollo (28-oct) | **Resuelto**: faltante = MAX(0; −disponible) |
 | 14 | Alertas de alza e irregularidad solo para R/E | Abastecimiento | Solo R/E |
 | 15 | Días de reserva de consumo propio antes de trasladar (protección simétrica) | Abastecimiento | 15 días (`dias_reserva_traslado`) |
+| 17 | Base de compromisos del cálculo: todos o solo recientes, y cuántos meses | Abastecimiento / Producción | Todos; se muestra también la otra base (3 meses) |
 | 16 | Bodega de entrega de las solicitudes exportadas: 013-PP o 013 | Compras | 013-PP |
 | 17 | Compra: el disponible resta todos los compromisos y el punto de pedido ya incluye el consumo del plazo (posible doble conteo, ≈ 38 artículos y USD 0,29 M). Los meses atípicos se recortan del consumo, así que un pedido grande puntual no está en el promedio | Abastecimiento | Fórmula del documento (§4.6) |
 

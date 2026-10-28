@@ -6,6 +6,7 @@ SUBNAV = [
     ('solicitudes', 'Solicitudes', 'fa-file-invoice-dollar', ('solicitudes', 'solicitud_detalle')),
     ('bodegas', 'Bodegas', 'fa-warehouse', ('bodegas',)),
     ('traslados', 'Traslados', 'fa-truck-ramp-box', ('traslados',)),
+    ('compromisos', 'Compromisos', 'fa-hourglass-half', ('compromisos',)),
     ('alertas', 'Alertas', 'fa-bell', ('alertas',)),
     ('segmentacion', 'Segmentación', 'fa-table-cells', ('segmentacion',)),
     ('indicadores', 'Indicadores', 'fa-chart-column', ('indicadores',)),

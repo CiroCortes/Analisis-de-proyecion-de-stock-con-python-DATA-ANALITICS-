@@ -1,0 +1,170 @@
+{% extends 'base.html' %}
+{% load calculadora_tags %}
+
+{% block title %}Antigüedad de compromisos abiertos | Calculadora Pesco{% endblock %}
+
+{% block content %}
+<div class="w-full space-y-6">
+    {% include 'calculadora/_subnav.html' %}
+
+    <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 bg-white p-6 sm:p-7 rounded-3xl shadow-sm border border-slate-200 border-l-8 border-l-pesco-cyan">
+        <div>
+            <span class="text-xs font-bold text-pesco-cyan uppercase tracking-wider">Calculadora de compras · Control de compromisos</span>
+            <h1 class="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight mt-1">Antigüedad de compromisos abiertos</h1>
+            <p class="text-sm text-slate-500 mt-1 max-w-3xl">Pedidos de cliente (PC) y órdenes de fabricación (OF) abiertos en SAP, por antigüedad desde su emisión {% ayuda 'compromisos_recientes' %}. Los compromisos antiguos que siguen abiertos se descuentan del stock y empujan compras: este informe identifica los documentos a cerrar o anular y a su responsable.</p>
+        </div>
+        <a href="{% url 'calculadora:compromisos_excel' %}?{{ request.GET.urlencode }}" class="bg-pesco-cyan hover:bg-pesco-darkcyan text-white text-xs font-bold px-5 py-3 rounded-full shadow-md uppercase tracking-wider whitespace-nowrap"><i class="fa-solid fa-file-excel mr-1"></i> Descargar Excel</a>
+    </div>
+
+    {% if not hay_datos %}
+    <div class="bg-amber-50 border border-amber-200 rounded-3xl p-6 text-sm text-amber-800">
+        No hay datos cargados. Exportar la consulta 16 (<span class="font-mono">Compromisos Abiertos.txt</span>) a la carpeta <span class="font-mono">data/</span> y sincronizar.
+    </div>
+    {% else %}
+
+    {% if impacto %}
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm">
+            <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Compra sugerida con todos los compromisos{% if not impacto.recientes %} · base actual{% endif %}</div>
+            <div class="text-2xl font-black font-mono mt-1">USD {{ impacto.todos|floatformat:"0g" }}</div>
+        </div>
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm">
+            <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Solo con compromisos recientes{% if impacto.recientes %} · base actual{% endif %}</div>
+            <div class="text-2xl font-black font-mono mt-1">USD {{ impacto.solo_recientes|floatformat:"0g" }}</div>
+        </div>
+        <div class="bg-amber-50 rounded-2xl border border-amber-200 p-4 shadow-sm">
+            <div class="text-[10px] font-bold text-amber-700 uppercase tracking-wider">Compra atribuible a compromisos antiguos</div>
+            <div class="text-2xl font-black font-mono text-amber-800 mt-1">USD {{ impacto.diferencia|floatformat:"0g" }}</div>
+            <div class="text-[11px] text-amber-700 mt-1">La base del cálculo se elige en <a href="{% url 'calculadora:parametros' %}" class="underline">Parámetros</a>.</div>
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+        <div class="px-6 py-4 border-b border-slate-100 font-black text-slate-800 text-sm">Resumen por antigüedad</div>
+        <div class="overflow-x-auto">
+        <table class="min-w-full text-xs">
+            <thead><tr class="text-[10px] uppercase tracking-wider text-slate-400 border-b border-slate-100">
+                <th class="text-left py-2 px-6">Antigüedad</th>
+                <th class="text-right py-2 px-3">PC · documentos</th><th class="text-right py-2 px-3">PC · unidades</th>
+                <th class="text-right py-2 px-3">OF · documentos</th><th class="text-right py-2 px-3">OF · unidades</th>
+                <th class="text-right py-2 px-3">Valor USD</th><th class="text-left py-2 px-3 w-48">% del valor</th>
+            </tr></thead>
+            <tbody>
+            {% for t in tabla %}
+            <tr class="border-b border-slate-50 hover:bg-slate-50">
+                <td class="py-2 px-6"><a href="?{% if f.tipo %}tipo={{ f.tipo }}&{% endif %}{% if f.nodo %}nodo={{ f.nodo }}&{% endif %}tramo={{ t.clave }}" class="font-bold text-pesco-cyan hover:underline">{{ t.etiqueta }}</a></td>
+                <td class="px-3 text-right font-mono">{{ t.PC.documentos|default:0 }}</td>
+                <td class="px-3 text-right font-mono">{{ t.PC.unidades|default:0|floatformat:"0g" }}</td>
+                <td class="px-3 text-right font-mono">{{ t.OF.documentos|default:0 }}</td>
+                <td class="px-3 text-right font-mono">{{ t.OF.unidades|default:0|floatformat:"0g" }}</td>
+                <td class="px-3 text-right font-mono font-bold">{{ t.valor|floatformat:"0g" }}</td>
+                <td class="px-3"><div class="flex items-center gap-2"><div class="h-2 rounded-full bg-slate-100 flex-1"><div class="h-2 rounded-full {% if t.clave == '12+' %}bg-red-500{% elif t.clave == '6-12' %}bg-amber-500{% else %}bg-pesco-cyan{% endif %}" style="width: {{ t.pct|floatformat:0 }}%"></div></div><span class="font-mono text-[11px] text-slate-500 w-10 text-right">{{ t.pct|floatformat:0 }}%</span></div></td>
+            </tr>
+            {% endfor %}
+            <tr class="bg-slate-50 font-bold"><td class="py-2 px-6">Total</td><td colspan="4"></td><td class="px-3 text-right font-mono">{{ total_valor|floatformat:"0g" }}</td><td></td></tr>
+            </tbody>
+        </table>
+        </div>
+        <p class="px-6 py-3 text-[11px] text-slate-400">Valor a último precio de compra (USD). Solo artículos que planifica la Calculadora: los servicios y grupos excluidos (por ejemplo, montajes de OF) no se informan.</p>
+    </div>
+
+    <form method="get" class="bg-white p-5 rounded-3xl shadow-sm border border-slate-200 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4 items-end">
+        <div>
+            <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Tipo</label>
+            <select name="tipo" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm">
+                <option value="">PC y OF</option>
+                <option value="PC" {% if f.tipo == 'PC' %}selected{% endif %}>Pedidos de cliente</option>
+                <option value="OF" {% if f.tipo == 'OF' %}selected{% endif %}>Órdenes de fabricación</option>
+            </select>
+        </div>
+        <div>
+            <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Antigüedad</label>
+            <select name="tramo" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm">
+                <option value="">Todas</option>{% for k, v in tramos %}<option value="{{ k }}" {% if f.tramo == k %}selected{% endif %}>{{ v }}</option>{% endfor %}
+            </select>
+        </div>
+        <div>
+            <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Nodo</label>
+            <select name="nodo" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm">
+                <option value="">Todos</option>{% for n in nodos %}<option value="{{ n }}" {% if f.nodo == n %}selected{% endif %}>{{ n|nodo }}</option>{% endfor %}
+            </select>
+        </div>
+        <div>
+            <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Responsable</label>
+            <select name="responsable" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm">
+                <option value="">Todos</option>{% for r in lista_responsables %}<option {% if f.responsable == r %}selected{% endif %}>{{ r }}</option>{% endfor %}
+            </select>
+        </div>
+        <div>
+            <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Buscar</label>
+            <input name="search" value="{{ f.search }}" placeholder="N° documento, cliente, artículo" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm">
+        </div>
+        <div class="flex gap-2">
+            <button class="bg-pesco-cyan text-white text-xs font-bold px-5 py-2.5 rounded-full uppercase tracking-wider">Filtrar</button>
+            <a href="{% url 'calculadora:compromisos' %}" class="text-xs font-bold text-slate-500 px-3 py-2.5">Limpiar</a>
+        </div>
+    </form>
+
+    <div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
+        <div class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+            <div class="px-6 py-4 border-b border-slate-100 font-black text-slate-800 text-sm">Por responsable <span class="text-xs font-medium text-slate-400">· ordenado por valor con más de 12 meses</span></div>
+            <table class="min-w-full text-xs">
+                <thead><tr class="text-[10px] uppercase tracking-wider text-slate-400 border-b border-slate-100">
+                    <th class="text-left py-2 px-6">Responsable</th><th class="text-right py-2 px-3">Docs</th><th class="text-right py-2 px-3">Valor USD</th><th class="text-right py-2 px-3">Más de 12 m</th>
+                </tr></thead>
+                <tbody>
+                {% for r in responsables %}
+                <tr class="border-b border-slate-50 hover:bg-slate-50">
+                    <td class="py-2 px-6">{% if r.responsable %}<a href="?responsable={{ r.responsable|urlencode }}" class="text-pesco-cyan hover:underline">{{ r.responsable }}</a>{% else %}<span class="text-slate-400">Sin responsable</span>{% endif %}</td>
+                    <td class="px-3 text-right font-mono">{{ r.documentos }}</td>
+                    <td class="px-3 text-right font-mono">{{ r.valor_r|default:0|floatformat:"0g" }}</td>
+                    <td class="px-3 text-right font-mono {% if r.valor_12 %}text-red-600 font-bold{% else %}text-slate-400{% endif %}">{{ r.valor_12|default:0|floatformat:"0g" }}</td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="xl:col-span-2 bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+            <div class="px-6 py-4 border-b border-slate-100 font-black text-slate-800 text-sm">Documentos <span class="text-xs font-medium text-slate-400">· {{ page_obj.paginator.count }} · del más antiguo al más reciente</span></div>
+            <div class="overflow-x-auto">
+            <table class="min-w-full text-xs">
+                <thead><tr class="text-[10px] uppercase tracking-wider text-slate-400 border-b border-slate-100">
+                    <th class="text-left py-2 px-4">Documento</th><th class="text-left py-2 px-3">Emisión</th><th class="text-right py-2 px-3">Días</th>
+                    <th class="text-left py-2 px-3">Nodo</th><th class="text-left py-2 px-3">Cliente / referencia</th><th class="text-left py-2 px-3">Responsable</th>
+                    <th class="text-right py-2 px-3">Líneas</th><th class="text-right py-2 px-3">Unidades</th><th class="text-right py-2 px-4">Valor USD</th>
+                </tr></thead>
+                <tbody>
+                {% for d in page_obj %}
+                <tr class="border-b border-slate-50 hover:bg-slate-50">
+                    <td class="py-2 px-4 whitespace-nowrap"><span class="px-1.5 py-0.5 rounded text-[10px] font-black {% if d.tipo == 'PC' %}bg-cyan-100 text-cyan-800{% else %}bg-violet-100 text-violet-800{% endif %}">{{ d.tipo }}</span> <span class="font-mono font-bold">{{ d.numero }}</span></td>
+                    <td class="px-3 font-mono whitespace-nowrap">{{ d.emision|date:"d-m-Y" }}</td>
+                    <td class="px-3 text-right font-mono {% if d.tramo_doc == '12+' %}text-red-600 font-bold{% elif d.tramo_doc == '6-12' %}text-amber-700{% endif %}">{{ d.dias|default:"—" }}</td>
+                    <td class="px-3 font-mono">{{ d.nodo_doc|nodo|default:"—" }}</td>
+                    <td class="px-3 text-slate-600">{{ d.cliente|default:""|truncatechars:40 }}{% if d.referencia_doc %} <span class="text-slate-400 font-mono">· {{ d.referencia_doc|truncatechars:20 }}</span>{% endif %}</td>
+                    <td class="px-3 text-slate-600">{{ d.responsable_doc|default:"—" }}</td>
+                    <td class="px-3 text-right font-mono">{{ d.lineas }}</td>
+                    <td class="px-3 text-right font-mono">{{ d.unidades|floatformat:"0g" }}</td>
+                    <td class="px-4 text-right font-mono font-bold">{{ d.valor_doc|default:0|floatformat:"0g" }}</td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="9" class="p-8 text-center text-slate-500">No hay compromisos con ese filtro.</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+            </div>
+            {% if page_obj.has_other_pages %}
+            <div class="px-6 py-3 flex justify-between items-center text-xs border-t border-slate-100">
+                <span class="text-slate-500">Página {{ page_obj.number }} de {{ page_obj.paginator.num_pages }}</span>
+                <span class="flex gap-2">
+                    {% if page_obj.has_previous %}<a href="?{{ query }}&page={{ page_obj.previous_page_number }}" class="font-bold text-pesco-cyan">Anterior</a>{% endif %}
+                    {% if page_obj.has_next %}<a href="?{{ query }}&page={{ page_obj.next_page_number }}" class="font-bold text-pesco-cyan">Siguiente</a>{% endif %}
+                </span>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

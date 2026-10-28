@@ -111,13 +111,24 @@ class Datos:
         for sku, q in stock_qs.values_list('codigo', 'stock_disponible'):
             self.stock_013[sku] += float(q or 0)
 
-        # Compromisos con fecha (proyeccion) y fecha mas cercana por bodega (reparto)
-        self.compromisos = defaultdict(list)
+        # Compromisos con fecha (proyeccion) y fecha mas cercana por bodega (reparto). Los
+        # emitidos antes del corte son "antiguos" (SPEC-23): se guardan aparte por bodega para
+        # poder calcular con y sin ellos.
+        self.corte_recientes = _restar_meses(hoy, general.meses_compromisos_recientes)
+        self.compromisos = defaultdict(list)          # sku -> [(dia, cantidad, reciente)]
         self.fecha_compromiso = {}
-        for sku, bodega, fecha, q in filtro(CompromisoAbierto.objects).values_list('product_id', 'bodega', 'fecha', 'cantidad'):
-            self.compromisos[sku].append(((fecha - hoy).days if fecha else 1, q))
-            if fecha and ((sku, bodega) not in self.fecha_compromiso or fecha < self.fecha_compromiso[(sku, bodega)]):
-                self.fecha_compromiso[(sku, bodega)] = fecha
+        self.fecha_compromiso_reciente = {}
+        self.antiguos = defaultdict(float)            # (sku, bodega) -> unidades antiguas
+        for sku, bodega, fecha, emision, q in filtro(CompromisoAbierto.objects).values_list(
+                'product_id', 'bodega', 'fecha', 'fecha_emision', 'cantidad'):
+            reciente = emision is None or emision >= self.corte_recientes
+            self.compromisos[sku].append(((fecha - hoy).days if fecha else 1, q, reciente))
+            if not reciente:
+                self.antiguos[(sku, bodega)] += q
+            for mapa, aplica in ((self.fecha_compromiso, True), (self.fecha_compromiso_reciente, reciente)):
+                if aplica and fecha and ((sku, bodega) not in mapa or fecha < mapa[(sku, bodega)]):
+                    mapa[(sku, bodega)] = fecha
+        self.con_antiguos = {sku for sku, _ in self.antiguos}
 
         self.oc = defaultdict(list)
         for o in filtro(OCAbierta.objects):
@@ -169,6 +180,14 @@ class Datos:
                 self.rop_actual[sku] = rop or 0
 
 
+def _restar_meses(fecha, meses):
+    total = fecha.year * 12 + fecha.month - 1 - meses
+    anio, mes = total // 12, total % 12 + 1
+    ultimo = [31, 29 if anio % 4 == 0 and (anio % 100 or anio % 400 == 0) else 28, 31, 30, 31, 30,
+              31, 31, 30, 31, 30, 31][mes - 1]
+    return datetime.date(anio, mes, min(fecha.day, ultimo))
+
+
 def _segmento(p):
     tipo = p.category.tipo if p.category else ''
     return PANOL if tipo == TIPO_PANOL else REPUESTOS
@@ -202,8 +221,9 @@ def _ajuste_y_meses_evento(datos, p, consumo_meses):
     return ajuste, meses_evento
 
 
-def _entrada(datos, p, abc):
-    """EntradaArticulo del nucleo + proveedor y proxima fecha de compra."""
+def _entrada(datos, p, abc, solo_recientes=None):
+    """EntradaArticulo del nucleo + proveedor y proxima fecha de compra. `solo_recientes`
+    (SPEC-23): None = lo que diga el parametro; True/False fuerza la base de compromisos."""
     hoy = datos.hoy
     cfg = datos.config.get(p.code)
     pc = datos.param_compra.get(p.code)
@@ -217,6 +237,9 @@ def _entrada(datos, p, abc):
     frecuencia = params.frecuencia_compra_dias
     ancla = prov.fecha_ancla if prov and prov.fecha_ancla else calendario.ancla_por_defecto(prov_codigo or p.code, frecuencia)
     proxima = calendario.proxima_fecha_compra(hoy, frecuencia, ancla)
+    if solo_recientes is None:
+        solo_recientes = datos.resolutor.general.solo_compromisos_recientes
+    fechas_comp = datos.fecha_compromiso_reciente if solo_recientes else datos.fecha_compromiso
 
     # Bodegas como vienen de SAP; el nucleo agrupa Santiago en un nodo (SPEC-21 §2). La 013
     # aporta su stock, las solicitudes aprobadas y el consumo de todo Santiago.
@@ -228,7 +251,9 @@ def _entrada(datos, p, abc):
         bodegas.append(Bodega(
             codigo=code, es_santiago=es_santiago,
             stock_fisico=m.stock_physical, en_transito=m.oc_po_qty + m.sc_qty + m.stock_transito_inter,
-            comprometido=m.comp_pc_qty + m.comp_of_qty, fecha_compromiso=datos.fecha_compromiso.get((p.code, code)),
+            comprometido=max(0.0, m.comp_pc_qty + m.comp_of_qty
+                             - (datos.antiguos.get((p.code, code), 0.0) if solo_recientes else 0.0)),
+            fecha_compromiso=fechas_comp.get((p.code, code)),
             consumo_diario=0.0 if es_santiago else datos.consumo_nodo.get((p.code, code), 0.0) / datos.dias_historia,
         ))
     stock_013 = datos.stock_013.get(p.code, 0)
@@ -263,7 +288,8 @@ def _entrada(datos, p, abc):
         dias_oc=datos.plazos.get(p.code, []), lead_time_maestro=lead_maestro,
         costo=float(p.unit_cost_usd or 0), min_compra=pc.min_compra if pc else 0,
         multiplo=pc.multiplo_compra if pc else 0, bodegas=bodegas,
-        compromisos=datos.compromisos.get(p.code, []), llegadas=llegadas, oc_atrasada=atrasada,
+        compromisos=[(d, q) for d, q, reciente in datos.compromisos.get(p.code, []) if reciente or not solo_recientes],
+        llegadas=llegadas, oc_atrasada=atrasada,
         dias_a_proxima_compra=(proxima - hoy).days, es_dia_compra=proxima == hoy,
     )
     return entrada, (prov_codigo if prov else ''), proxima
@@ -314,15 +340,25 @@ def ejecutar_corrida(usuario=None, hoy=None, guardar=True, extra_general=None):
                        for p in datos.productos}
         abc = clases_abc(valor_anual, resolutor.general)
 
-        calculados = []
+        # Calculo hibrido (SPEC-23): con la base elegida y, si el articulo tiene compromisos
+        # antiguos, tambien con la otra base para mostrar cuanto pesan
+        solo_recientes = resolutor.general.solo_compromisos_recientes
+        calculados, otra_base = [], {}
         for p in datos.productos:
-            e, prov, proxima = _entrada(datos, p, abc.get(p.code, 'C'))
+            e, prov, proxima = _entrada(datos, p, abc.get(p.code, 'C'), solo_recientes)
             calculados.append((p, e, calcular_articulo(e), prov, proxima))
+            if p.code in datos.con_antiguos:
+                e2 = _entrada(datos, p, abc.get(p.code, 'C'), not solo_recientes)[0]
+                otra_base[p.code] = calcular_articulo(e2).cantidad_a_comprar
 
         resumen = _resumen(calculados)
+        resumen['solo_compromisos_recientes'] = solo_recientes
+        resumen['valor_otra_base'] = round(resumen['valor_sugerido'] + sum(
+            (q - r.cantidad_a_comprar) * e.costo for p, e, r, _, _ in calculados
+            if (q := otra_base.get(p.code)) is not None), 2)
         if not guardar:
             return resumen
-        _guardar(corrida, datos, calculados, valor_anual)
+        _guardar(corrida, datos, calculados, valor_anual, otra_base)
         resumen['alertas'] = alertas.generar(corrida, hoy)
         resumen['publicacion'] = publicacion.publicar(corrida)
         resumen['publicado'] = True
@@ -422,7 +458,7 @@ def _resumen(calculados):
 
 
 @transaction.atomic
-def _guardar(corrida, datos, calculados, valor_anual):
+def _guardar(corrida, datos, calculados, valor_anual, otra_base=None):
     hoy = datos.hoy
     ResultadoArticulo.objects.all().delete()   # cascada: bodegas y traslados
     objetos = []
@@ -460,6 +496,8 @@ def _guardar(corrida, datos, calculados, valor_anual):
             valor_actual=datos.sugerido_actual.get(p.code, 0) * e.costo,
             simulacion=_simulaciones(e, r, datos),
             avisos=r.avisos,
+            comprometido_antiguo=sum(q for d, q, reciente in datos.compromisos.get(p.code, []) if not reciente),
+            cantidad_otra_base=(otra_base or {}).get(p.code),
         ))
     creados = {o.product_id: o for o in ResultadoArticulo.objects.bulk_create(objetos, batch_size=2000)}
 

@@ -217,7 +217,7 @@
                     {% elif r.necesita_compra %}<span class="px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 font-bold text-[9px]">ESPERA DÍA</span>
                     {% else %}<span class="text-slate-400">—</span>{% endif %}
                 </td>
-                <td class="px-2 py-2 text-right font-mono font-bold bg-emerald-50/30">{% if r.cant_accion %}{{ r.cant_accion|floatformat:"0g" }}{% elif r.necesita_compra %}<span class="text-slate-400" title="Cantidad que entrará el día de compra">{{ r.cantidad_sugerida }}</span>{% else %}—{% endif %}</td>
+                <td class="px-2 py-2 text-right font-mono font-bold bg-emerald-50/30">{% if r.cant_accion %}{{ r.cant_accion|floatformat:"0g" }}{% elif r.necesita_compra %}<span class="text-slate-400" title="Cantidad que entrará el día de compra">{{ r.cantidad_sugerida }}</span>{% else %}—{% endif %}{% if r.cantidad_otra_base is not None and r.cantidad_otra_base != r.cantidad_a_comprar %}<div class="text-[10px] font-medium text-amber-700" title="Con la otra base de compromisos (cálculo híbrido): {{ r.comprometido_antiguo|floatformat:'0g' }} u comprometidas son antiguas">otra base: {{ r.cantidad_otra_base }}</div>{% endif %}</td>
                 <td class="px-2 py-2 text-right font-mono bg-emerald-50/30">{% if r.valor_accion %}{{ r.valor_accion|compact_usd }}{% else %}—{% endif %}</td>
                 <td class="px-2 py-2 text-center bg-emerald-50/30">
                     <span class="px-2 py-0.5 rounded-full text-[9px] font-black {% if r.urgencia == 'URGENTE' %}bg-red-100 text-red-700{% elif r.urgencia == 'MEDIO' %}bg-amber-100 text-amber-700{% else %}bg-emerald-100 text-emerald-700{% endif %}">{{ r.urgencia }}</span>
