@@ -50,7 +50,7 @@
                     <span class="font-black text-slate-800 text-sm">{% for c, nombre, tipo in ubicaciones %}{% if c == f.ubicacion %}{{ nombre }}{% endif %}{% endfor %}</span>
                     <span class="text-xs text-slate-500 font-mono">{{ total }} artículos</span>
                 </div>
-                <div class="overflow-auto max-h-[26rem]" id="listado" tabindex="0">
+                <div class="overflow-auto h-[23rem]" id="listado" tabindex="0">
                     <table class="min-w-full text-xs">
                         <thead class="bg-slate-50 sticky top-0 z-10"><tr class="text-[10px] uppercase tracking-wider text-slate-500">
                             {% for clave, etiqueta in columnas %}
@@ -65,7 +65,7 @@
                         {% for r in page_obj %}
                         <tr class="fila border-b border-slate-50 cursor-pointer hover:bg-cyan-50/60" data-codigo="{{ r.codigo }}">
                             <td class="py-1.5 pl-4 pr-2 font-mono font-bold text-slate-800 whitespace-nowrap">{{ r.codigo }}</td>
-                            <td class="px-2 text-slate-600">{{ r.descripcion|truncatechars:42 }}</td>
+                            <td class="px-2 text-slate-600 whitespace-nowrap">{{ r.descripcion|truncatechars:42 }}</td>
                             <td class="px-2 text-right font-mono">{{ r.demanda|floatformat:2 }}</td>
                             <td class="px-2 text-right font-mono {% if r.a_pedir %}font-black text-emerald-700{% endif %}">{% if r.a_pedir is None %}<span class="text-slate-300" title="Bodega de Santiago: la compra se decide para todo Santiago">—</span>{% else %}{{ r.a_pedir|floatformat:"0g" }}{% endif %}</td>
                             <td class="px-2 text-right font-mono">{{ r.stock|floatformat:"0g" }}</td>
@@ -96,9 +96,9 @@
             <!-- Ventana de ubicaciones: el mismo articulo en todas -->
             <div class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
                 <div class="px-5 py-3 border-b border-slate-100 font-black text-slate-800 text-sm">Mismo artículo en todas las ubicaciones <span id="ubic-titulo" class="font-mono text-xs text-slate-400 font-medium"></span></div>
-                <div class="overflow-x-auto">
-                    <table class="min-w-full text-xs">
-                        <thead class="bg-slate-50"><tr class="text-[10px] uppercase tracking-wider text-slate-500">
+                <div class="overflow-auto max-h-[17rem]">
+                    <table class="min-w-full text-xs whitespace-nowrap">
+                        <thead class="bg-slate-50 sticky top-0 z-10"><tr class="text-[10px] uppercase tracking-wider text-slate-500">
                             <th class="py-2 pl-5 pr-2 text-left">Ubicación</th><th class="px-2 text-right">Demanda media</th><th class="px-2 text-right">A pedir</th>
                             <th class="px-2 text-right">Stock</th><th class="px-2 text-right">Por recibir</th><th class="px-2 text-right">Por entregar</th>
                             <th class="px-2 text-right">Consumo 12 m</th><th class="px-2 text-right">Meses c/ consumo</th><th class="px-2 text-right">Tendencia</th><th class="px-2 pr-5 text-right">Stock USD</th>
