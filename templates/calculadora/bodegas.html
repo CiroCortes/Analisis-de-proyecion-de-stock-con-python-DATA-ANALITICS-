@@ -26,60 +26,69 @@
         <a href="?zona=SUCURSAL{% if f.todo %}&todo=1{% endif %}" class="px-4 py-2 rounded-full border {% if f.zona == 'SUCURSAL' %}bg-pesco-cyan text-white border-pesco-cyan{% else %}bg-white text-slate-600 border-slate-200 hover:border-pesco-cyan{% endif %}"><i class="fa-solid fa-map-location-dot mr-1"></i> Sucursales</a>
     </div>
 
-    <!-- Tarjetas por bodega -->
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
-        {% for t in tarjetas %}
-        <a href="?bodega={{ t.code }}{% if f.todo %}&todo=1{% endif %}" class="bg-white rounded-3xl border {% if f.bodega == t.code %}border-pesco-cyan ring-2 ring-pesco-lightcyan{% else %}border-slate-200{% endif %} p-5 shadow-sm hover:shadow-md hover:border-pesco-cyan transition block">
-            <div class="flex justify-between items-start gap-2">
-                <div>
-                    <div class="font-mono font-black text-slate-900">{{ t.code|nodo }}</div>
-                    <div class="text-[11px] text-slate-500 leading-tight">{{ t.nombre }}</div>
-                </div>
-                <span class="text-[9px] font-black uppercase px-2 py-0.5 rounded-full {% if t.zona == 'SANTIAGO' %}bg-pesco-lightcyan text-pesco-darkcyan{% else %}bg-slate-100 text-slate-600{% endif %}">{% if t.zona == 'SANTIAGO' %}Santiago{% else %}Sucursal{% endif %}</span>
-            </div>
-            <div class="grid grid-cols-2 gap-3 mt-4 text-center">
-                <div>
-                    <div class="text-[9px] font-bold text-slate-400 uppercase tracking-wider">En riesgo</div>
-                    <div class="text-xl font-black font-mono {% if t.riesgo %}text-amber-600{% else %}text-slate-300{% endif %}">{{ t.riesgo }}</div>
-                </div>
-                <div>
-                    <div class="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Quiebre real {% ayuda 'quiebre_real' %}</div>
-                    <div class="text-xl font-black font-mono {% if t.quiebre_usd %}text-red-600{% else %}text-slate-300{% endif %}">{{ t.quiebre_usd|compact_usd }}</div>
-                </div>
-                <div>
-                    <div class="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Recibe</div>
-                    <div class="text-sm font-black font-mono text-pesco-darkcyan">{{ t.entran }} <span class="text-[10px] text-slate-400 font-medium">({{ t.entran_u|floatformat:"-1" }} u)</span></div>
-                </div>
-                <div>
-                    <div class="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Envía</div>
-                    <div class="text-sm font-black font-mono text-slate-700">{{ t.salen }} <span class="text-[10px] text-slate-400 font-medium">({{ t.salen_u|floatformat:"-1" }} u)</span></div>
-                </div>
-                <div>
-                    <div class="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Espera compra {% ayuda 'espera_compra' %}</div>
-                    <div class="text-sm font-black font-mono text-slate-700">{{ t.espera }}</div>
-                </div>
-                <div>
-                    <div class="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Cobertura típica {% ayuda 'cobertura' %}</div>
-                    <div class="text-sm font-black font-mono text-slate-700">{% if t.cobertura_mediana is not None %}{{ t.cobertura_mediana|floatformat:0 }} días{% else %}—{% endif %}</div>
-                </div>
-            </div>
-        </a>
-        {% empty %}
-        <div class="col-span-full bg-white rounded-3xl border border-slate-200 p-8 text-center text-slate-500 text-sm">Todavía no hay resultados por bodega. Ejecuta el cálculo desde <a class="text-pesco-cyan font-bold" href="{% url 'calculadora:panel' %}">Hoy</a>.</div>
-        {% endfor %}
+    <!-- Resumen por nodo: un listado (Santiago primero, luego sucursales) -->
+    <div class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+        <div class="px-5 py-3 border-b border-slate-100 text-[10px] font-bold text-slate-400 uppercase tracking-wider">Resumen por nodo · haz clic en un nodo para ver sus artículos</div>
+        <div class="overflow-x-auto">
+        <table class="min-w-full text-sm">
+            <thead class="bg-slate-50 text-[10px] uppercase tracking-wider text-slate-500">
+                <tr>
+                    <th class="px-5 py-2.5 text-left">Nodo</th>
+                    <th class="px-3 py-2.5 text-right">Artículos en riesgo</th>
+                    <th class="px-3 py-2.5 text-right">Quiebre real {% ayuda 'quiebre_real' %}</th>
+                    <th class="px-3 py-2.5 text-right">Recibe</th>
+                    <th class="px-3 py-2.5 text-right">Envía</th>
+                    <th class="px-3 py-2.5 text-right">Espera compra {% ayuda 'espera_compra' %}</th>
+                    <th class="px-5 py-2.5 text-right">Cobertura típica {% ayuda 'cobertura' %}</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100">
+            {% for t in tarjetas %}
+            <tr class="hover:bg-slate-50 {% if f.bodega == t.code %}bg-pesco-lightcyan{% endif %}">
+                <td class="px-5 py-3">
+                    <a href="?bodega={{ t.code }}{% if f.todo %}&todo=1{% endif %}" class="font-black text-pesco-darkcyan hover:underline">{% if t.zona == 'SANTIAGO' %}Santiago{% else %}{{ t.ciudad|default:t.code }}{% endif %}</a>
+                    <span class="font-mono text-[11px] text-slate-400 ml-1">{% if t.zona == 'SANTIAGO' %}todas las 013{% else %}{{ t.code }}{% endif %}</span>
+                </td>
+                <td class="px-3 text-right font-mono font-bold {% if t.riesgo %}text-amber-600{% else %}text-slate-300{% endif %}">{{ t.riesgo }}</td>
+                <td class="px-3 text-right font-mono font-bold {% if t.quiebre_usd %}text-red-600{% else %}text-slate-300{% endif %}">{{ t.quiebre_usd|compact_usd }}</td>
+                <td class="px-3 text-right font-mono">{% if t.entran %}{{ t.entran }} <span class="text-[11px] text-slate-400">({{ t.entran_u|floatformat:"-1" }} u)</span>{% else %}<span class="text-slate-300">—</span>{% endif %}</td>
+                <td class="px-3 text-right font-mono">{% if t.salen %}{{ t.salen }} <span class="text-[11px] text-slate-400">({{ t.salen_u|floatformat:"-1" }} u)</span>{% else %}<span class="text-slate-300">—</span>{% endif %}</td>
+                <td class="px-3 text-right font-mono">{{ t.espera }}</td>
+                <td class="px-5 text-right font-mono">{% if t.cobertura_mediana is not None %}{{ t.cobertura_mediana|floatformat:0 }} días{% else %}—{% endif %}</td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="7" class="px-5 py-8 text-center text-slate-500">Todavía no hay resultados por nodo. Ejecuta el cálculo desde <a class="text-pesco-cyan font-bold" href="{% url 'calculadora:panel' %}">Hoy</a>.</td></tr>
+            {% endfor %}
+            </tbody>
+            {% if tarjetas|length > 1 %}
+            <tfoot class="bg-slate-50 font-black border-t-2 border-slate-200">
+                <tr>
+                    <td class="px-5 py-3">Total red</td>
+                    <td class="px-3 text-right font-mono">{{ totales.riesgo }}</td>
+                    <td class="px-3 text-right font-mono text-red-600">{{ totales.quiebre_usd|compact_usd }}</td>
+                    <td class="px-3 text-right font-mono" colspan="2">{{ totales.traslados }} traslados <span class="text-[11px] text-slate-400 font-medium">({{ totales.unidades|floatformat:"-1" }} u)</span></td>
+                    <td class="px-3 text-right font-mono">{{ totales.espera }}</td>
+                    <td class="px-5"></td>
+                </tr>
+            </tfoot>
+            {% endif %}
+        </table>
+        </div>
     </div>
 
     <!-- Pastillas por accion -->
     <div class="flex flex-wrap gap-3">
         {% for valor, nombre, n in pills %}
+        <div class="flex items-start gap-1">
         <a href="?{% if qs_sin_accion %}{{ qs_sin_accion }}&{% endif %}accion={{ valor }}"
            class="rounded-2xl border px-4 py-3 shadow-sm transition text-center min-w-[150px] {% if f.accion == valor %}bg-pesco-cyan border-pesco-cyan text-white{% else %}bg-white border-slate-200 hover:border-pesco-cyan{% endif %}">
             <div class="text-[10px] font-black uppercase tracking-wider {% if f.accion != valor %}text-slate-500{% endif %}">
                 {% if valor == 'TRASLADAR' %}<i class="fa-solid fa-truck-arrow-right mr-1"></i>{% elif valor == 'TRASLADAR_PARCIAL' %}<i class="fa-solid fa-truck-ramp-box mr-1"></i>{% else %}<i class="fa-solid fa-hourglass-half mr-1"></i>{% endif %}{{ nombre }}
-                {% if valor == 'TRASLADAR' %}{% ayuda 'traslado' %}{% elif valor == 'TRASLADAR_PARCIAL' %}{% ayuda 'traslado_parcial' %}{% else %}{% ayuda 'espera_compra' %}{% endif %}
             </div>
             <div class="text-2xl font-black font-mono">{{ n }}</div>
         </a>
+        {% if valor == 'TRASLADAR' %}{% ayuda 'traslado' %}{% elif valor == 'TRASLADAR_PARCIAL' %}{% ayuda 'traslado_parcial' %}{% else %}{% ayuda 'espera_compra' %}{% endif %}
+        </div>
         {% endfor %}
         {% if f.accion %}<a href="?{{ qs_sin_accion }}" class="self-center text-xs font-bold text-slate-500 px-3">Quitar filtro de acción</a>{% endif %}
     </div>

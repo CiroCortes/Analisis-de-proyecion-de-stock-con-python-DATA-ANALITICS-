@@ -42,7 +42,8 @@ def calcular_consumo(meses, params, meses_evento=()):
     # Solo se buscan atipicos con consumo regular (>= umbral R): en 12 meses un unico mes
     # con consumo siempre supera promedio + 3 desvest, y en un esporadico ese mes es su
     # consumo normal, no una anomalia (SPEC-10 §1).
-    con_consumo = sum(1 for v in valores if v > 0)
+    # Los umbrales R (3) y R-Regular (9) son "de 12 meses": se cuentan sobre los ultimos 12
+    con_consumo = sum(1 for v in valores[-12:] if v > 0)
     atipicos = ()
     if con_consumo >= params.umbral_r and variacion > 0:
         atipicos = tuple(i for i, v in enumerate(valores) if v > tope and i not in eventos)
@@ -63,7 +64,7 @@ def calcular_consumo(meses, params, meses_evento=()):
         meses_con_consumo_12m=con_consumo,
         consumo_total_12m=total,
         consumo_promedio_mes=promedio,
-        consumo_diario=total / 365.0,
+        consumo_diario=promedio * 12 / 365.0,     # = total / 365 con 12 meses de historia
         variacion_consumo=variacion,
         tope_mes_atipico=tope,
         meses_atipicos=atipicos,

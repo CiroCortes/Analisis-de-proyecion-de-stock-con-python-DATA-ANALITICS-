@@ -166,7 +166,7 @@ def filas_exportacion(solicitudes):
 
 def marcar_exportadas(solicitudes):
     ids = [s.pk for s in solicitudes if s.estado == SolicitudCompra.APROBADA]
-    SolicitudCompra.objects.filter(pk__in=ids).update(estado=SolicitudCompra.EXPORTADA)
+    SolicitudCompra.objects.filter(pk__in=ids).update(estado=SolicitudCompra.EXPORTADA, exportada_en=timezone.now())
 
 
 def intervencion_comprador(desde=None):

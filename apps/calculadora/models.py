@@ -411,6 +411,7 @@ class SolicitudCompra(models.Model):
     aprobada_por = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
                                      related_name='solicitudes_aprobadas')
     aprobada_en = models.DateTimeField(null=True, blank=True)
+    exportada_en = models.DateTimeField(null=True, blank=True)
     nro_sap = models.CharField(max_length=30, blank=True, default='')
     creada_en = models.DateTimeField(auto_now_add=True)
     comentario = models.CharField(max_length=255, blank=True, default='')

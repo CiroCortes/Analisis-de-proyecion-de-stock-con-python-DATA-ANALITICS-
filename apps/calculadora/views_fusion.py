@@ -8,7 +8,7 @@ from django.core.paginator import Paginator
 from django.db.models import Case, F, IntegerField, Q, Value, When
 from django.shortcuts import render
 
-from apps.data_ingestion.warehouses import SANTIAGO, SUCURSAL, SUCURSAL_CODES, zona_red
+from apps.data_ingestion.warehouses import SANTIAGO, SUCURSAL, SUCURSAL_CITIES, SUCURSAL_CODES, zona_red
 
 from .excel import respuesta_excel
 from .glosario import GLOSARIO
@@ -105,7 +105,7 @@ def _tarjetas(f):
     for code, d in datos.items():
         zona = zona_red(code)
         tarjetas.append({
-            'code': code, 'nombre': d['nombre'], 'zona': zona,
+            'code': code, 'nombre': d['nombre'], 'zona': zona, 'ciudad': SUCURSAL_CITIES.get(code, ''),
             'riesgo': d['riesgo'], 'quiebre_usd': d['quiebre_usd'], 'espera': d['espera'],
             'cobertura_mediana': statistics.median(d['coberturas']) if d['coberturas'] else None,
             'entran': entrantes[code][0], 'entran_u': entrantes[code][1],
@@ -117,7 +117,13 @@ def _tarjetas(f):
     for d in datos.values():
         for a, n in d['acciones'].items():
             conteo[a] += n
-    return tarjetas, conteo
+    totales = {
+        'riesgo': sum(t['riesgo'] for t in tarjetas), 'quiebre_usd': sum(t['quiebre_usd'] for t in tarjetas),
+        'espera': sum(t['espera'] for t in tarjetas),
+        # cada traslado sale de un nodo y entra a otro: se cuenta una vez
+        'traslados': sum(t['entran'] for t in tarjetas), 'unidades': sum(t['entran_u'] for t in tarjetas),
+    }
+    return tarjetas, conteo, totales
 
 
 @login_required
@@ -131,7 +137,7 @@ def bodegas(request):
         b.cobertura_corta = b.cobertura_dias is not None and b.cobertura_dias < (b.resultado.plazo_total_dias or 0)
         b.accion_txt = ACCION_TXT.get(b.accion, b.accion)
 
-    tarjetas, conteo = _tarjetas(f)
+    tarjetas, conteo, totales = _tarjetas(f)
     pills = [(a, nombre, conteo.get(a, 0)) for a, nombre in ACCIONES if a != 'NINGUNA']
     codigos = sorted({t['code'] for t in tarjetas} | set(
         ResultadoBodega.objects.values_list('warehouse__code', flat=True).distinct()),
@@ -142,7 +148,7 @@ def bodegas(request):
     for k in ('page', 'accion'):
         sin_accion.pop(k, None)
     return render(request, 'calculadora/bodegas.html', {
-        'f': f, 'page_obj': page_obj, 'filas': filas, 'tarjetas': tarjetas, 'pills': pills,
+        'f': f, 'page_obj': page_obj, 'filas': filas, 'tarjetas': tarjetas, 'totales': totales, 'pills': pills,
         'acciones': ACCIONES, 'urgencias': URGENCIAS, 'bodegas_lista': codigos,
         'total': page_obj.paginator.count, 'qs_sin_pagina': sin_pagina.urlencode(),
         'qs_sin_accion': sin_accion.urlencode(),

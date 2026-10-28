@@ -103,18 +103,20 @@ def calcular_articulo(e):
         ajustado = max(0.0, ajustado)
 
     letra = clasif.letra
+    minimo_nuevo = max(e.minimo_nuevo or 0, e.minimo_declarado or 0)
     if e.bloqueado:
         politica = pol.politica_minimo(pol.SIN_COMPRA, 0, p)
         avisos.append('Articulo bloqueado en SAP: excluido del sugerido')
+    elif nuevo and letra != 'P' and (letra != 'O' or minimo_nuevo):
+        # Nuevo no usa historia (SPEC-09). Un nuevo casi siempre es O: si tiene minimo manual
+        # se respeta; sin minimo sigue como O (no se compra por proyeccion, revision 28-oct)
+        politica = pol.politica_minimo(pol.NUEVO, minimo_nuevo, p)
+        if not minimo_nuevo:
+            avisos.append('Articulo nuevo sin minimo manual: revisar')
     elif letra == 'O':
         politica = pol.politica_minimo(pol.SIN_COMPRA, 0, p)
     elif letra == 'P':
         politica = pol.politica_minimo(pol.A_PEDIDO, 0, p)
-    elif nuevo:
-        minimo = max(e.minimo_nuevo or 0, e.minimo_declarado or 0)
-        politica = pol.politica_minimo(pol.NUEVO, minimo, p)
-        if not minimo:
-            avisos.append('Articulo nuevo sin minimo manual: revisar')
     elif letra == 'R' and clasif.subclase == cl.R_INTERMITENTE:
         politica = pol.politica_intermitente(consumo.meses_con_consumo_12m, consumo.mayor_consumo_mes,
                                              consumo.consumo_promedio_mes, plazo, p)

@@ -63,6 +63,7 @@ class Datos:
         general = resolutor.general
         self.meses = meses_cerrados(hoy, general.meses_historia_consumo)
         self.indice_mes = {m: i for i, m in enumerate(self.meses)}
+        self.dias_historia = len(self.meses) * 365.0 / 12    # consumo de N meses -> diario
 
         def filtro(qs):
             return qs.filter(product_id=producto.code) if producto else qs.all()
@@ -129,7 +130,8 @@ class Datos:
         for l in filtro(LineaSolicitud.objects.select_related('solicitud')).exclude(estado=LineaSolicitud.DESCARTADA):
             s = l.solicitud
             if s.estado == SolicitudCompra.APROBADA or (
-                    s.estado == SolicitudCompra.EXPORTADA and s.aprobada_en and s.aprobada_en.timestamp() > carga_sc):
+                    s.estado == SolicitudCompra.EXPORTADA and (s.exportada_en or s.aprobada_en)
+                    and (s.exportada_en or s.aprobada_en).timestamp() > carga_sc):
                 self.solicitado[l.product_id] += l.cantidad_final
 
         desde = hoy - datetime.timedelta(days=30 * general.meses_historia_oc)
@@ -227,10 +229,10 @@ def _entrada(datos, p, abc):
             codigo=code, es_santiago=es_santiago,
             stock_fisico=m.stock_physical, en_transito=m.oc_po_qty + m.sc_qty + m.stock_transito_inter,
             comprometido=m.comp_pc_qty + m.comp_of_qty, fecha_compromiso=datos.fecha_compromiso.get((p.code, code)),
-            consumo_diario=0.0 if es_santiago else datos.consumo_nodo.get((p.code, code), 0.0) / 365.0,
+            consumo_diario=0.0 if es_santiago else datos.consumo_nodo.get((p.code, code), 0.0) / datos.dias_historia,
         ))
     stock_013 = datos.stock_013.get(p.code, 0)
-    consumo_stgo = datos.consumo_nodo.get((p.code, NODO_SANTIAGO), 0.0) / 365.0
+    consumo_stgo = datos.consumo_nodo.get((p.code, NODO_SANTIAGO), 0.0) / datos.dias_historia
     if stock_013 or solicitado or consumo_stgo:
         bodegas.append(Bodega(NODO_SANTIAGO, es_santiago=True, stock_fisico=stock_013,
                               en_transito=solicitado, consumo_diario=consumo_stgo))
@@ -241,6 +243,9 @@ def _entrada(datos, p, abc):
         dias = (o.fecha_comprometida - hoy).days if o.fecha_comprometida else 0
         atrasada = atrasada or (o.fecha_comprometida is not None and o.fecha_comprometida < hoy)
         llegadas.append((dia_llegada_oc(dias, params.dias_recepcion), o.cantidad_pendiente))
+    transito_inter = sum(m.stock_transito_inter for m in datos.metricas.get(p.code, []))
+    if transito_inter:
+        llegadas.append((int(math.ceil(params.dias_recepcion)), transito_inter))
     if solicitado:
         plazo = calcular_plazo(datos.plazos.get(p.code), lead_maestro, params)
         llegadas.append((int(math.ceil(plazo.plazo_total_dias)), solicitado))
@@ -304,7 +309,9 @@ def ejecutar_corrida(usuario=None, hoy=None, guardar=True, extra_general=None):
         datos = Datos(hoy, resolutor)
 
         # ABC sobre toda la poblacion: valor de consumo anual = cantidad x costo
-        valor_anual = {p.code: sum(datos.consumo.get(p.code, ())) * float(p.unit_cost_usd or 0) for p in datos.productos}
+        anualizar = 12.0 / len(datos.meses)
+        valor_anual = {p.code: sum(datos.consumo.get(p.code, ())) * anualizar * float(p.unit_cost_usd or 0)
+                       for p in datos.productos}
         abc = clases_abc(valor_anual, resolutor.general)
 
         calculados = []

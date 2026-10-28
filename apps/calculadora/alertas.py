@@ -42,7 +42,8 @@ def _reglas_articulo(r, p, mes_txt):
                     'OC con fecha comprometida vencida: gestionar con el proveedor antes de comprar de nuevo'))
 
     activo = r.stock_maximo > 0 or r.letra == 'P'
-    if activo and r.disponible_futuro <= 0 and (r.comprometido > 0 or r.stock_maximo > 0):
+    urgente = r.disponible_futuro < 0 if r.letra == 'P' else r.disponible_futuro <= 0
+    if activo and urgente and (r.comprometido > 0 or r.stock_maximo > 0):
         out.append((f'URGENTE|{sku}', 'URGENTE', ALTA, f'Disponible a futuro {r.disponible_futuro:g}'))
     elif r.stock_seguridad > 0 and r.disponible_futuro < r.stock_seguridad:
         out.append((f'BAJO_SS|{sku}', 'BAJO_SS', MEDIA,

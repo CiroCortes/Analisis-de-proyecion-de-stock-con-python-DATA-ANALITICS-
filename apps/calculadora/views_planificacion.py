@@ -1,7 +1,6 @@
 """Vistas de planificacion de la Calculadora (SPEC-18 §4.1): panel, grilla de compras,
 detalle del articulo con la memoria de calculo e indicadores de gestion."""
 import json
-import math
 from collections import defaultdict
 
 from django.contrib import messages
@@ -552,6 +551,7 @@ def articulo(request, code):
     config = ArticuloConfig.objects.filter(product=producto).select_related('proveedor').first()
     proveedor = Proveedor.objects.filter(codigo=prov_codigo).first() if prov_codigo else None
     linea = _grafico_linea(producto, r, e)
+    decision = _decision_compra(producto, e, r)
     contexto = {
         'p': producto, 'e': e, 'r': r, 'guardado': guardado, 'config': config,
         'proveedor': proveedor,
@@ -559,7 +559,10 @@ def articulo(request, code):
         'que_dice': _que_dice(r, e, guardado, proxima, proveedor),
         'grafico_consumo': json.dumps(_grafico_consumo(producto, r, e)),
         'grafico_linea': json.dumps(linea), 'hay_inconsistencia': linea['hay_inconsistencia'],
-        'decision': _decision_compra(producto, e, r),
+        'decision': decision,
+        'grafico_nodos': json.dumps({'labels': decision['meses'], 'series': [
+            {'nombre': f['nombre'], 'promedio': round(f['promedio'], 1), 'valores': [round(c['v'], 2) for c in f['celdas']]}
+            for f in decision['filas']]}),
         'bodegas': guardado.bodegas.select_related('warehouse').order_by('warehouse__code') if guardado else [],
         'traslados': guardado.traslados.select_related('origen', 'destino') if guardado else [],
         'oc_abiertas': OCAbierta.objects.filter(product=producto).order_by('fecha_comprometida'),

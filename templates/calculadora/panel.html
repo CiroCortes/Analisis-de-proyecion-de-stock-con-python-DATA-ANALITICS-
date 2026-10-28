@@ -165,7 +165,7 @@
             <div class="text-[10px] text-orange-600">quiebre antes de la próxima compra</div>
         </a>
         <a href="{% url 'calculadora:grilla' %}?urgencia=URGENTE" class="bg-red-50 rounded-2xl border border-red-200 p-4 text-center shadow-sm hover:shadow-md transition">
-            <div class="text-[10px] font-bold text-red-600 uppercase tracking-wider">Urgentes {% ayuda 'urgencia' %}</div>
+            <div class="text-[10px] font-bold text-red-600 uppercase tracking-wider">Urgentes</div>
             <div class="text-2xl font-black text-red-600 mt-1 font-mono">{{ resumen.urgentes|default:0 }}</div>
             <div class="text-[10px] text-red-500">disponible ≤ 0</div>
         </a>

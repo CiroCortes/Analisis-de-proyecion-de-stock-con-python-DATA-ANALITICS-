@@ -106,6 +106,13 @@
         {% else %}
         <p class="px-5 pt-4 text-xs text-slate-500">Hoy no se sugiere compra para este artículo.</p>
         {% endif %}
+        {% if decision.filas %}
+        <div class="px-5 pt-4">
+            <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Cómo se comporta el consumo en cada nodo, mes a mes</div>
+            <div class="text-xs text-slate-500">Una línea por Santiago y por cada sucursal. Haz clic en un nombre de la leyenda para ocultarlo o mostrarlo.</div>
+            <div class="h-72 mt-2"><canvas id="chartNodos"></canvas></div>
+        </div>
+        {% endif %}
         <div class="overflow-x-auto px-5 py-4">
             <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Consumo por nodo, últimos {{ decision.meses|length }} meses cerrados</div>
             <table class="min-w-full text-xs">
@@ -134,33 +141,6 @@
             </div>
         </div>
         {% endif %}
-    </div>
-
-    <!-- Memoria de calculo -->
-    <div class="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
-        <div class="px-5 py-4 border-b border-slate-100">
-            <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Memoria de cálculo paso a paso</div>
-            <div class="text-xs text-slate-500">Fórmulas como en Excel, con los números de este artículo. Calculado en vivo con los datos y parámetros actuales.</div>
-        </div>
-        <div class="overflow-x-auto">
-        <table class="min-w-full text-xs">
-            <thead class="bg-slate-50 text-[10px] uppercase text-slate-500"><tr><th class="px-4 py-2 text-left">Etapa</th><th class="px-3 py-2 text-left">Campo</th><th class="px-3 py-2 text-left">Cómo se calcula</th><th class="px-3 py-2 text-right">Resultado</th></tr></thead>
-            <tbody class="divide-y divide-slate-100">
-            {% for m in memoria %}
-            <tr class="{% ifchanged m.seccion %}border-t-2 border-slate-200{% endifchanged %}">
-                <td class="px-4 py-2 font-black text-slate-400 uppercase text-[10px]">{% ifchanged m.seccion %}{{ m.seccion }}{% endifchanged %}</td>
-                <td class="px-3 py-2 font-mono font-bold text-slate-700">{{ m.campo }}</td>
-                <td class="px-3 py-2 font-mono text-slate-600">{{ m.formula }}</td>
-                <td class="px-3 py-2 text-right font-mono font-black text-slate-900 whitespace-nowrap">{{ m.valor }}</td>
-            </tr>
-            {% endfor %}
-            </tbody>
-        </table>
-        </div>
-        <div class="px-5 py-3 border-t border-slate-100 text-[11px] text-slate-500">
-            Consumo usado (antiguo → reciente):
-            {% for mes, v in meses_consumo %}<span class="inline-block mr-2 font-mono">{{ mes }}: <b>{{ v|floatformat:"-2" }}</b></span>{% endfor %}
-        </div>
     </div>
 
     <div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
@@ -312,12 +292,61 @@
             </ul>
         </div>
     </div>
+
+    <!-- Memoria de calculo -->
+    <details class="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden group" id="memoria">
+        <summary class="px-5 py-4 cursor-pointer flex justify-between items-center gap-3 hover:bg-slate-50">
+            <div>
+                <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Memoria de cálculo paso a paso</div>
+                <div class="text-xs text-slate-500">Cómo se llegó a cada número de este artículo, con sus datos y parámetros actuales.</div>
+            </div>
+            <span class="text-xs font-bold text-pesco-cyan whitespace-nowrap"><span class="group-open:hidden">Ver detalle</span><span class="hidden group-open:inline">Ocultar</span> <i class="fa-solid fa-chevron-down transition group-open:rotate-180"></i></span>
+        </summary>
+        <div class="border-t border-slate-100">
+        <div class="overflow-x-auto">
+        <table class="min-w-full text-xs">
+            <thead class="bg-slate-50 text-[10px] uppercase text-slate-500"><tr><th class="px-4 py-2 text-left">Etapa</th><th class="px-3 py-2 text-left">Campo</th><th class="px-3 py-2 text-left">Cómo se calcula</th><th class="px-3 py-2 text-right">Resultado</th></tr></thead>
+            <tbody class="divide-y divide-slate-100">
+            {% for m in memoria %}
+            <tr class="{% ifchanged m.seccion %}border-t-2 border-slate-200{% endifchanged %}">
+                <td class="px-4 py-2 font-black text-slate-400 uppercase text-[10px]">{% ifchanged m.seccion %}{{ m.seccion }}{% endifchanged %}</td>
+                <td class="px-3 py-2 font-mono font-bold text-slate-700">{{ m.campo }}</td>
+                <td class="px-3 py-2 font-mono text-slate-600">{{ m.formula }}</td>
+                <td class="px-3 py-2 text-right font-mono font-black text-slate-900 whitespace-nowrap">{{ m.valor }}</td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        </div>
+        <div class="px-5 py-3 border-t border-slate-100 text-[11px] text-slate-500">
+            Consumo usado (antiguo → reciente):
+            {% for mes, v in meses_consumo %}<span class="inline-block mr-2 font-mono">{{ mes }}: <b>{{ v|floatformat:"-2" }}</b></span>{% endfor %}
+        </div>
+        </div>
+    </details>
 </div>
 {% endblock %}
 
 {% block extra_js %}
 <script>
 (function () {
+    // Consumo por nodo, una linea por Santiago y cada sucursal (SPEC-21 §5)
+    var g = {{ grafico_nodos|safe }};
+    var colores = ['#0099DE', '#F59E0B', '#10B981', '#9333EA', '#EF4444', '#64748B'];
+    if (g.series.length && document.getElementById('chartNodos')) {
+        new Chart(document.getElementById('chartNodos'), {
+            type: 'line',
+            data: { labels: g.labels, datasets: g.series.map(function (s, i) {
+                var color = colores[i % colores.length];
+                return { label: s.nombre + ' (prom. ' + s.promedio + '/mes)', data: s.valores, borderColor: color,
+                         backgroundColor: color, borderWidth: i === 0 ? 3 : 2, pointRadius: 3, tension: 0.25 };
+            }) },
+            options: { maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
+                       scales: { y: { beginAtZero: true, title: { display: true, text: 'unidades' } } },
+                       plugins: { legend: { labels: { boxWidth: 12, font: { size: 11 } } } } }
+        });
+    }
+
     var c = {{ grafico_consumo|safe }};
     var n = c.labels.length;
     function constante(v) { var a = []; for (var i = 0; i < n; i++) a.push(v); return a; }

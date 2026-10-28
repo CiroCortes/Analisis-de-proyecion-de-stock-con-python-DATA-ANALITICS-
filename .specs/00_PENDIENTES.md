@@ -98,6 +98,23 @@ quiebre real USD 717 mil vs brecha contra objetivo USD 3,94 M.
 
 ## Hecho
 
+**28-oct-2026 (revisión general)**: todas las pantallas recorridas con datos reales sin errores;
+CSS de Tailwind servido localmente (`cdn.tailwindcss.com` no responde desde la red de Pesco);
+Bodegas como listado; gráfico de consumo por nodo en la ficha; memoria de cálculo plegable al final.
+Defectos corregidos (tests en `tests/test_revision_28oct.py`):
+1. Nuevo con mínimo manual quedaba O y no compraba su mínimo (sin mínimo sigue como O).
+2. Consumo diario, reserva por nodo y ABC mezclaban N meses con 365 días (solo si
+   `meses_historia_consumo` ≠ 12); meses con consumo se cuentan sobre los últimos 12.
+3. Solicitud aprobada antes de una carga de SC y exportada después dejaba de contar (compra doble):
+   nuevo campo `exportada_en`.
+4. Stock en camino entre bodegas (T…-…) no entraba en la proyección: excepciones falsas.
+5. Alerta URGENTE en artículos P cubiertos (disponible 0).
+Corrida: excepciones 393 → 378; sugerido USD 4,25 M → 4,19 M; alertas urgentes 462.
+Anotado sin corregir (sin impacto hoy): stock y compromisos fraccionarios se truncan en la carga
+(0 filas con decimales en el TXT actual); equivalencias encadenadas A→B→C; el histórico del gráfico
+no aplica equivalencias. Antes de producción: SECRET_KEY por variable de entorno, DEBUG=False,
+ALLOWED_HOSTS acotado.
+
 **28-oct-2026 (no inflar datos)**: faltante por bodega = lo que realmente falta (antes 367 de 484 u
 trasladadas a regiones sin quiebre real; ahora 0). Proyección: MAX(consumo esperado; compromisos) en
 vez de sumar ambos (excepciones 427 → 393; sugerido USD 4,52 M → 4,25 M). Casos 4 y 5 corregidos
