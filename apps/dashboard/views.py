@@ -6,6 +6,35 @@ from django.db.models import Sum, Count, Q, Avg, Max, F
 from django.http import JsonResponse
 from django.conf import settings
 from apps.inventory.models import ProductSKU, StockProjection, Warehouse, InventoryMetric, Category, SKUClassification, GoodsReceipt
+from apps.data_ingestion.warehouses import NODO_SANTIAGO, SUCURSAL_CITIES, nodo_red
+
+
+def _nodos(codigo=''):
+    """Nodos de la red como los calcula la Calculadora (SPEC-21): Santiago (todas las 013) y
+    cada sucursal. El stock por bodega 013-xx se ve en la Calculadora, no en gerencia."""
+    orden = [NODO_SANTIAGO] + list(SUCURSAL_CITIES)
+    por_codigo = {w.code: w for w in Warehouse.objects.filter(code__in=orden)}
+    nodos = []
+    for c in orden:
+        w = por_codigo.get(c)
+        if w and (not codigo or c == codigo):
+            w.label = 'Santiago' if c == NODO_SANTIAGO else f'{SUCURSAL_CITIES[c]} ({c})'
+            nodos.append(w)
+    return nodos
+
+
+def _etiqueta_nodo(codigo):
+    nodo = nodo_red(codigo)
+    if nodo == NODO_SANTIAGO:
+        return 'Santiago'
+    return f'{SUCURSAL_CITIES[nodo]} ({nodo})' if nodo in SUCURSAL_CITIES else (codigo or '—')
+
+
+def _ultimos_meses(n=12):
+    """Primer dia de los ultimos n meses calendario (incluye el actual), del mas antiguo al mas reciente."""
+    hoy = datetime.date.today()
+    total = hoy.year * 12 + hoy.month - 1
+    return [datetime.date((total - i) // 12, (total - i) % 12 + 1, 1) for i in range(n - 1, -1, -1)]
 
 
 def _apply_filters(queryset, request):
@@ -24,6 +53,7 @@ def _apply_filters(queryset, request):
         queryset = queryset.filter(product__category__is_active=True, product__is_active=True)
 
     if warehouse_filter:
+        warehouse_filter = nodo_red(warehouse_filter) or warehouse_filter
         queryset = queryset.filter(warehouse__code=warehouse_filter)
     if segment_filter:
         queryset = queryset.filter(product__classification__segment=segment_filter)
@@ -45,7 +75,7 @@ def _apply_filters(queryset, request):
 @login_required
 def dashboard_home_view(request):
     categories = Category.objects.filter(productsku__isnull=False).distinct().order_by('name')
-    warehouses = Warehouse.objects.filter(is_active=True).order_by('code')
+    warehouses = _nodos()
     inactive_groups_count = Category.objects.filter(is_active=False).count()
 
     projections = StockProjection.objects.select_related('product', 'warehouse', 'product__category', 'product__classification').all()
@@ -78,13 +108,13 @@ def dashboard_home_view(request):
     total_nuevos = sku_qs.filter(classification__is_new=True).count()
 
     wh_stats = []
-    target_warehouses = warehouses.filter(code=f['warehouse']) if f['warehouse'] else warehouses
+    target_warehouses = _nodos(f['warehouse'])
     for wh in target_warehouses:
         wh_proj = projections.filter(warehouse=wh)
         wh_crit = wh_proj.filter(urgency_level='URGENTE').count()
         wh_usd = float(wh_proj.aggregate(total=Sum('shortage_usd'))['total'] or 0)
         wh_stats.append({
-            'code': wh.code,
+            'code': wh.label,
             'name': wh.name,
             'critical_count': wh_crit,
             'urgente_count': wh_crit,
@@ -128,7 +158,7 @@ def dashboard_home_view(request):
 def analytics_view(request):
     """Vista de Analítica S&OP con filtros de Segmento (Pañol vs Repuestos), ABC y Bodega."""
     categories = Category.objects.filter(productsku__isnull=False).distinct().order_by('name')
-    warehouses = Warehouse.objects.filter(is_active=True).order_by('code')
+    warehouses = _nodos()
     inactive_groups_count = Category.objects.filter(is_active=False).count()
 
     projections = StockProjection.objects.select_related('product', 'warehouse', 'product__category', 'product__classification').all()
@@ -191,16 +221,14 @@ def api_chart_urgency_distribution(request):
     projections = StockProjection.objects.all()
     projections, f = _apply_filters(projections, request)
 
-    warehouses = Warehouse.objects.filter(is_active=True).order_by('code')
-    if f['warehouse']:
-        warehouses = warehouses.filter(code=f['warehouse'])
+    warehouses = _nodos(f['warehouse'])
 
     labels = []
     urgente_data, medio_data, normal_data = [], [], []
 
     for wh in warehouses:
         proj_wh = projections.filter(warehouse=wh)
-        labels.append(wh.code)
+        labels.append(wh.label)
         urgente_data.append(proj_wh.filter(urgency_level='URGENTE').count())
         medio_data.append(proj_wh.filter(urgency_level='MEDIO').count())
         normal_data.append(proj_wh.filter(urgency_level='NORMAL').count())
@@ -221,16 +249,14 @@ def api_chart_shortage_usd_by_warehouse(request):
     projections = StockProjection.objects.all()
     projections, f = _apply_filters(projections, request)
 
-    warehouses = Warehouse.objects.filter(is_active=True).order_by('code')
-    if f['warehouse']:
-        warehouses = warehouses.filter(code=f['warehouse'])
+    warehouses = _nodos(f['warehouse'])
 
     labels, data, colors = [], [], []
     palette = ['#0099DE','#0077B6','#00B4D8','#48CAE4','#90E0EF','#e03131','#f59e0b','#10b981','#7c3aed']
 
     for i, wh in enumerate(warehouses):
         usd = float(projections.filter(warehouse=wh).aggregate(t=Sum('shortage_usd'))['t'] or 0)
-        labels.append(wh.code)
+        labels.append(wh.label)
         data.append(round(usd, 2))
         colors.append(palette[i % len(palette)])
 
@@ -306,9 +332,7 @@ def api_chart_risk_matrix(request):
     projections = StockProjection.objects.filter(rop__gt=0)
     projections, f = _apply_filters(projections, request)
 
-    warehouses = Warehouse.objects.filter(is_active=True)
-    if f['warehouse']:
-        warehouses = warehouses.filter(code=f['warehouse'])
+    warehouses = _nodos(f['warehouse'])
 
     datasets = []
     palette = ['#0099DE','#ef4444','#f59e0b','#10b981','#7c3aed','#e03131','#00B4D8','#facc15','#fb923c']
@@ -321,7 +345,7 @@ def api_chart_risk_matrix(request):
 
         scatter = [{'x': float(p['rop']), 'y': float(p['shortage_units'])} for p in points]
         datasets.append({
-            'label': wh.code,
+            'label': wh.label,
             'data': scatter,
             'backgroundColor': palette[i % len(palette)] + 'aa',
             'pointRadius': 4,
@@ -348,7 +372,7 @@ def executive_report_view(request):
     Aplica la segmentación de grupos activos/bloqueados y filtros S&OP.
     """
     categories = Category.objects.filter(productsku__isnull=False).distinct().order_by('name')
-    warehouses = Warehouse.objects.filter(is_active=True).order_by('code')
+    warehouses = _nodos()
     inactive_groups_count = Category.objects.filter(is_active=False).count()
 
     projections = StockProjection.objects.select_related('product', 'warehouse', 'product__category', 'product__classification').all()
@@ -369,7 +393,7 @@ def executive_report_view(request):
         quiebre_list.append({
             'sku': p.product.code,
             'desc': p.product.description[:60],
-            'bodega': p.warehouse.code if p.warehouse else '—',
+            'bodega': _etiqueta_nodo(p.warehouse.code) if p.warehouse else '—',
             'shortage_units': p.shortage_units,
             'shortage_usd': float(p.shortage_usd),
             'dias_quiebre': dias,
@@ -461,13 +485,10 @@ def api_disponibilidad_historica(request):
     projections = StockProjection.objects.all()
     projections, f = _apply_filters(projections, request)
 
-    warehouses = Warehouse.objects.filter(is_active=True).order_by('code')
-    if f['warehouse']:
-        warehouses = warehouses.filter(code=f['warehouse'])
+    warehouses = _nodos(f['warehouse'])
 
     today = datetime.date.today()
-    meses_dt = [today.replace(day=1) - datetime.timedelta(days=i * 30) for i in range(11, -1, -1)]
-    meses_dt = [d.replace(day=1) for d in meses_dt] # Normalizar al primer día
+    meses_dt = _ultimos_meses(12)
     meses_str = [f"{d.year}-{d.month:02d}" for d in meses_dt]
 
     palette = ['#0099DE', '#ef4444', '#f59e0b', '#10b981', '#7c3aed',
@@ -499,34 +520,11 @@ def api_disponibilidad_historica(request):
         cerradas=Count('id', filter=Q(status__icontains='cerrad'))
     )
 
-    # Preparamos las llaves de agrupación. Si es 013-*, va a "Santiago (013)". Si no, va por su código.
-    group_keys = set()
-    for w in warehouses:
-        if w.code.startswith('013'):
-            group_keys.add('Santiago (013)')
-        else:
-            group_keys.add(w.code)
-
-    # Organizar en memoria por Grupos
-    data_by_group = {g: {m: {'t': 0, 'c': 0} for m in meses_str} for g in group_keys}
+    # Cada documento se agrupa en su nodo con la regla de la Calculadora (SPEC-21)
+    data_by_group = {w.label: {m: {'t': 0, 'c': 0} for m in meses_str} for w in warehouses}
 
     def get_group(wh_code):
-        wh_code = wh_code.upper()
-        if wh_code.startswith('013') or wh_code.startswith('13') or 'T013' in wh_code:
-            return 'Santiago (013)'
-            
-        best_match = None
-        for w in warehouses:
-            w_norm = w.code.lstrip('0') or '0'
-            wh_norm = wh_code.lstrip('0') or '0'
-            
-            if wh_code == w.code or wh_norm == w_norm:
-                return w.code
-                
-            if w.code in wh_code:
-                if not best_match or len(w.code) > len(best_match):
-                    best_match = w.code
-        return best_match
+        return _etiqueta_nodo(wh_code.strip().upper())
 
     for item in of_agg:
         wh_code = item['warehouse'].strip()
@@ -599,11 +597,7 @@ def api_inventario_historico(request):
     )
 
     today = datetime.date.today()
-    meses = []
-    # Generamos la lista de meses (del más antiguo al más reciente)
-    for i in range(11, -1, -1):
-        d = today.replace(day=1) - datetime.timedelta(days=i * 30)
-        meses.append(f"{d.year}-{d.month:02d}")
+    meses = [f"{d.year}-{d.month:02d}" for d in _ultimos_meses(12)]
         
     # Inicializamos diccionarios para agrupar Ingresos y Salidas por mes
     ingresos_por_mes = {mes: 0.0 for mes in meses}
@@ -701,7 +695,7 @@ def api_quiebres_por_dias(request):
         resultado.append({
             'sku': p.product.code,
             'desc': p.product.description[:40],
-            'bodega': p.warehouse.code if p.warehouse else '—',
+            'bodega': _etiqueta_nodo(p.warehouse.code) if p.warehouse else '—',
             'dias': dias,
             'shortage_usd': float(p.shortage_usd),
             'urgency': p.urgency_level,
@@ -735,10 +729,7 @@ def api_materiales_pedido_tendencia(request):
     valid_sku_codes = set(projections.values_list('product__code', flat=True).distinct())
 
     today = datetime.date.today()
-    meses_dt = []
-    for i in range(11, -1, -1):
-        d = today.replace(day=1) - datetime.timedelta(days=i * 30)
-        meses_dt.append(d)
+    meses_dt = _ultimos_meses(12)
 
     labels = [f"{d.year}-{d.month:02d}" for d in meses_dt]
 

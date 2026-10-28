@@ -55,10 +55,10 @@
                 <div>
                     <label for="warehouse" class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Bodega / Sucursal</label>
                     <select name="warehouse" id="warehouse" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-pesco-cyan focus:border-pesco-cyan outline-none transition">
-                        <option value="">-- Todas las Bodegas ({{ warehouses.count }}) --</option>
+                        <option value="">-- Toda la red ({{ warehouses|length }}) --</option>
                         {% for wh in warehouses %}
                         <option value="{{ wh.code }}" {% if selected_warehouse == wh.code %}selected{% endif %}>
-                            {{ wh.code }} - {{ wh.name }}
+                            {{ wh.label }}
                         </option>
                         {% endfor %}
                     </select>
