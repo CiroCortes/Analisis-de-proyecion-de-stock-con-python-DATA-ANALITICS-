@@ -192,7 +192,7 @@ def cargar_compromisos(data_dir=None):
                 filas.append(CompromisoAbierto(
                     product_id=sku, tipo=CompromisoAbierto.PC, numero=cols[0].replace(',', ''),
                     bodega=commitment_bodega(cols[2] or '013'), fecha=parse_date(cols[7]) or parse_date(cols[6]),
-                    cantidad=pend))
+                    fecha_emision=parse_date(cols[6]), cantidad=pend))
     ruta_of = archivo('ofs', data_dir)
     if os.path.exists(ruta_of):
         for cols in iter_txt_rows(ruta_of, 9):
@@ -201,7 +201,7 @@ def cargar_compromisos(data_dir=None):
                 filas.append(CompromisoAbierto(
                     product_id=sku, tipo=CompromisoAbierto.OF, numero=cols[0].replace(',', ''),
                     bodega=commitment_bodega(cols[2] or '013-PP'), fecha=parse_date(cols[5]) or parse_date(cols[4]),
-                    cantidad=pend))
+                    fecha_emision=parse_date(cols[4]), cantidad=pend))
     with transaction.atomic():
         CompromisoAbierto.objects.all().delete()
         CompromisoAbierto.objects.bulk_create(filas, batch_size=5000)

@@ -82,6 +82,7 @@ class CompromisoAbierto(models.Model):
     numero = models.CharField(max_length=30)
     bodega = models.CharField(max_length=20)
     fecha = models.DateField(null=True)
+    fecha_emision = models.DateField(null=True, blank=True)   # nivel de servicio por mes de emision
     cantidad = models.FloatField(default=0)
 
 

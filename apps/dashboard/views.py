@@ -478,104 +478,62 @@ from django.db.models.functions import TruncMonth
 @login_required
 def api_disponibilidad_historica(request):
     """
-    Gráfico 1: % Nivel de Servicio (Fill Rate) Mensual por Sucursal.
-    Fórmula: (OF + PC Cerradas) / (OF + PC Totales) * 100
-    Optimizada con TruncMonth para cargar en milisegundos.
+    Grafico 1: % de lineas de PC y OF cumplidas por mes de emision y por nodo.
+    = lineas ya cerradas / (cerradas + las que siguen abiertas). Antes se dividian cerradas por
+    cerradas (la tabla de movimientos solo guarda cerrados) y siempre daba 100%.
+    Los meses recientes salen mas bajos porque sus pedidos todavia estan en curso.
     """
+    from apps.calculadora.models import CompromisoAbierto
+
     projections = StockProjection.objects.all()
     projections, f = _apply_filters(projections, request)
-
     warehouses = _nodos(f['warehouse'])
-
-    today = datetime.date.today()
     meses_dt = _ultimos_meses(12)
     meses_str = [f"{d.year}-{d.month:02d}" for d in meses_dt]
-
-    palette = ['#0099DE', '#ef4444', '#f59e0b', '#10b981', '#7c3aed',
-               '#e03131', '#00B4D8', '#facc15', '#fb923c']
-    datasets = []
-
+    desde = meses_dt[0]
     valid_sku_codes = set(projections.values_list('product__code', flat=True).distinct())
 
-    # Pre-calcular agregaciones globales por bodega y mes
-    # OFs
-    of_agg = ProductionOrderMovement.objects.filter(
-        product_id__in=valid_sku_codes,
-        start_date__gte=today - datetime.timedelta(days=365)
-    ).annotate(
-        month=TruncMonth('start_date')
-    ).values('warehouse', 'month').annotate(
-        total=Count('id'),
-        cerradas=Count('id', filter=Q(status__icontains='cerrad'))
-    )
-
-    # PCs
-    pc_agg = SalesOrderMovement.objects.filter(
-        product_id__in=valid_sku_codes,
-        emission_date__gte=today - datetime.timedelta(days=365)
-    ).annotate(
-        month=TruncMonth('emission_date')
-    ).values('warehouse', 'month').annotate(
-        total=Count('id'),
-        cerradas=Count('id', filter=Q(status__icontains='cerrad'))
-    )
-
-    # Cada documento se agrupa en su nodo con la regla de la Calculadora (SPEC-21)
     data_by_group = {w.label: {m: {'t': 0, 'c': 0} for m in meses_str} for w in warehouses}
 
-    def get_group(wh_code):
-        return _etiqueta_nodo(wh_code.strip().upper())
+    def sumar(filas, cerradas):
+        for wh_code, month_dt, n in filas:
+            if not month_dt:
+                continue
+            grupo = data_by_group.get(_etiqueta_nodo((wh_code or '').strip().upper()))
+            m_str = f"{month_dt.year}-{month_dt.month:02d}"
+            if grupo is not None and m_str in grupo:
+                grupo[m_str]['t'] += n
+                if cerradas:
+                    grupo[m_str]['c'] += n
 
-    for item in of_agg:
-        wh_code = item['warehouse'].strip()
-        month_dt = item['month']
-        if month_dt and wh_code:
-            group = get_group(wh_code)
-            if group and group in data_by_group:
-                m_str = f"{month_dt.year}-{month_dt.month:02d}"
-                if m_str in data_by_group[group]:
-                    data_by_group[group][m_str]['t'] += item['total']
-                    data_by_group[group][m_str]['c'] += item['cerradas']
+    def por_mes(qs, campo_fecha):
+        return qs.annotate(month=TruncMonth(campo_fecha)).values('warehouse', 'month').annotate(n=Count('id')) \
+                 .values_list('warehouse', 'month', 'n')
 
-    for item in pc_agg:
-        wh_code = item['warehouse'].strip()
-        month_dt = item['month']
-        if month_dt and wh_code:
-            group = get_group(wh_code)
-            if group and group in data_by_group:
-                m_str = f"{month_dt.year}-{month_dt.month:02d}"
-                if m_str in data_by_group[group]:
-                    data_by_group[group][m_str]['t'] += item['total']
-                    data_by_group[group][m_str]['c'] += item['cerradas']
+    sumar(por_mes(ProductionOrderMovement.objects.filter(product_id__in=valid_sku_codes, start_date__gte=desde),
+                  'start_date'), cerradas=True)
+    sumar(por_mes(SalesOrderMovement.objects.filter(product_id__in=valid_sku_codes, emission_date__gte=desde),
+                  'emission_date'), cerradas=True)
+    abiertas = (CompromisoAbierto.objects.filter(product_id__in=valid_sku_codes, fecha_emision__gte=desde)
+                .annotate(month=TruncMonth('fecha_emision')).values('bodega', 'month').annotate(n=Count('id'))
+                .values_list('bodega', 'month', 'n'))
+    sumar(abiertas, cerradas=False)
 
+    palette = ['#0099DE', '#ef4444', '#f59e0b', '#10b981', '#7c3aed', '#e03131']
+    datasets = []
     for idx, (group_name, meses_data) in enumerate(data_by_group.items()):
-        data = []
-        has_any_data = False
-        for mes in meses_str:
-            t = meses_data[mes]['t']
-            c = meses_data[mes]['c']
-            if t > 0:
-                data.append(round((c / t * 100), 1))
-                has_any_data = True
-            else:
-                data.append(None)
-
-        if not has_any_data:
+        data = [round(meses_data[m]['c'] / meses_data[m]['t'] * 100, 1) if meses_data[m]['t'] else None
+                for m in meses_str]
+        if not any(v is not None for v in data):
             continue
-
         color = palette[idx % len(palette)]
         datasets.append({
-            'label': group_name,
-            'data': data,
-            'borderColor': color,
-            'backgroundColor': color + '22',
-            'tension': 0.3,
-            'fill': False,
-            'pointRadius': 4,
-            'spanGaps': True,
+            'label': group_name, 'data': data, 'borderColor': color, 'backgroundColor': color + '22',
+            'tension': 0.3, 'fill': False, 'pointRadius': 4, 'spanGaps': True,
         })
 
     return JsonResponse({'labels': meses_str, 'datasets': datasets})
+
 
 @login_required
 def api_inventario_historico(request):
