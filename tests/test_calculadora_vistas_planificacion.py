@@ -132,13 +132,6 @@ class VistasPlanificacionTest(TestCase):
         self.assertEqual(linea['labels'][12], 'hoy')
         self.assertTrue(any(v is not None for v in linea['futuro'][13:]))
 
-    def test_sku_detail_enlaza_a_la_calculadora(self):
-        r = self.client.get(reverse('inventory:sku_detail', args=['A1']))
-        if r.status_code != 200:
-            self.skipTest('La ficha SKU necesita datos que este fixture no tiene')
-        self.assertContains(r, reverse('calculadora:articulo', args=['A1']))
-        self.assertContains(r, 'Ver cálculo completo en la Calculadora')
-
     def test_articulo_inexistente_404(self):
         self.assertEqual(self.client.get(reverse('calculadora:articulo', args=['NOEXISTE'])).status_code, 404)
 

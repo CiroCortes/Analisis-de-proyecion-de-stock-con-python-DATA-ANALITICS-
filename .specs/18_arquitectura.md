@@ -82,8 +82,9 @@ Ayuda en contexto: `{% load calculadora_tags %}{% ayuda 'clave' %}`.
 
 **Fuente única (SPEC-19 §2):** al final de cada corrida `publicacion.publicar()` reescribe
 `StockProjection` y `SKUClassification`, así el Dashboard, el Reporte Gerencial, el Asistente
-IA, el detalle de SKU y el Recomendador (`/purchasing/`, fuera del menú) muestran los números
-de la Calculadora. El motor anterior se ejecuta antes en el pipeline y su resultado se guarda en
+IA y el Recomendador (`/purchasing/`, fuera del menú) muestran los números de la Calculadora.
+Hay una sola ficha de artículo, `calculadora:articulo`; `/inventory/sku/<código>/` redirige a ella
+y todo recálculo pasa por `servicio.recalcular_red()` (SPEC-20). El motor anterior se ejecuta antes en el pipeline y su resultado se guarda en
 `EscenarioActual` (`capturar_escenario_actual()`), que alimenta el panel actual vs propuesto.
 
 ## 5. Roles

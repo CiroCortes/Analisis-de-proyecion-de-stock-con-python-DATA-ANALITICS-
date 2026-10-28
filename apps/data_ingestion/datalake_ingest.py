@@ -10,7 +10,6 @@ from apps.inventory.models import (
     SKUClassification, GoodsReceipt
 )
 from apps.inventory.stock_actual_models import StockActual
-from apps.inventory.classification_engine import run_classification_engine
 from apps.data_ingestion.warehouses import WAREHOUSE_NAMES, transit_destination, commitment_bodega, purchase_bodega
 
 
@@ -683,21 +682,11 @@ def run_full_datalake_pipeline():
 
     print(f"  [OK] InventoryMetric consolidado: {len(metrics_to_create)} registros.", flush=True)
 
-    # 7. Ejecutar Motor S&OP (REPO + DRP Santiago vs Sucursales)
-    print("\n[DATALAKE] Ejecutando Motor S&OP (REPO + DRP)...", flush=True)
-    run_classification_engine()
-
-    # 8. Calculadora de Compras (SPEC-18): datos propios + corrida de la red. El motor
-    #    anterior queda como "escenario actual" del panel de indicadores.
-    print("\n[DATALAKE] Ejecutando Calculadora de Compras...", flush=True)
-    from apps.calculadora.cargadores import cargar_todo
-    from apps.calculadora.publicacion import capturar_escenario_actual
-    from apps.calculadora.servicio import ejecutar_corrida
-    # El motor anterior acaba de escribir StockProjection: se guarda como escenario actual
-    # antes de que la Calculadora publique encima (SPEC-19 §2.1)
-    print(f"  [OK] Escenario actual (motor anterior) capturado: {capturar_escenario_actual()} filas", flush=True)
-    print(f"  [OK] Carga Calculadora: {cargar_todo()}", flush=True)
-    corrida = ejecutar_corrida()
+    # 7-8. Motor anterior (escenario actual de los indicadores) + Calculadora de Compras, que
+    #      carga sus datos y publica encima (SPEC-19 §2)
+    print("\n[DATALAKE] Ejecutando motor anterior y Calculadora de Compras...", flush=True)
+    from apps.calculadora.servicio import recalcular_red
+    corrida = recalcular_red(recargar=True)
     print(f"  [OK] Corrida {corrida.pk}: {corrida.resumen}", flush=True)
 
     print("\n" + "=" * 70, flush=True)

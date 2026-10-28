@@ -1,4 +1,4 @@
-from django.shortcuts import render, get_object_or_404, redirect
+from django.shortcuts import render, redirect
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.http import JsonResponse
@@ -6,110 +6,16 @@ from django.db import transaction
 from django.db.models import Sum, Count, Q
 from django.core.paginator import Paginator
 
-from .models import ProductSKU, InventoryMetric, StockProjection, Warehouse, Category
+from .models import ProductSKU, InventoryMetric, Warehouse, Category
 from .stock_actual_models import StockActual, CargaStockActual
 
 
 
 @login_required
 def sku_detail_view(request, code):
-    import json
-    import datetime
-    from collections import defaultdict
-
-    sku = get_object_or_404(
-        ProductSKU.objects.select_related('category', 'classification'),
-        code=code
-    )
-    metrics = InventoryMetric.objects.filter(product=sku).select_related('warehouse').order_by('warehouse__code')
-    projections = StockProjection.objects.filter(product=sku).select_related('warehouse', 'transfer_source_warehouse').order_by('warehouse__code')
-    classification = getattr(sku, 'classification', None)
-
-    # Movimientos históricos tabulares (OFs Cerradas y Pedidos Clientes Cerrados)
-    of_movements = sku.of_movements.filter(status='Cerrada').order_by('-end_date')[:25]
-    sales_movements = sku.sales_movements.filter(status='Cerrado').order_by('-delivery_date')[:25]
-
-    # ── AGREGACIÓN MENSUAL PARA CHART.JS (Requerimiento Minuta 21/10/2026) ────
-    today = datetime.date.today()
-    meses_nombres = ['', 'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']
-
-    # 1. Últimos 12 meses históricos en orden cronológico
-    month_keys = []
-    monthly_labels = []
-    for i in range(11, -1, -1):
-        year = today.year
-        month = today.month - i
-        while month <= 0:
-            month += 12
-            year -= 1
-        m_key = f"{year}-{month:02d}"
-        month_keys.append((year, month, m_key))
-        monthly_labels.append(f"{meses_nombres[month]} {year}")
-
-    start_date = datetime.date(month_keys[0][0], month_keys[0][1], 1)
-
-    of_by_month = defaultdict(float)
-    pc_by_month = defaultdict(float)
-
-    # Consumos de taller en OFs
-    for m in sku.of_movements.filter(status='Cerrada', end_date__gte=start_date):
-        if m.end_date:
-            key = f"{m.end_date.year}-{m.end_date.month:02d}"
-            of_by_month[key] += float(m.quantity_delivered or 0)
-
-    # Ventas/despachos en Pedidos de Clientes
-    for s in sku.sales_movements.filter(status='Cerrado', delivery_date__gte=start_date):
-        if s.delivery_date:
-            key = f"{s.delivery_date.year}-{s.delivery_date.month:02d}"
-            pc_by_month[key] += float(s.quantity or 0)
-
-    chart_of_data = [round(of_by_month[k[2]], 1) for k in month_keys]
-    chart_pc_data = [round(pc_by_month[k[2]], 1) for k in month_keys]
-    chart_hist_total = [round(chart_of_data[idx] + chart_pc_data[idx], 1) for idx in range(len(month_keys))]
-
-    # 2. Proyección futura a 6 meses (Forecast mensual)
-    avg_m = float(classification.avg_monthly_consumption or 0) if classification else (sum(chart_hist_total) / 12.0)
-    future_labels = []
-    for j in range(1, 7):
-        year = today.year
-        month = today.month + j
-        while month > 12:
-            month -= 12
-            year += 1
-        future_labels.append(f"{meses_nombres[month]} {year} (P)")
-
-    all_labels = monthly_labels + future_labels
-    hist_combined = chart_hist_total + [None] * 6
-    proj_combined = [None] * (len(month_keys) - 1) + [chart_hist_total[-1] if chart_hist_total else avg_m] + [round(avg_m, 1)] * 6
-
-    # Lead time efectivo (+2 días logística recepción)
-    sap_lt = sku.lead_time_days or 30
-    eff_lt = sap_lt + 2
-
-    rop_val = classification.rop_statistical if classification else 0
-    ss_val = classification.safety_stock_statistical if classification else 0
-
-    context = {
-        'sku': sku,
-        'classification': classification,
-        'metrics': metrics,
-        'projections': projections,
-        'of_movements': of_movements,
-        'sales_movements': sales_movements,
-        # Variables de Lead Time logístico
-        'sap_lead_time': sap_lt,
-        'effective_lead_time': eff_lt,
-        # Variables para Chart.js
-        'chart_labels_json': json.dumps(all_labels),
-        'chart_of_json': json.dumps(chart_of_data + [None] * 6),
-        'chart_pc_json': json.dumps(chart_pc_data + [None] * 6),
-        'chart_hist_json': json.dumps(hist_combined),
-        'chart_proj_json': json.dumps(proj_combined),
-        'chart_rop': rop_val,
-        'chart_safety_stock': ss_val,
-        'chart_avg_monthly': round(avg_m, 1),
-    }
-    return render(request, 'inventory/sku_detail.html', context)
+    """Ficha unica del articulo: la de la Calculadora (SPEC-20). Se conserva la URL para
+    enlaces y marcadores antiguos."""
+    return redirect('calculadora:articulo', code=code)
 
 
 # ─── STOCK ACTUAL DE BODEGAS SAP (adaptado de CiroCortes/sistemaPedidosPesco) ───
@@ -206,10 +112,10 @@ def configuracion_view(request):
             return redirect(f"{request.path}?tab=bodegas")
 
         elif action == 'recalculate_sop':
-            from .classification_engine import run_classification_engine
+            from apps.calculadora.servicio import recalcular_red
             try:
-                run_classification_engine()
-                messages.success(request, "¡Motor S&OP recalculado exitosamente! Las proyecciones y recomendaciones de compra reflejan las bodegas y grupos seleccionados.")
+                recalcular_red(usuario=request.user)
+                messages.success(request, "¡S&OP recalculado! La Calculadora, el Dashboard y el Reporte Gerencial reflejan las bodegas y grupos seleccionados.")
             except Exception as e:
                 messages.error(request, f"Error al ejecutar motor S&OP: {str(e)}")
             return redirect(f"{request.path}?tab={active_tab}")

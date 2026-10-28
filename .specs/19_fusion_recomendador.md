@@ -136,7 +136,8 @@ filtrada. Recomendaciones (editables en una versión futura):
 3. **Ayuda en contexto**: los títulos de columnas y tarjetas llevan un ícono (?) con la
    definición corta del glosario (`title`), sin salir de la pantalla.
 4. **Menú**: "Recomendador" sale del menú principal; queda accesible desde Indicadores como
-   "Escenario anterior". La URL `/purchasing/` sigue funcionando.
+   "Escenario anterior". La URL `/purchasing/` sigue funcionando. Los enlaces a artículos y
+   los botones de recálculo se unificaron en SPEC-20.
 
 ## 8. Criterios de aceptación
 

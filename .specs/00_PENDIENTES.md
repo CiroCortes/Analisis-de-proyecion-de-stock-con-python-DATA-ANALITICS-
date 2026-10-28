@@ -86,6 +86,11 @@ quiebre real USD 717 mil vs brecha contra objetivo USD 3,94 M.
 
 ## Hecho
 
+**27-oct-2026 (noche, SPEC-20)**: ficha única del artículo (la de la Calculadora; la URL antigua
+redirige) con documentos cerrados de PC y OF; Dashboard, Reporte Gerencial, Consultar Stock y
+Configuración enlazan a la Calculadora; "Recalcular S&OP" ya no despublica la Calculadora
+(`recalcular_red()`).
+
 **27-oct-2026 (tarde, SPEC-19)**: fuente única (la Calculadora publica en StockProjection y
 SKUClassification; motor anterior en EscenarioActual); eje XYZ y matriz ABC-XYZ; consumo y
 cobertura por bodega; inventario histórico + proyección en el detalle; pantallas Bodegas,

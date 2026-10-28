@@ -118,7 +118,7 @@ Diseñado según la minuta de requerimientos de la gerencia:
 * `apps/purchasing/views.py`: Filtros y métricas KPI de REPO y tipo de acción (Comprar/Trasladar/Mixto).
 * `templates/purchasing/list.html`: Columnas REPO y Acción DRP con detalle de origen y destino (`desde X ➔ hacia Y`).
 * `apps/inventory/views.py`: Inclusión de `transfer_source_warehouse` en la ficha de detalle de SKU.
-* `templates/inventory/sku_detail.html`: Tarjeta de diagnóstico REPO y tabla de bodegas con acción DRP explícita.
+* `templates/inventory/sku_detail.html`: Tarjeta de diagnóstico REPO y tabla de bodegas con acción DRP explícita. *(Eliminada en SPEC-20: la ficha del artículo es la de la Calculadora.)*
 * `apps/dashboard/urls.py` y `apps/dashboard/views.py`: Endpoints y vista del Reporte Gerencial.
 * `templates/dashboard/executive_report.html`: Template del panel gerencial.
 * `templates/base.html`: Enlace de navegación "Gerencial".

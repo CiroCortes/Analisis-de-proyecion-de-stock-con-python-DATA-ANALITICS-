@@ -22,8 +22,8 @@
             <a href="{% url 'dashboard:analytics' %}" class="bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs font-bold px-4 py-2.5 rounded-xl transition flex items-center gap-2">
                 <i class="fa-solid fa-chart-bar"></i> Analytics Slim4
             </a>
-            <a href="{% url 'purchasing:list' %}" class="bg-pesco-cyan hover:bg-pesco-darkcyan text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow transition flex items-center gap-2">
-                <i class="fa-solid fa-cart-shopping"></i> Recomendador
+            <a href="{% url 'calculadora:panel' %}" class="bg-pesco-cyan hover:bg-pesco-darkcyan text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow transition flex items-center gap-2">
+                <i class="fa-solid fa-calculator"></i> Calculadora
             </a>
         </div>
     </div>
@@ -218,7 +218,7 @@
                     <tr class="hover:bg-red-50/40 transition">
                         <td class="py-3 px-5 text-slate-400 font-mono">{{ forloop.counter }}</td>
                         <td class="py-3 px-5 font-mono font-bold text-pesco-cyan">
-                            <a href="{% url 'inventory:sku_detail' item.sku %}" class="hover:underline">{{ item.sku }}</a>
+                            <a href="{% url 'calculadora:articulo' item.sku %}" class="hover:underline">{{ item.sku }}</a>
                         </td>
                         <td class="py-3 px-5 text-slate-700 max-w-xs truncate" title="{{ item.desc }}">{{ item.desc }}</td>
                         <td class="py-3 px-4 text-center">
@@ -298,7 +298,7 @@
                     <tr class="hover:bg-amber-50/30 transition">
                         <td class="py-3 px-5 text-slate-400 font-mono">{{ forloop.counter }}</td>
                         <td class="py-3 px-5 font-mono font-bold text-pesco-cyan">
-                            <a href="{% url 'inventory:sku_detail' item.sku %}" class="hover:underline">{{ item.sku }}</a>
+                            <a href="{% url 'calculadora:articulo' item.sku %}" class="hover:underline">{{ item.sku }}</a>
                         </td>
                         <td class="py-3 px-5 text-slate-700 max-w-xs truncate" title="{{ item.desc }}">{{ item.desc }}</td>
                         <td class="py-3 px-4 text-slate-500 text-[11px]">{{ item.categoria|truncatechars:30 }}</td>

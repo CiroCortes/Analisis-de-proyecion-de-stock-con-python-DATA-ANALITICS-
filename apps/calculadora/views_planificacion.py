@@ -501,6 +501,9 @@ def articulo(request, code):
         'compromisos': CompromisoAbierto.objects.filter(product=producto).order_by('fecha')[:100],
         'plazos': PlazoOC.objects.filter(product=producto).order_by('-fecha_entrada')[:30],
         'historial': HistorialMensual.objects.filter(product=producto).order_by('-mes')[:24],
+        # Documentos cerrados que respaldan el consumo (traidos de la ficha anterior, SPEC-20 §3)
+        'movimientos_pc': producto.sales_movements.filter(status='Cerrado').order_by('-delivery_date')[:25],
+        'movimientos_of': producto.of_movements.filter(status='Cerrada').order_by('-end_date')[:25],
         'alertas': Alerta.objects.filter(product=producto, vigente=True),
         'eventos': EventoComercial.objects.filter(product=producto),
         'puede_editar': puede_editar(request.user),

@@ -314,6 +314,20 @@ def ejecutar_corrida(usuario=None, hoy=None, guardar=True, extra_general=None):
         raise
 
 
+def recalcular_red(usuario=None, recargar=False):
+    """Recalculo completo en el orden de SPEC-19 §2: motor anterior (escenario actual),
+    captura del escenario y corrida de la Calculadora, que publica encima. Es el unico punto
+    de entrada para recalcular fuera de Sincronizar: correr solo el motor anterior deja el
+    Dashboard con numeros distintos a los de la Calculadora."""
+    from apps.inventory.classification_engine import run_classification_engine
+    from .cargadores import cargar_todo
+    run_classification_engine()
+    publicacion.capturar_escenario_actual()
+    if recargar:
+        cargar_todo()
+    return ejecutar_corrida(usuario=usuario)
+
+
 def calcular_detalle(codigo, hoy=None):
     """Recalcula un articulo en memoria para la memoria de calculo y la serie diaria del
     detalle. Usa el ABC de la ultima corrida (depende de toda la poblacion)."""

@@ -211,6 +211,31 @@
         </div>
     </div>
 
+    <!-- Movimientos recientes (SPEC-20 §3) -->
+    <div class="grid grid-cols-1 xl:grid-cols-2 gap-6" id="movimientos">
+        <div class="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+            <div class="px-5 py-3 border-b border-slate-100 flex justify-between items-baseline gap-2"><div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Despachos de pedidos de clientes (PC cerrados)</div><span class="text-[10px] text-slate-400">últimos 25</span></div>
+            <div class="max-h-72 overflow-y-auto">
+            <table class="min-w-full text-xs"><thead class="bg-slate-50 text-[10px] uppercase text-slate-500 sticky top-0"><tr><th class="px-4 py-1.5 text-left">PC</th><th class="text-left">Entrega</th><th class="text-left">Bodega</th><th class="text-left">Cliente</th><th class="text-right px-4">Cantidad</th></tr></thead>
+            <tbody class="divide-y divide-slate-100">
+            {% for m in movimientos_pc %}<tr><td class="px-4 py-1.5 font-mono">{{ m.order_number }}</td><td>{{ m.delivery_date|date:"d-m-Y"|default:"—" }}</td><td class="font-mono">{{ m.warehouse|default:"—" }}</td><td class="max-w-[12rem] truncate" title="{{ m.client_name }}">{{ m.client_name|default:"—" }}</td><td class="text-right px-4 font-mono font-bold">{{ m.quantity|floatformat:"-2" }}</td></tr>
+            {% empty %}<tr><td colspan="5" class="px-4 py-3 text-slate-500 text-center">Sin despachos de PC cerrados.</td></tr>{% endfor %}
+            </tbody></table>
+            </div>
+        </div>
+        <div class="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+            <div class="px-5 py-3 border-b border-slate-100 flex justify-between items-baseline gap-2"><div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Consumo en órdenes de fabricación (OF cerradas)</div><span class="text-[10px] text-slate-400">últimas 25</span></div>
+            <div class="max-h-72 overflow-y-auto">
+            <table class="min-w-full text-xs"><thead class="bg-slate-50 text-[10px] uppercase text-slate-500 sticky top-0"><tr><th class="px-4 py-1.5 text-left">OF</th><th class="text-left">Término</th><th class="text-left">Bodega</th><th class="text-right px-4">Cantidad</th></tr></thead>
+            <tbody class="divide-y divide-slate-100">
+            {% for m in movimientos_of %}<tr><td class="px-4 py-1.5 font-mono">{{ m.of_number }}</td><td>{{ m.end_date|date:"d-m-Y"|default:"—" }}</td><td class="font-mono">{{ m.warehouse|default:"—" }}</td><td class="text-right px-4 font-mono font-bold">{{ m.quantity_delivered|floatformat:"-2" }}</td></tr>
+            {% empty %}<tr><td colspan="4" class="px-4 py-3 text-slate-500 text-center">Sin consumos en OF cerradas.</td></tr>{% endfor %}
+            </tbody></table>
+            </div>
+        </div>
+        <p class="xl:col-span-2 -mt-3 text-[11px] text-slate-400">Documentos de respaldo para revisar casos puntuales. El consumo del cálculo viene del kárdex de SAP (OINM), que además incluye otras salidas.</p>
+    </div>
+
     <div class="grid grid-cols-1 xl:grid-cols-2 gap-6">
         <div class="bg-white rounded-3xl border border-slate-200 shadow-sm p-5">
             <div class="flex justify-between items-center mb-3"><div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Alertas vigentes</div><a href="{% url 'calculadora:alertas' %}?search={{ p.code }}" class="text-xs font-bold text-pesco-cyan hover:underline">Gestionar →</a></div>

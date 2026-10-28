@@ -11,7 +11,6 @@ from apps.inventory.models import (
     SalesOrderMovement, SKUClassification
 )
 from apps.inventory.stock_actual_models import StockActual
-from apps.inventory.classification_engine import run_classification_engine
 from apps.data_ingestion.datalake_ingest import run_full_datalake_pipeline
 
 DATALAKE_FILES = [
@@ -119,9 +118,10 @@ def upload_view(request):
                 messages.success(request, f"¡Sincronización oficial desde Datalake (TXT) completada con éxito en {dt} segundos! Base de datos y motor S&OP actualizados.")
 
             elif action == 'sync_engine':
-                run_classification_engine()
+                from apps.calculadora.servicio import recalcular_red
+                recalcular_red(usuario=request.user)
                 dt = round(time.time() - t0, 1)
-                messages.success(request, f"Motor S&OP recalculado en {dt} segundos.")
+                messages.success(request, f"Motor S&OP y Calculadora recalculados en {dt} segundos.")
 
             else:
                 messages.error(request, f"Acción desconocida: {action}")

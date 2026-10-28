@@ -232,7 +232,7 @@
                         </h3>
                         <p class="text-xs text-slate-400 mt-0.5">Ranking de mayor impacto financiero en quiebre.</p>
                     </div>
-                    <a href="{% url 'purchasing:list' %}" class="text-xs font-bold text-pesco-cyan hover:underline uppercase tracking-wider whitespace-nowrap">Ver Recomendador S&amp;OP →</a>
+                    <a href="{% url 'calculadora:grilla' %}" class="text-xs font-bold text-pesco-cyan hover:underline uppercase tracking-wider whitespace-nowrap">Ver grilla de compras →</a>
                 </div>
 
                 <div class="overflow-x-auto">
@@ -253,7 +253,7 @@
                             <tr class="hover:bg-pesco-lightcyan/20 transition">
                                 <!-- SKU -->
                                 <td class="py-3.5 px-4 font-bold font-mono text-pesco-cyan">
-                                    <a href="{% url 'inventory:sku_detail' item.product.code %}" class="hover:underline inline-flex items-center gap-1.5">
+                                    <a href="{% url 'calculadora:articulo' item.product.code %}" class="hover:underline inline-flex items-center gap-1.5">
                                         <i class="fa-solid fa-box-open text-xs"></i> {{ item.product.code }}
                                     </a>
                                 </td>

@@ -23,12 +23,12 @@
             <form method="POST" action="{% url 'inventory:configuracion' %}">
                 {% csrf_token %}
                 <input type="hidden" name="action" value="recalculate_sop">
-                <button type="submit" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black px-5 py-3 rounded-2xl shadow-sm transition flex items-center gap-2 uppercase tracking-wider" title="Ejecuta de inmediato el balance DRP y proyecciones con los cambios guardados">
+                <button type="submit" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black px-5 py-3 rounded-2xl shadow-sm transition flex items-center gap-2 uppercase tracking-wider" title="Recalcula el motor S&amp;OP y la Calculadora con los cambios guardados; el Dashboard queda con los mismos números de la Calculadora">
                     <i class="fa-solid fa-arrows-rotate"></i> Recalcular S&amp;OP
                 </button>
             </form>
-            <a href="{% url 'purchasing:list' %}" class="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold px-5 py-3 rounded-2xl transition flex items-center gap-2 uppercase tracking-wider">
-                <i class="fa-solid fa-cart-shopping text-pesco-cyan"></i> Recomendador
+            <a href="{% url 'calculadora:panel' %}" class="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold px-5 py-3 rounded-2xl transition flex items-center gap-2 uppercase tracking-wider">
+                <i class="fa-solid fa-calculator text-pesco-cyan"></i> Calculadora
             </a>
         </div>
     </div>
