@@ -94,7 +94,9 @@ class TestCaso3KitElectricoHiab:
 
 class TestCaso4Traslado:
     """31302313 FILTRO RETORNO @ 002: comprometido 1, disponible -1; 013-03 tiene 2 libres.
-    Desde SPEC-21 Santiago es un nodo: el traslado sale de Santiago y se saca de la 013-03."""
+    Desde SPEC-21 Santiago es un nodo: el traslado sale de Santiago y se saca de la 013-03.
+    Corregido el 28-oct: el documento pide 2 porque cuenta dos veces el compromiso; a 002 le
+    falta 1 (SPEC-11 §3.1)."""
 
     def test_traslada_desde_013_03_sin_comprar(self):
         bodegas = [
@@ -106,9 +108,9 @@ class TestCaso4Traslado:
         a = {x.codigo: x for x in acciones}['002']
         assert a.objetivo == 1
         assert a.disponible_futuro == -1
-        assert a.faltante == 2
+        assert a.faltante == 1
         assert a.accion == red.TRASLADAR
-        assert traslados == [red.Traslado(red.NODO_SANTIAGO, '002', 2, desde=(('013-03', 2),))]
+        assert traslados == [red.Traslado(red.NODO_SANTIAGO, '002', 1, desde=(('013-03', 1),))]
 
 
 class TestCaso5FueraDeCalendario:
@@ -116,13 +118,17 @@ class TestCaso5FueraDeCalendario:
     pedido de 4 unidades en 2 dias."""
 
     def test_proyeccion(self):
+        # Corregido el 28-oct: el pedido de 4 es parte del consumo esperado. El documento resta
+        # pedido y consumo ([5.5, 1, 0.5, 0, -0.5]); sale el mayor de los dos (SPEC-12 §4)
         serie = proyectar(6, 0.5, compromisos=[(2, 4)], horizonte=10)
-        assert serie[:5] == [5.5, 1, 0.5, 0, -0.5]
+        assert serie[:5] == [5.5, 2, 2, 2, 2]
+        assert serie[8] == 1.5          # dia 9: el consumo esperado (4,5) supera al pedido
 
     def test_excepcion(self):
         serie = proyectar(6, 0.5, compromisos=[(2, 4)], horizonte=120)
         ex = evaluar_excepcion(serie, 0, dias_a_proxima_compra=12, dias_entrega=10, dias_recepcion=2)
-        assert ex.dia_quiebre == 5
+        assert ex.dia_quiebre == 13       # 6 - 0,5 x 13 < 0 (el documento decia 5)
         assert ex.dia_llegada_posible == 24
-        assert ex.excepcion
-        assert ex.dias_quiebre_inevitable == 7
+        assert ex.excepcion               # igual quiebra antes de la compra normal
+        # Comprando hoy llega el dia 12, antes del quiebre del dia 13 (el documento decia 7 dias)
+        assert ex.dias_quiebre_inevitable == 0

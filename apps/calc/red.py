@@ -65,6 +65,14 @@ def objetivo_bodega(letra, bodega):
     return float(max(0, bodega.comprometido))
 
 
+def faltante_bodega(objetivo, bodega):
+    """Lo que realmente le falta al nodo: su objetivo contra lo que tiene (stock + transito).
+    = MAX(0; -disponible) cuando el objetivo es lo comprometido. El documento (caso 4) compara
+    contra el disponible, que ya desconto el compromiso, y lo contaba dos veces: corregido el
+    28-oct (SPEC-11 §3.1)."""
+    return max(0.0, objetivo - (bodega.stock_fisico + bodega.en_transito))
+
+
 def totales_red(bodegas):
     stock = sum(b.stock_fisico for b in bodegas)
     transito = sum(b.en_transito for b in bodegas)
@@ -121,15 +129,15 @@ def _desde(componentes, usado, cantidad):
 def distribuir(letra, nodos, dias_reserva=0):
     """Acciones por nodo y traslados sugeridos (SPEC-21 §4). `nodos` ya agrupados
     (`agrupar_santiago`): Santiago es el central.
-    - Sucursal: pide su faltante (objetivo - disponible, caso 4) al libre de Santiago.
-    - Santiago: pide solo su quiebre real al libre de las sucursales, la de mayor libre primero.
+    - Sucursal: pide su faltante real al libre de Santiago.
+    - Santiago: pide su faltante real al libre de las sucursales, la de mayor libre primero.
     Si varios piden, primero los URGENTES (disponible <= 0) y despues la fecha comprometida
     mas cercana."""
     acciones, libres = {}, {}
     for b in nodos:
         obj = objetivo_bodega(letra, b)
         disp = b.disponible_futuro
-        a = AccionBodega(b.codigo, obj, disp, max(0.0, obj - disp), protegido=protegido(b, dias_reserva))
+        a = AccionBodega(b.codigo, obj, disp, faltante_bodega(obj, b), protegido=protegido(b, dias_reserva))
         libres[b.codigo] = a.excedente = libre(b, dias_reserva)
         acciones[b.codigo] = a
 
@@ -144,11 +152,10 @@ def distribuir(letra, nodos, dias_reserva=0):
     traslados, usado_santiago = [], {}
     for b in solicitantes:
         a = acciones[b.codigo]
+        necesidad = a.faltante
         if b.es_central:
-            necesidad = min(a.faltante, max(0.0, -b.disponible_futuro))
             donantes = sorted(sucursales, key=lambda d: (-libres[d.codigo], d.codigo))
         else:
-            necesidad = a.faltante
             donantes = [central] if central is not None else []
         pendiente = necesidad
         for d in donantes:

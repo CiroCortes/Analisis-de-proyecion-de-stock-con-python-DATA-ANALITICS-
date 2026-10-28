@@ -55,22 +55,25 @@ política. Pedir a Abastecimiento que corrija el dato en el documento.
 
 ## Caso 4: 31302313 FILTRO RETORNO, 002 (`TestCaso4Traslado`)
 
-002: comprometido 1, disponible −1, objetivo 1 ⇒ faltante 2. 013-03 con 2 disponibles sin
-necesitarlos ⇒ **TRASLADAR 2 desde 013-03 a 002, sin comprar**.
-Ver el conflicto de doble conteo en SPEC-11 §3.1.
+002: comprometido 1, disponible −1, objetivo 1. El documento da faltante 2 (cuenta dos veces el
+compromiso). **Corregido el 28-oct: faltante 1** ⇒ **TRASLADAR 1 desde Santiago (sacar de 013-03) a
+002, sin comprar** (SPEC-11 §3.1, SPEC-21).
 
 ## Caso 5: compra fuera de calendario (`TestCaso5FueraDeCalendario`)
 
 Próxima compra en 12 días, plazo 10, recepción 2, stock 6, sin OC, consumo diario 0,5, pedido de 4
 unidades a 2 días.
 
-| Campo | Esperado |
-|---|---|
-| stock_proyectado días 1–5 | 5,5 · 1 · 0,5 · 0 · −0,5 |
-| fecha_quiebre_proyectada | día 5 |
-| fecha_llegada_posible | día 24 |
-| excepcion | sí |
-| dias_quiebre_inevitable | 7 |
+| Campo | Documento | Corregido 28-oct (SPEC-12 §4) |
+|---|---|---|
+| stock_proyectado días 1–5 | 5,5 · 1 · 0,5 · 0 · −0,5 | 5,5 · 2 · 2 · 2 · 2 |
+| fecha_quiebre_proyectada | día 5 | día 13 |
+| fecha_llegada_posible | día 24 | día 24 |
+| excepcion | sí | sí |
+| dias_quiebre_inevitable | 7 | 0 |
+
+El documento resta el pedido de 4 y además el consumo de esos días (el pedido es parte del consumo):
+cuenta dos veces. Hay que corregir el caso en el documento.
 
 ## Regla
 

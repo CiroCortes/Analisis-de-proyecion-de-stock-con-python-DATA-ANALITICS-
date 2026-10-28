@@ -13,7 +13,7 @@
 |---|---|---|
 | 1 | OC y SC posteadas en la `013` (o sin bodega) **se perdían**: ~1.061 líneas de OC (5.457 u) y ~450 de SC | **Corregido**: se acreditan a 013-PP (`purchase_bodega`). Reprocesar con Sincronizar |
 | 2 | Bodegas `000-003`, `000-010`, `000-022` reciben OC/SC (≈43, 71, 29 líneas) | Confirmar si son bodegas de posteo de sucursales y a cuál se acreditan |
-| 3 | Caso 4 del documento cuenta dos veces el compromiso (SPEC-11 §3.1) | Abastecimiento decide; corregir el caso en el documento |
+| 3 | Caso 4 del documento cuenta dos veces el compromiso (SPEC-11 §3.1) | **Corregido 28-oct** (faltante real). Corregir el caso 4 en el documento |
 | 4 | Caso 3: consumo anual 146 ⇒ promedio 12,17, pero el documento calcula con 11,5 (SPEC-17) | Corregir el dato en el documento |
 | 5 | 289 artículos que necesitan compra no tienen proveedor | Consulta 10 o completar proveedor en la plataforma |
 | 6 | Sin plazos reales hasta la consulta 9 | Validar consulta 9 |
@@ -29,6 +29,7 @@
 | 11 | 401 de 509 traslados (27.067 de 27.650 u) eran internos de Santiago hacia 013-PP: ficticios | **Corregido**: 132 traslados, 622 u, solo Santiago ↔ sucursales |
 | 12 | El stock de la `013` a secas no se contaba (742 u en 85 artículos) | **Corregido**: suma al nodo Santiago |
 | 13 | Faltaba sugerir regiones → Santiago | **Hecho**: 43 traslados (138 u), solo con stock libre |
+| 15 | El faltante por bodega y la proyección contaban dos veces los compromisos | **Corregido** (ver Hecho 28-oct) |
 | 14 | El 63% de las OC abiertas se postea en la `013`; la exportación de solicitudes usa 013-PP como bodega de entrega | Confirmar con Compras |
 
 Corrida del 28-oct (SPEC-21, datos reales): 132 traslados (89 Santiago → regiones, 484 u; 43
@@ -55,10 +56,11 @@ quiebre real USD 717 mil vs brecha contra objetivo USD 3,94 M.
 | 10 | Grupos "por revisar" (111, 131) | Abastecimiento | Activos |
 | 11 | Costo de equipos de producción propia | Jefatura | 0 |
 | 12 | Stock de seguridad de R-Intermitente (el documento no lo define) | Abastecimiento | ROP − consumo en el plazo (SPEC-10 §4) |
-| 13 | Objetivo por bodega / doble conteo del caso 4 | Abastecimiento | Literal del documento (SPEC-11 §3.1) |
+| 13 | Objetivo por bodega / doble conteo del caso 4 | Desarrollo (28-oct) | **Resuelto**: faltante = MAX(0; −disponible) |
 | 14 | Alertas de alza e irregularidad solo para R/E | Abastecimiento | Solo R/E |
 | 15 | Días de reserva de consumo propio antes de trasladar (protección simétrica) | Abastecimiento | 15 días (`dias_reserva_traslado`) |
 | 16 | Bodega de entrega de las solicitudes exportadas: 013-PP o 013 | Compras | 013-PP |
+| 17 | Compra: el disponible resta todos los compromisos y el punto de pedido ya incluye el consumo del plazo (posible doble conteo, ≈ 38 artículos y USD 0,29 M). Los meses atípicos se recortan del consumo, así que un pedido grande puntual no está en el promedio | Abastecimiento | Fórmula del documento (§4.6) |
 
 ## Bloqueado
 
@@ -83,8 +85,6 @@ quiebre real USD 717 mil vs brecha contra objetivo USD 3,94 M.
 - **Consignación**: OF abiertas en 100/102/106 (241.352 u) atribuidas a 013-PP; confirmar quién repone.
 - **Bodegas `013-IN`, `957`, `959`**: confirmar.
 - **Antofagasta en tránsito**: `022` en `T…-…` = `002-02`; confirmar que no existe una 022 real.
-- **Doble conteo en la proyección**: descuenta consumo diario y compromisos (como pide el
-  documento); revisar con datos de la consulta 8 (SPEC-12 §4).
 - Clasificación por bodega; correo semanal de alertas; buzón de eventos (fase 2).
 - Crear los grupos Django "Administrador Abastecimiento" y "Jefe Abastecimiento" y asignar usuarios.
 - Configurar calendario real por proveedor (hoy ancla repartida por código).
@@ -97,6 +97,11 @@ quiebre real USD 717 mil vs brecha contra objetivo USD 3,94 M.
 - `03_sop_ui_ux.md`: revisar contra las pantallas nuevas.
 
 ## Hecho
+
+**28-oct-2026 (no inflar datos)**: faltante por bodega = lo que realmente falta (antes 367 de 484 u
+trasladadas a regiones sin quiebre real; ahora 0). Proyección: MAX(consumo esperado; compromisos) en
+vez de sumar ambos (excepciones 427 → 393; sugerido USD 4,52 M → 4,25 M). Casos 4 y 5 corregidos
+en los tests; falta corregirlos en el documento. Corrida: 93 traslados (255 u).
 
 **28-oct-2026 (SPEC-21)**: Santiago como un solo stock (nodo `013`, incluye la 013 a secas);
 traslados solo Santiago ↔ sucursales en ambos sentidos con protección simétrica (compromisos +

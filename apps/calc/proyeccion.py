@@ -23,7 +23,10 @@ def dia_llegada_oc(dias_hasta_fecha_comprometida, dias_recepcion):
 
 def proyectar(stock_inicial, consumo_diario, compromisos=(), llegadas=(), horizonte=120):
     """Stock esperado al cierre de cada dia 1..horizonte:
-    stock de hoy - consumo_diario x dias - compromisos a su fecha + llegadas de OC a su fecha.
+    stock de hoy + llegadas de OC a su fecha - MAX(consumo_diario x dias; compromisos acumulados).
+    Los PC y OF abiertos son parte del consumo esperado (el historial de OINM incluye las ventas y
+    las salidas a OF): solo se descuenta lo que los compromisos superan al consumo. El documento
+    los restaba ademas del consumo y los contaba dos veces: corregido el 28-oct (SPEC-12 §4).
     `compromisos` y `llegadas`: iterables de (dia, cantidad). Los dias <= 0 cuentan en el dia 1."""
     salidas = [0.0] * (horizonte + 1)
     entradas = [0.0] * (horizonte + 1)
@@ -37,10 +40,11 @@ def proyectar(stock_inicial, consumo_diario, compromisos=(), llegadas=(), horizo
             entradas[d] += float(q)
 
     serie = []
-    acumulado = float(stock_inicial)
+    stock, comprometido = float(stock_inicial), 0.0
     for d in range(1, horizonte + 1):
-        acumulado += entradas[d] - salidas[d]
-        serie.append(acumulado - consumo_diario * d)
+        stock += entradas[d]
+        comprometido += salidas[d]
+        serie.append(stock - max(consumo_diario * d, comprometido))
     return serie
 
 

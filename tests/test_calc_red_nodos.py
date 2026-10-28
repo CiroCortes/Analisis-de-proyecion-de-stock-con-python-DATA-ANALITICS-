@@ -46,14 +46,14 @@ class TestProteccionSimetrica:
     def test_santiago_protege_compromisos_y_reserva(self):
         nodos = [red.Bodega(red.NODO_SANTIAGO, es_central=True, es_santiago=True, stock_fisico=20,
                             comprometido=5, consumo_diario=0.5),
-                 red.Bodega('002', comprometido=10)]
+                 red.Bodega('002', comprometido=15)]
         acciones, traslados = red.distribuir('R', nodos, dias_reserva=10)
         a = {x.codigo: x for x in acciones}
         assert a[red.NODO_SANTIAGO].protegido == 10       # 5 comprometidos + 0,5 x 10 dias
         assert a[red.NODO_SANTIAGO].excedente == 10       # libre
         assert traslados == [red.Traslado(red.NODO_SANTIAGO, '002', 10)]
-        # 002 pide 20 (objetivo 10 - disponible -10): recibe 10, espera 10 y ve lo retenido
-        assert a['002'].accion == red.TRASLADAR_PARCIAL and a['002'].espera_compra == 10
+        # 002 necesita 15: recibe 10, espera 5 y ve lo retenido en Santiago
+        assert a['002'].accion == red.TRASLADAR_PARCIAL and a['002'].espera_compra == 5
         assert a['002'].retenido_en == [(red.NODO_SANTIAGO, 10)]
 
     def test_sucursal_entrega_a_santiago_solo_lo_libre(self):
@@ -70,13 +70,12 @@ class TestProteccionSimetrica:
         assert all(t.desde == () for t in traslados)
 
     def test_santiago_pide_solo_su_quiebre_real(self):
-        # Stock = comprometido: el faltante literal (doble conteo, SPEC-11 §3.1) seria 5,
-        # pero Santiago no esta en quiebre: no pide nada a regiones
+        # Stock = comprometido: el pedido esta cubierto, no pide nada a regiones
         nodos = [red.Bodega(red.NODO_SANTIAGO, es_central=True, es_santiago=True, stock_fisico=5, comprometido=5),
                  red.Bodega('010', stock_fisico=30)]
         acciones, traslados = red.distribuir('R', nodos)
         a = {x.codigo: x for x in acciones}[red.NODO_SANTIAGO]
-        assert a.faltante == 5
+        assert a.faltante == 0
         assert traslados == [] and a.accion == red.NINGUNA
 
     def test_sin_traslados_entre_sucursales(self):

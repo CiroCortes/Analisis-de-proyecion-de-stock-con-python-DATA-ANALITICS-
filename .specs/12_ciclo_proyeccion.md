@@ -61,5 +61,8 @@ mes de consumo) → `EVENTO` (ajuste comercial > 0) → `DATO_FALTANTE` (sin cos
 
 - Un artículo con disponible ≤ 0 quiebra el día 1: fuera del día de compra siempre es excepción.
   Corrida del 27-oct con consumo provisional PC/OF: 409 excepciones.
-- La proyección descuenta consumo diario **y** compromisos, como pide el documento; si los PC son
-  parte del consumo habitual hay doble conteo. Revisar con datos de la consulta 8.
+- **Doble conteo corregido el 28-oct**: el documento descontaba consumo diario **y** compromisos, pero
+  el consumo de OINM ya incluye las ventas y las salidas a OF. Ahora cada día se descuenta
+  `MAX(consumo_diario × día; compromisos acumulados)`: un pedido grande adelanta el quiebre solo en
+  lo que supera al consumo esperado. Datos reales: excepciones 427 → 393, sugerido USD 4,52 M → 4,25 M.
+  Caso 5 corregido (quiebre día 13, no 5). Hay que corregir el caso 5 en el documento.

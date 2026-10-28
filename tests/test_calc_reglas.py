@@ -162,16 +162,22 @@ class TestRed:
         a = {x.codigo: x for x in acciones}
         # Santiago = 013-PP + 013-03: stock 6, comprometido 2 -> libre 4
         # Ambas son urgentes (disponible <= 0): manda la fecha comprometida mas cercana (003).
-        # 003: objetivo 2, disponible -1 -> faltante 3 (regla del caso 4 del documento)
-        assert a['003'].accion == red.TRASLADAR
-        assert a['003'].origenes == [(red.NODO_SANTIAGO, 3)]
-        # queda 1 libre en Santiago de los 6 que pide 002
-        assert a['002'].faltante == 6
-        assert a['002'].accion == red.TRASLADAR_PARCIAL
-        assert a['002'].cantidad_trasladar == 1 and a['002'].espera_compra == 5
+        # 003: objetivo 2, tiene 1 -> le falta 1 (sin contar dos veces el compromiso)
+        assert a['003'].faltante == 1 and a['003'].origenes == [(red.NODO_SANTIAGO, 1)]
+        # 002: objetivo 3, tiene 0 -> le faltan 3; quedan 3 libres en Santiago
+        assert a['002'].faltante == 3
+        assert a['002'].accion == red.TRASLADAR and a['002'].espera_compra == 0
         assert all(t.origen == red.NODO_SANTIAGO for t in traslados)
         # Se saca de la bodega con mas stock primero (013-PP tiene 5)
-        assert [t.desde for t in traslados] == [(('013-PP', 3),), (('013-PP', 1),)]
+        assert [t.desde for t in traslados] == [(('013-PP', 1),), (('013-PP', 3),)]
+
+    def test_no_cuenta_dos_veces_el_compromiso(self):
+        # Stock = comprometido: el pedido ya esta cubierto, no falta nada
+        nodos = [red.Bodega(red.NODO_SANTIAGO, es_central=True, es_santiago=True, stock_fisico=50),
+                 red.Bodega('002', stock_fisico=5, comprometido=5)]
+        acciones, traslados = red.distribuir('R', nodos)
+        assert {x.codigo: x for x in acciones}['002'].faltante == 0
+        assert traslados == []
 
     def test_comprometido_de_santiago_nunca_se_traslada(self):
         bodegas = red.agrupar_santiago([

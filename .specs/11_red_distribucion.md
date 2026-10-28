@@ -34,17 +34,19 @@ sucursales `002`, `002-02`, `003`, `008`, `010`. Por bodega (`red.Bodega`):
 | R, E, P | Lo comprometido localmente (la central guarda además el resto del stock de la red) |
 | O | 0 |
 
-`faltante = MAX(0; objetivo − disponible_futuro)`.
+`faltante = MAX(0; objetivo − (stock_fisico + en_transito))` = `MAX(0; −disponible)` (`faltante_bodega`).
 
-### 3.1 Conflicto: doble conteo del compromiso (caso 4)
+### 3.1 Doble conteo del compromiso (caso 4): CORREGIDO el 28-oct
+
+Decisión del desarrollador (28-oct): no se muestran datos inflados. Antes, con el faltante literal,
+367 de 484 u trasladadas a regiones y 39 de 89 traslados no tenían quiebre real. Después: 0.
+Hay que corregir el caso 4 en el documento (debe dar 1). Texto original del conflicto:
 
 El caso 4 del documento (002: comprometido 1, disponible −1 → faltante 2) fija
 `faltante = objetivo − disponible`, donde `disponible` **ya descuenta** el compromiso. El
 compromiso se cuenta dos veces: una sucursal con stock = comprometido (disponible 0) igual
 muestra faltante = comprometido y pide traslado.
-**Se implementó literal para cumplir el caso dorado.** Propuesta para Abastecimiento: objetivo
-de sucursales = 0 sobre el disponible (o faltante = MAX(0; −disponible)); en el caso 4 daría 1.
-Requiere corregir el caso 4 del documento. Decisión abierta.
+Se implementó literal hasta el 28-oct; desde entonces faltante = MAX(0; −disponible) y el caso 4 da 1.
 
 ## 4. Reparto (`distribuir`)
 

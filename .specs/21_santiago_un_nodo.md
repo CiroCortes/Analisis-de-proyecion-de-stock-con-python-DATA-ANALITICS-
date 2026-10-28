@@ -54,11 +54,10 @@ retenido  = MIN(stock_fisico; protegido)          -> se muestra, no se sugiere
 
 | Solicitante | Necesidad | Donantes |
 |---|---|---|
-| Sucursal | `faltante = objetivo − disponible` (literal del caso 4, SPEC-11 §3.1) | Libre de Santiago |
-| Santiago | `MIN(faltante; MAX(0; −disponible))`: solo el quiebre real | Libre de las sucursales, mayor primero |
+| Sucursal | `faltante = MAX(0; −disponible)`: lo que realmente le falta | Libre de Santiago |
+| Santiago | `faltante = MAX(0; −disponible)` | Libre de las sucursales, mayor primero |
 
-- Santiago pide a regiones solo su quiebre real. Si usara el faltante literal (que cuenta dos veces
-  el compromiso), con stock = comprometido pediría traslados que no necesita.
+- El faltante ya no cuenta dos veces el compromiso (corregido el 28-oct, SPEC-11 §3.1).
 - Prioridad entre solicitantes: igual que antes (urgentes, fecha comprometida, código).
 - Lo no cubierto queda en ESPERA COMPRA. `retenido_en` lista los donantes con stock retenido
   (para que jefatura decida). `sucursales_con_stock` (alerta TRASLADO_SUCURSALES) usa el libre.
@@ -67,8 +66,9 @@ retenido  = MIN(stock_fisico; protegido)          -> se muestra, no se sugiere
 
 ### 4.1 Caso 4 del documento
 
-002 con comprometido 1 y disponible −1; 013-03 con 2. Antes: traslado 013-03 → 002 por 2. Ahora:
-traslado **Santiago (013) → 002 por 2, desde 013-03: 2**. Mismo resultado (TRASLADAR 2, sin compra).
+002 con comprometido 1 y disponible −1; 013-03 con 2. Documento: traslado 013-03 → 002 por 2.
+Ahora: traslado **Santiago (013) → 002 por 1, desde 013-03: 1** (le falta 1; el 2 del documento cuenta
+dos veces el compromiso). TRASLADAR, sin compra.
 
 ## 5. Decisión de compra en la ficha (sugerencia del encargado de repuestos)
 
