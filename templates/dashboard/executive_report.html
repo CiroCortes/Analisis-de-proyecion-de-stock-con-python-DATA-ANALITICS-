@@ -346,7 +346,13 @@ const defaultLineOptions = (title) => ({
     plugins: {
         legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } },
         title: { display: false },
-        tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y}` } }
+        tooltip: { callbacks: { label: ctx => {
+            const v = ctx.parsed.y;
+            if (v === null || v === undefined) return `${ctx.dataset.label}: sin datos`;
+            if (title === 'Disponibilidad') return `${ctx.dataset.label}: ${v.toLocaleString('es-CL')}%`;
+            if (title === 'Inventario') return `${ctx.dataset.label}: $${Math.round(v).toLocaleString('es-CL')} USD`;
+            return `${ctx.dataset.label}: ${v.toLocaleString('es-CL')} u`;
+        } } }
     },
     scales: {
         x: { grid: { display: false }, ticks: { font: { size: 10 } } },
@@ -398,7 +404,7 @@ fetch("{% url 'dashboard:api_inventario' %}" + queryParams)
                         beginAtZero: true,
                         ticks: {
                             font: { size: 10 },
-                            callback: v => '$' + v.toLocaleString()
+                            callback: v => '$' + v.toLocaleString('es-CL')
                         }
                     }
                 }
