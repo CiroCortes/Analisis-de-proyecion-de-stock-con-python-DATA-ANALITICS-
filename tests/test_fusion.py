@@ -68,14 +68,15 @@ class FusionCorridaTest(TestCase):
         self.assertTrue(corrida.resumen['publicado'])
         self.assertEqual(res.xyz, 'X')
 
-        central = StockProjection.objects.get(product=self.sku, warehouse=self.pp)
+        central = StockProjection.objects.get(product=self.sku, warehouse__code='013')   # Santiago (SPEC-21)
         self.assertEqual(central.action_type, 'COMPRAR')
         self.assertEqual(central.suggested_buy_units, res.cantidad_a_comprar)
         self.assertEqual(central.rop, res.punto_pedido)
         sucursal = StockProjection.objects.get(product=self.sku, warehouse=self.w002)
         self.assertEqual(sucursal.suggested_buy_units, 0)       # las bodegas no compran
         self.assertEqual(sucursal.shortage_units, 2)             # quiebre real: disponible -2
-        self.assertEqual(sucursal.action_type, 'TRASLADAR')      # la central tiene 5 libres
+        # Santiago tiene 5, pero protege 15 dias de su consumo (108/365 x 15 = 4,4 -> 5): nada libre
+        self.assertEqual(sucursal.action_type, 'ESPERA_COMPRA')
 
         clasif = SKUClassification.objects.get(product=self.sku)
         self.assertEqual(clasif.repo_category, 'R')
@@ -89,7 +90,7 @@ class FusionCorridaTest(TestCase):
 
     def test_cobertura_por_bodega(self):
         ejecutar_corrida(hoy=HOY)
-        b = ResultadoBodega.objects.get(resultado__product=self.sku, warehouse=self.pp)
+        b = ResultadoBodega.objects.get(resultado__product=self.sku, warehouse__code='013')
         self.assertAlmostEqual(b.consumo_diario, 108 / 365)
         self.assertAlmostEqual(b.cobertura_dias, 5 / (108 / 365))
 

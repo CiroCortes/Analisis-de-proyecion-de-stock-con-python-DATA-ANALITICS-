@@ -33,6 +33,7 @@ G = general, F = familia, P = proveedor, A = artículo, B = bodega.
 | p_solo_con_compromiso | P exige PC u OF abierto | Sí | sí/no | G |
 | corte_xyz_x / corte_xyz_y | Cortes XYZ (coef. de variación) — SPEC-19; calibrados el 27-oct con consumo real (antes 0,5 / 1,0) | 1,0 / 1,75 | 0,05–3 / 0,1–5 | G |
 | horizonte_proyeccion_dias | Horizonte proyección | 120 | 30–365 | G |
+| dias_reserva_traslado | Reserva de consumo propio antes de trasladar (SPEC-21 §3) | 15 | 0–180 | G |
 | alerta_bajo_ss_dias | Alerta bajo SS proyectado | 15 | 1–90 | G |
 | alerta_contrato_vence_dias | Alerta contrato por vencer | 60 | 1–365 | G |
 | alerta_sobrestock_meses | Sobrestock: meses sobre el máximo | 3 | 0–24 | G |

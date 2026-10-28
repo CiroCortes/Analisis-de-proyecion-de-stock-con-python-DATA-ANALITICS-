@@ -78,6 +78,64 @@
         <div class="h-64 mt-2"><canvas id="chartConsumo"></canvas></div>
     </div>
 
+    <!-- ¿Comprar todo de una vez? (SPEC-21 §5) -->
+    <div class="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden" id="decision-compra">
+        <div class="px-5 py-4 border-b border-slate-100">
+            <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">¿Comprar todo de una vez?</div>
+            <div class="text-xs text-slate-500">De dónde viene el consumo, a cuántos meses equivale la compra y cuál es el mínimo para llegar a la siguiente compra. La cantidad sugerida no cambia: la decisión es del comprador.</div>
+        </div>
+        {% if decision.sugerida %}
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3 p-5">
+            <div class="rounded-2xl bg-emerald-50 border border-emerald-200 p-4">
+                <div class="text-[10px] font-bold text-emerald-700 uppercase">Sugerida (hasta el máximo) {% ayuda 'stock_maximo' %}</div>
+                <div class="text-2xl font-black font-mono">{{ decision.sugerida }} u</div>
+                <div class="text-xs text-slate-600">{% if decision.meses_sugerida is not None %}= {{ decision.meses_sugerida|floatformat:1 }} meses de consumo · {% endif %}USD {{ r.compra.valor_sugerido|floatformat:"0g" }}</div>
+            </div>
+            <div class="rounded-2xl bg-slate-50 border border-slate-200 p-4">
+                <div class="text-[10px] font-bold text-slate-500 uppercase">Mínima (hasta el punto de pedido) {% ayuda 'punto_pedido' %}</div>
+                <div class="text-2xl font-black font-mono">{{ decision.minima }} u</div>
+                <div class="text-xs text-slate-600">{% if decision.meses_minima is not None %}= {{ decision.meses_minima|floatformat:1 }} meses · {% endif %}llega a la siguiente compra con el stock de seguridad{% if decision.ahorro_usd %} · USD {{ decision.ahorro_usd|floatformat:"0g" }} menos{% endif %}</div>
+            </div>
+            <div class="rounded-2xl bg-slate-50 border border-slate-200 p-4 text-xs text-slate-600 space-y-1">
+                <div class="text-[10px] font-bold text-slate-500 uppercase">Para decidir</div>
+                <div>Plazo del proveedor: <b>{{ decision.plazo_dias|floatformat:0 }} días</b> · compra cada <b>{{ decision.frecuencia_dias }} días</b></div>
+                {% if decision.min_compra or decision.multiplo %}<div>El proveedor exige mínimo <b>{{ decision.min_compra|floatformat:"-2" }}</b>{% if decision.multiplo %}, múltiplo <b>{{ decision.multiplo|floatformat:"-2" }}</b>{% endif %}</div>{% endif %}
+                <div>Plazo largo o lote mínimo: conviene la sugerida. Consumo irregular o artículo caro: la mínima y repetir.</div>
+            </div>
+        </div>
+        {% else %}
+        <p class="px-5 pt-4 text-xs text-slate-500">Hoy no se sugiere compra para este artículo.</p>
+        {% endif %}
+        <div class="overflow-x-auto px-5 py-4">
+            <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Consumo por nodo, últimos {{ decision.meses|length }} meses cerrados</div>
+            <table class="min-w-full text-xs">
+                <thead class="bg-slate-50 text-[10px] uppercase text-slate-500"><tr><th class="px-3 py-1.5 text-left">Nodo</th>{% for m in decision.meses %}<th class="px-1.5 text-right">{{ m }}</th>{% endfor %}<th class="px-2 text-right">Prom/mes</th><th class="px-2 text-right">Meses c/consumo</th></tr></thead>
+                <tbody class="divide-y divide-slate-100">
+                {% for f in decision.filas %}
+                <tr><td class="px-3 py-1.5 font-bold">{{ f.nombre }}</td>
+                    {% for c in f.celdas %}<td class="px-1.5 text-right font-mono {% if c.pico %}bg-amber-100 text-amber-900 font-black{% elif not c.v %}text-slate-300{% endif %}">{{ c.v|floatformat:"-1" }}</td>{% endfor %}
+                    <td class="px-2 text-right font-mono font-bold">{{ f.promedio|floatformat:1 }}</td>
+                    <td class="px-2 text-right font-mono">{{ f.meses_con_consumo }}/{{ decision.meses|length }}{% if f.meses_con_consumo == 1 %} <span class="text-amber-700" title="Todo el consumo del período en un solo mes"><i class="fa-solid fa-triangle-exclamation"></i></span>{% endif %}</td></tr>
+                {% empty %}
+                <tr><td colspan="15" class="px-3 py-3 text-center text-slate-500">Sin consumo en los últimos meses.</td></tr>
+                {% endfor %}
+                {% if decision.filas|length > 1 %}
+                <tr class="bg-slate-50 font-black"><td class="px-3 py-1.5">Red</td>{% for v in decision.red %}<td class="px-1.5 text-right font-mono">{{ v|floatformat:"-1" }}</td>{% endfor %}<td class="px-2 text-right font-mono">{{ decision.red_promedio|floatformat:1 }}</td><td></td></tr>
+                {% endif %}
+                </tbody>
+            </table>
+            <p class="text-[11px] text-slate-500 mt-1"><span class="px-1.5 bg-amber-100 rounded">Resaltado</span>: mes atípico (más de {{ e.params.multiplicador_atipico|floatformat:"-1" }} veces el promedio del nodo). Un consumo concentrado en un mes o en una sucursal puede inflar la compra.</p>
+        </div>
+        {% if decision.santiago %}
+        <div class="px-5 pb-5">
+            <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Santiago por bodega (informativo) {% ayuda 'santiago_nodo' %}</div>
+            <div class="flex flex-wrap gap-2 text-xs">
+                {% for b in decision.santiago %}<span class="px-3 py-1 rounded-full bg-slate-50 border border-slate-200 font-mono">{{ b.bodega }}: stock <b>{{ b.stock|floatformat:"0g" }}</b> · consumo 12m {{ b.consumo_12m|floatformat:"0g" }}</span>{% endfor %}
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
     <!-- Memoria de calculo -->
     <div class="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
         <div class="px-5 py-4 border-b border-slate-100">
@@ -108,29 +166,31 @@
     <div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
         <!-- Posicion por bodega -->
         <div class="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden xl:col-span-2">
-            <div class="px-5 py-4 border-b border-slate-100 text-[10px] font-bold text-slate-400 uppercase tracking-wider">Posición y acción por bodega (última corrida)</div>
+            <div class="px-5 py-4 border-b border-slate-100 text-[10px] font-bold text-slate-400 uppercase tracking-wider">Posición y acción por nodo (última corrida) {% ayuda 'santiago_nodo' %}</div>
             <div class="overflow-x-auto">
             <table class="min-w-full text-xs">
                 <thead class="bg-slate-50 text-[10px] uppercase text-slate-500"><tr>
-                    <th class="px-4 py-2 text-left">Bodega</th><th class="px-2 text-right">Físico</th><th class="px-2 text-right">Tránsito</th><th class="px-2 text-right">Compr.</th><th class="px-2 text-right">Disponible</th><th class="px-2 text-right">Objetivo</th><th class="px-2 text-right">Faltante</th><th class="px-2 text-right">Excedente</th><th class="px-3 text-left">Acción</th><th class="px-3 text-left">Desde</th></tr></thead>
+                    <th class="px-4 py-2 text-left">Bodega</th><th class="px-2 text-right">Físico</th><th class="px-2 text-right">Tránsito</th><th class="px-2 text-right">Compr.</th><th class="px-2 text-right">Disponible</th><th class="px-2 text-right">Objetivo</th><th class="px-2 text-right">Faltante</th><th class="px-2 text-right">Protegido {% ayuda 'stock_retenido' %}</th><th class="px-2 text-right">Libre</th><th class="px-3 text-left">Acción</th><th class="px-3 text-left">Desde</th></tr></thead>
                 <tbody class="divide-y divide-slate-100">
                 {% for b in bodegas %}
                 <tr>
-                    <td class="px-4 py-2 font-mono font-bold">{{ b.warehouse.code }}<div class="text-[10px] text-slate-400 font-sans font-normal">{{ b.warehouse.zone_label }}</div></td>
+                    <td class="px-4 py-2 font-mono font-bold">{{ b.warehouse.code|nodo }}{% if b.warehouse.code != '013' %}<div class="text-[10px] text-slate-400 font-sans font-normal">{{ b.warehouse.zone_label }}</div>{% endif %}</td>
                     <td class="px-2 text-right font-mono">{{ b.stock_fisico|floatformat:"0g" }}</td>
                     <td class="px-2 text-right font-mono">{{ b.en_transito|floatformat:"0g" }}</td>
                     <td class="px-2 text-right font-mono">{{ b.comprometido|floatformat:"0g" }}</td>
                     <td class="px-2 text-right font-mono font-bold {% if b.disponible_futuro < 0 %}text-red-600{% endif %}">{{ b.disponible_futuro|floatformat:"0g" }}</td>
                     <td class="px-2 text-right font-mono">{{ b.objetivo|floatformat:"0g" }}</td>
                     <td class="px-2 text-right font-mono">{{ b.faltante|floatformat:"0g" }}</td>
+                    <td class="px-2 text-right font-mono">{{ b.protegido|floatformat:"0g" }}</td>
                     <td class="px-2 text-right font-mono">{{ b.excedente|floatformat:"0g" }}</td>
                     <td class="px-3"><span class="px-2 py-0.5 rounded-full text-[10px] font-bold {% if b.accion == 'TRASLADAR' %}bg-cyan-100 text-cyan-700{% elif b.accion == 'TRASLADAR_PARCIAL' %}bg-sky-100 text-sky-700{% elif b.accion == 'ESPERA_COMPRA' %}bg-amber-100 text-amber-700{% else %}bg-slate-100 text-slate-500{% endif %}">{{ b.accion }}</span>
                         {% if b.espera_compra %}<div class="text-[10px] text-amber-700">espera {{ b.espera_compra|floatformat:"0g" }} u</div>{% endif %}
-                        {% if b.sucursales_con_stock %}<div class="text-[10px] text-slate-500">stock libre en {{ b.sucursales_con_stock|join:", " }}</div>{% endif %}</td>
-                    <td class="px-3 font-mono text-[11px]">{% for o in b.origenes %}{{ o.0 }}: {{ o.1|floatformat:"0g" }}{% if not forloop.last %}, {% endif %}{% endfor %}</td>
+                        {% if b.sucursales_con_stock %}<div class="text-[10px] text-slate-500">stock libre en {{ b.sucursales_con_stock|join:", " }}</div>{% endif %}
+                        {% if b.retenido_en %}<div class="text-[10px] text-slate-500">retenido: {% for o in b.retenido_en %}{{ o.1|floatformat:"0g" }} en {{ o.0|nodo }}{% if not forloop.last %}, {% endif %}{% endfor %} (decide jefatura)</div>{% endif %}</td>
+                    <td class="px-3 font-mono text-[11px]">{% for o in b.origenes %}{{ o.0|nodo }}: {{ o.1|floatformat:"0g" }}{% if not forloop.last %}, {% endif %}{% endfor %}</td>
                 </tr>
                 {% empty %}
-                <tr><td colspan="10" class="px-4 py-4 text-center text-slate-500">Sin stock, tránsito ni compromisos en bodegas de la red.</td></tr>
+                <tr><td colspan="11" class="px-4 py-4 text-center text-slate-500">Sin stock, tránsito ni compromisos en bodegas de la red.</td></tr>
                 {% endfor %}
                 </tbody>
             </table>
@@ -138,7 +198,7 @@
             {% if traslados %}
             <div class="px-5 py-3 border-t border-slate-100 text-xs">
                 <span class="font-bold text-slate-600">Traslados sugeridos:</span>
-                {% for t in traslados %}<span class="inline-block mr-3 font-mono">{{ t.origen.code }} → {{ t.destino.code }}: <b>{{ t.cantidad|floatformat:"0g" }}</b> u ({{ t.urgencia }})</span>{% endfor %}
+                {% for t in traslados %}<span class="inline-block mr-3 font-mono">{{ t.origen.code|nodo }} → {{ t.destino.code|nodo }}: <b>{{ t.cantidad|floatformat:"0g" }}</b> u ({{ t.urgencia }}){% if t.detalle_origen %} <span class="text-slate-500">sacar de {% for d in t.detalle_origen %}{{ d.0 }}: {{ d.1|floatformat:"0g" }}{% if not forloop.last %}, {% endif %}{% endfor %}</span>{% endif %}</span>{% endfor %}
             </div>
             {% endif %}
         </div>

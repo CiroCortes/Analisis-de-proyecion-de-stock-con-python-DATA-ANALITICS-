@@ -7,11 +7,13 @@ from decimal import Decimal
 
 from django.db import transaction
 
+from apps.calc.red import NODO_SANTIAGO
 from apps.inventory.models import SKUClassification, StockProjection, Warehouse
 
 from .models import EscenarioActual, ResultadoArticulo, ResultadoBodega, TrasladoSugerido
 
-CENTRAL = '013-PP'
+# Santiago es un nodo (SPEC-21): la compra de la red se publica en la 013
+CENTRAL = NODO_SANTIAGO
 CODIGO_PLANILLA = {'R': 'VB', 'E': 'V1', 'P': 'PD', 'O': 'ND'}
 MOTIVO_SIMPLE = {
     'R': 'Se repone: tiene consumo regular',

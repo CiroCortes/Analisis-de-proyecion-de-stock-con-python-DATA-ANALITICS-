@@ -150,31 +150,34 @@ class TestCompra:
 
 class TestRed:
     def _bodegas(self):
-        return [
-            red.Bodega('013-PP', es_central=True, es_santiago=True, stock_fisico=5, comprometido=2),
+        return red.agrupar_santiago([
+            red.Bodega('013-PP', es_santiago=True, stock_fisico=5, comprometido=2),
             red.Bodega('013-03', es_santiago=True, stock_fisico=1),
             red.Bodega('002', comprometido=3, fecha_compromiso=datetime.date(2026, 11, 20)),
             red.Bodega('003', comprometido=2, stock_fisico=1, fecha_compromiso=datetime.date(2026, 11, 1)),
-        ]
+        ])
 
-    def test_excedente_santiago_antes_que_central_y_urgentes_primero(self):
+    def test_santiago_un_nodo_y_urgentes_primero(self):
         acciones, traslados = red.distribuir('R', self._bodegas())
         a = {x.codigo: x for x in acciones}
+        # Santiago = 013-PP + 013-03: stock 6, comprometido 2 -> libre 4
         # Ambas son urgentes (disponible <= 0): manda la fecha comprometida mas cercana (003).
         # 003: objetivo 2, disponible -1 -> faltante 3 (regla del caso 4 del documento)
         assert a['003'].accion == red.TRASLADAR
-        assert a['003'].origenes == [('013-03', 1), ('013-PP', 2)]
-        # central libre = 5 - 2 = 3; 2 fueron a 003 -> queda 1 de los 6 que pide 002
+        assert a['003'].origenes == [(red.NODO_SANTIAGO, 3)]
+        # queda 1 libre en Santiago de los 6 que pide 002
         assert a['002'].faltante == 6
         assert a['002'].accion == red.TRASLADAR_PARCIAL
         assert a['002'].cantidad_trasladar == 1 and a['002'].espera_compra == 5
-        assert sum(t.cantidad for t in traslados if t.origen == '013-PP') == 3
+        assert all(t.origen == red.NODO_SANTIAGO for t in traslados)
+        # Se saca de la bodega con mas stock primero (013-PP tiene 5)
+        assert [t.desde for t in traslados] == [(('013-PP', 3),), (('013-PP', 1),)]
 
-    def test_comprometido_de_la_central_nunca_se_traslada(self):
-        bodegas = [
-            red.Bodega('013-PP', es_central=True, es_santiago=True, stock_fisico=4, comprometido=4),
+    def test_comprometido_de_santiago_nunca_se_traslada(self):
+        bodegas = red.agrupar_santiago([
+            red.Bodega('013-PP', es_santiago=True, stock_fisico=4, comprometido=4),
             red.Bodega('008', comprometido=1),
-        ]
+        ])
         acciones, traslados = red.distribuir('R', bodegas)
         assert traslados == []
         assert {x.codigo: x for x in acciones}['008'].accion == red.ESPERA_COMPRA

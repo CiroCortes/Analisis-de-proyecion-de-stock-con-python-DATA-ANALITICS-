@@ -84,7 +84,9 @@ Ayuda en contexto: `{% load calculadora_tags %}{% ayuda 'clave' %}`.
 `StockProjection` y `SKUClassification`, así el Dashboard, el Reporte Gerencial, el Asistente
 IA y el Recomendador (`/purchasing/`, fuera del menú) muestran los números de la Calculadora.
 Hay una sola ficha de artículo, `calculadora:articulo`; `/inventory/sku/<código>/` redirige a ella
-y todo recálculo pasa por `servicio.recalcular_red()` (SPEC-20). El motor anterior se ejecuta antes en el pipeline y su resultado se guarda en
+y todo recálculo pasa por `servicio.recalcular_red()` (SPEC-20). Santiago se publica como un
+nodo en la bodega `013` (SPEC-21): `red.agrupar_santiago()` en el núcleo; el servicio entrega las
+bodegas tal como vienen de SAP más la `013` (stock de `StockActual`, solicitudes y consumo de Santiago). El motor anterior se ejecuta antes en el pipeline y su resultado se guarda en
 `EscenarioActual` (`capturar_escenario_actual()`), que alimenta el panel actual vs propuesto.
 
 ## 5. Roles

@@ -56,6 +56,10 @@ class Params:
     # Proyeccion diaria
     horizonte_proyeccion_dias: int = 120
 
+    # Traslados Santiago <-> sucursales (SPEC-21 §3): cada nodo protege sus compromisos mas su
+    # consumo de estos dias (= ciclo de compra) antes de entregar stock
+    dias_reserva_traslado: int = 15
+
     # Alertas
     alerta_bajo_ss_dias: int = 15
     alerta_contrato_vence_dias: int = 60
@@ -103,6 +107,7 @@ CATALOGO = {
     'corte_xyz_x': ('Corte XYZ clase X (coef. de variacion maximo)', (GENERAL,), 0.05, 3),
     'corte_xyz_y': ('Corte XYZ clase Y (coef. de variacion maximo)', (GENERAL,), 0.1, 5),
     'horizonte_proyeccion_dias': ('Horizonte de proyeccion diaria (dias)', (GENERAL,), 30, 365),
+    'dias_reserva_traslado': ('Reserva de consumo propio antes de trasladar (dias)', (GENERAL,), 0, 180),
     'alerta_bajo_ss_dias': ('Alerta bajo SS proyectado (dias)', (GENERAL,), 1, 90),
     'alerta_contrato_vence_dias': ('Alerta contrato por vencer (dias)', (GENERAL,), 1, 365),
     'alerta_sobrestock_meses': ('Sobrestock: meses sobre el maximo', (GENERAL,), 0, 24),

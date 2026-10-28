@@ -76,7 +76,8 @@ Un traslado Santiago → sucursal pasa por: bodega origen (013-03) → `013` (po
 
 - El stock de una bodega `T…-…` se acredita como **en tránsito a la bodega destino**
   (stock físico + `onorder` de esa bodega T). Destino `022` = `002-02`; destino `013` = `013-PP`.
-- El stock de la `013` a secas **no se cuenta** (es de paso).
+- El stock de la `013` a secas **no se cuenta** en el motor anterior. **En la Calculadora sí**
+  (SPEC-21, 28-oct): ahí caen las llegadas de regiones y desde ahí se despachan los PC de Santiago.
 - La `013` se usa también para **facturar PC y consumir OF de Santiago**: esas salidas son
   demanda real de Santiago (ver 5).
 - Limitación conocida: el stock que ya salió de la bodega origen y está en la `013` no es visible
@@ -91,6 +92,12 @@ Un traslado Santiago → sucursal pasa por: bodega origen (013-03) → `013` (po
   sucursales), se atribuye a esa bodega; en cualquier otra (013, consignación, etc.) se atribuye a
   `013-PP`.
 - Antes de esta regla se perdía entre el 74% y el 80% de los compromisos abiertos (estaban en la `013`).
+- **Calculadora (SPEC-21, 28-oct)**: Santiago es **un solo stock** (nodo `013`). Las 013-xx están
+  físicamente juntas: el recolector de una OF consume directo desde 013-03, 013-PS, 013-PP…; las
+  ventas de Santiago salen por la `013`. La atribución a 013-PP ya no decide nada en la Calculadora
+  (todo cae en el mismo nodo); sigue vigente para el motor anterior.
+- Traslados solo Santiago ↔ sucursales, con **protección simétrica**: ningún nodo entrega sus
+  compromisos ni su consumo de `dias_reserva_traslado` días. Mover stock retenido lo decide jefatura.
 
 ## 6. Clasificación REPO (vigente en el motor actual)
 

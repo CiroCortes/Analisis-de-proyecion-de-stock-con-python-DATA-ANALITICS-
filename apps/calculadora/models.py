@@ -320,7 +320,8 @@ class ResultadoArticulo(models.Model):
 
 
 class ResultadoBodega(models.Model):
-    """Accion por bodega (§5): TRASLADAR / TRASLADAR_PARCIAL / ESPERA_COMPRA / NINGUNA."""
+    """Accion por nodo (§5, SPEC-21): Santiago (bodega 013) o una sucursal.
+    TRASLADAR / TRASLADAR_PARCIAL / ESPERA_COMPRA / NINGUNA."""
     resultado = models.ForeignKey(ResultadoArticulo, on_delete=models.CASCADE, related_name='bodegas')
     warehouse = models.ForeignKey(Warehouse, on_delete=models.CASCADE)
     stock_fisico = models.FloatField(default=0)
@@ -339,6 +340,11 @@ class ResultadoBodega(models.Model):
     # Consumo y cobertura de la bodega (SPEC-19 §3.2): informan donde se acaba primero el stock
     consumo_diario = models.FloatField(default=0)
     cobertura_dias = models.FloatField(null=True, blank=True)
+    # Proteccion simetrica y nodo Santiago (SPEC-21): lo que el nodo guarda para si, donde quedo
+    # stock retenido que jefatura podria mover, y el stock por bodega 013-xx del nodo Santiago
+    protegido = models.FloatField(default=0)
+    retenido_en = models.JSONField(default=list)
+    componentes = models.JSONField(default=list)
 
 
 class TrasladoSugerido(models.Model):
@@ -350,6 +356,7 @@ class TrasladoSugerido(models.Model):
     cantidad = models.FloatField()
     urgencia = models.CharField(max_length=10, default='NORMAL')
     estado = models.CharField(max_length=10, default=SUGERIDO)
+    detalle_origen = models.JSONField(default=list)   # desde Santiago: [[bodega 013-xx, cantidad]]
 
 
 class HistorialMensual(models.Model):

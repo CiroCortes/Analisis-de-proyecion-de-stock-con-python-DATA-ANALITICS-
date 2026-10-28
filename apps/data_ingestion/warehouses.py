@@ -105,3 +105,22 @@ def commitment_bodega(code):
 def purchase_bodega(code):
     code = (code or '').strip().upper()
     return '013-PP' if code in ('', '013') else code
+
+
+# Nodos de la Calculadora (SPEC-21): Santiago es un solo stock (todas las 013-xx, la 013 y lo
+# que se atribuye a Santiago, como consignacion); cada sucursal es su propio nodo.
+NODO_SANTIAGO = '013'
+
+
+def nodo_red(code):
+    """NODO_SANTIAGO, el codigo de la sucursal o '' si la bodega no pertenece a la red."""
+    code = commitment_bodega((code or '').strip().upper())
+    zona = zone_for(code)
+    if zona == SANTIAGO:
+        return NODO_SANTIAGO
+    return code if zona == SUCURSAL else ''
+
+
+def zona_red(code):
+    """Zona de una bodega o del nodo Santiago (la 013 no es fisica para zone_for)."""
+    return SANTIAGO if (code or '').upper() == NODO_SANTIAGO else zone_for(code)

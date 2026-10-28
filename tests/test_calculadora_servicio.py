@@ -153,11 +153,18 @@ class CorridaTest(TestCase):
         self.assertTrue(res.comprar)
         self.assertEqual(res.cantidad_sugerida % 5, 0)
         self.assertGreaterEqual(res.cantidad_sugerida, res.stock_maximo - 12)
-        # Sucursal 002: objetivo 1, disponible -1 -> faltante 2 cubierto por 013-03 (excedente 3)
+        # Sucursal 002: objetivo 1, disponible -1 -> faltante 2 cubierto por Santiago (SPEC-21):
+        # un solo nodo 013 con stock 15, comprometido 2 y reserva de 15 dias de consumo
         b002 = ResultadoBodega.objects.get(resultado=res, warehouse=self.w002)
         self.assertEqual(b002.accion, 'TRASLADAR')
         t = TrasladoSugerido.objects.get(product=self.r)
-        self.assertEqual((t.origen.code, t.destino.code, t.cantidad), ('013-03', '002', 2))
+        self.assertEqual((t.origen.code, t.destino.code, t.cantidad), ('013', '002', 2))
+        self.assertEqual(t.detalle_origen, [['013-PP', 2]])
+        stgo = ResultadoBodega.objects.get(resultado=res, warehouse__code='013')
+        self.assertEqual((stgo.stock_fisico, stgo.comprometido), (15, 2))
+        self.assertEqual(stgo.protegido, 2 + 5)        # reserva: 120/365 x 15 = 4,9 -> 5 u
+        self.assertEqual(stgo.componentes, [['013-PP', 12], ['013-03', 3]])
+        self.assertFalse(ResultadoBodega.objects.filter(resultado=res, warehouse__code__in=['013-PP', '013-03']).exists())
         # Obsoleto: no compra
         self.assertEqual(ResultadoArticulo.objects.get(product=self.o).cantidad_a_comprar, 0)
         # Historial mensual y resumen

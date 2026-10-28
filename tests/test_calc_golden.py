@@ -93,21 +93,22 @@ class TestCaso3KitElectricoHiab:
 
 
 class TestCaso4Traslado:
-    """31302313 FILTRO RETORNO @ 002: comprometido 1, disponible -1; 013-03 tiene 2 libres."""
+    """31302313 FILTRO RETORNO @ 002: comprometido 1, disponible -1; 013-03 tiene 2 libres.
+    Desde SPEC-21 Santiago es un nodo: el traslado sale de Santiago y se saca de la 013-03."""
 
     def test_traslada_desde_013_03_sin_comprar(self):
         bodegas = [
-            red.Bodega('013-PP', es_central=True, es_santiago=True),
+            red.Bodega('013-PP', es_santiago=True),
             red.Bodega('013-03', es_santiago=True, stock_fisico=2),
             red.Bodega('002', stock_fisico=0, comprometido=1),
         ]
-        acciones, traslados = red.distribuir('R', bodegas)
+        acciones, traslados = red.distribuir('R', red.agrupar_santiago(bodegas))
         a = {x.codigo: x for x in acciones}['002']
         assert a.objetivo == 1
         assert a.disponible_futuro == -1
         assert a.faltante == 2
         assert a.accion == red.TRASLADAR
-        assert traslados == [red.Traslado('013-03', '002', 2)]
+        assert traslados == [red.Traslado(red.NODO_SANTIAGO, '002', 2, desde=(('013-03', 2),))]
 
 
 class TestCaso5FueraDeCalendario:

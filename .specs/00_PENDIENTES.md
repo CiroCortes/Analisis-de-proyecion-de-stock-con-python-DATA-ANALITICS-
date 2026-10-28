@@ -1,14 +1,11 @@
-# PENDIENTES (actualizado 27-oct-2026)
+# PENDIENTES (actualizado 28-oct-2026)
 
 ## Próximo paso (datos)
 
-1. **Exportar `data/consultas_datalake.sql`** (archivo único, paso a paso en su cabecera; probar con `LIMIT 5`) (checklist SPEC-08 §5):
-   bloque 0 (DESCRIBE), **consulta 8 consumo mensual** (la más importante: hoy el consumo es
-   provisional desde PC/OF), **consulta 9 plazos reales** (hoy todo usa `OITM.LeadTime`), 10, 11, 12, 14.
-2. **Cuadrar el consumo** de 30 artículos contra el informe de auditoría de stock de B1, por bodega
-   (criterio de aceptación fase 1). Confirmar TransType 13, 14, 15, 16, 60.
-3. Exportar completo a `data/`, correr `python manage.py calcular_compras` y revisar que
-   `CargaDatos` muestre fuente `OINM`.
+1. **Cuadrar el consumo** de 30 artículos contra el informe de auditoría de stock de B1, por bodega
+   (criterio de aceptación fase 1). Confirmar TransType 13, 14, 15, 16, 60. (Consultas 8 a 14 ya
+   cargadas el 27-oct: consumo OINM, plazos reales, acuerdos en USD.)
+2. **Verificar OF con cantidades enormes** (ver Trabajo técnico).
 
 ## Hallazgos del 27-oct
 
@@ -21,8 +18,22 @@
 | 5 | 289 artículos que necesitan compra no tienen proveedor | Consulta 10 o completar proveedor en la plataforma |
 | 6 | Sin plazos reales hasta la consulta 9 | Validar consulta 9 |
 | 7 | E = 0: nadie ha declarado artículos estratégicos | Abastecimiento marca E y mínimos (detalle del artículo) |
-| 8 | 013-PP pide traslados grandes desde 013-09 / 013-07 (hasta 7.000 u) para cubrir sus OF | Ligado al punto OF con cantidades enormes |
+| 8 | 013-PP pide traslados grandes desde 013-09 / 013-07 (hasta 7.000 u) para cubrir sus OF | **Resuelto 28-oct (SPEC-21)**: no hay traslados internos de Santiago |
 | 9 | Ruido de alertas: alza e irregularidad en P/O (1.803 y 1.488) | **Corregido**: solo R/E |
+
+## Hallazgos del 28-oct (SPEC-21)
+
+| # | Hallazgo | Acción |
+|---|---|---|
+| 10 | La 013-PP registra el 50% de las salidas a OF pero tiene solo el 8% de los artículos con stock; el 30% de los artículos con consumo sale de 2 o más bodegas | Santiago pasa a ser un solo stock (nodo `013`) |
+| 11 | 401 de 509 traslados (27.067 de 27.650 u) eran internos de Santiago hacia 013-PP: ficticios | **Corregido**: 132 traslados, 622 u, solo Santiago ↔ sucursales |
+| 12 | El stock de la `013` a secas no se contaba (742 u en 85 artículos) | **Corregido**: suma al nodo Santiago |
+| 13 | Faltaba sugerir regiones → Santiago | **Hecho**: 43 traslados (138 u), solo con stock libre |
+| 14 | El 63% de las OC abiertas se postea en la `013`; la exportación de solicitudes usa 013-PP como bodega de entrega | Confirmar con Compras |
+
+Corrida del 28-oct (SPEC-21, datos reales): 132 traslados (89 Santiago → regiones, 484 u; 43
+regiones → Santiago, 138 u); 49 nodos con stock retenido visible para jefatura; 427 excepciones;
+USD 4,52 M sugerido; quiebre real USD 685 mil.
 
 Corrida del 27-oct con consumo provisional PC/OF: 18.026 artículos; R 2.471, P 580, O 14.975, E 0;
 271 a comprar hoy, 1.047 necesitan compra, 409 excepciones, 529 traslados; USD 3,16 M sugerido;
@@ -46,6 +57,8 @@ quiebre real USD 717 mil vs brecha contra objetivo USD 3,94 M.
 | 12 | Stock de seguridad de R-Intermitente (el documento no lo define) | Abastecimiento | ROP − consumo en el plazo (SPEC-10 §4) |
 | 13 | Objetivo por bodega / doble conteo del caso 4 | Abastecimiento | Literal del documento (SPEC-11 §3.1) |
 | 14 | Alertas de alza e irregularidad solo para R/E | Abastecimiento | Solo R/E |
+| 15 | Días de reserva de consumo propio antes de trasladar (protección simétrica) | Abastecimiento | 15 días (`dias_reserva_traslado`) |
+| 16 | Bodega de entrega de las solicitudes exportadas: 013-PP o 013 | Compras | 013-PP |
 
 ## Bloqueado
 
@@ -65,9 +78,8 @@ quiebre real USD 717 mil vs brecha contra objetivo USD 3,94 M.
   comparación.
 - **Quiebre en el Dashboard**: desde SPEC-19 muestra el quiebre real (antes USD 96 M de brecha del
   motor anterior). Avisar a gerencia antes de presentar el Reporte Gerencial.
-- **Verificar OF con cantidades enormes**: 2,7 M u comprometidas en 013-PP; sospecha de unidades
-  (metros/kilos/litros). Revisar el top 10; afecta traslados y excepciones.
-- **Stock en la `013` a secas** (1.704 u): hoy no se cuenta. Revisar si suma a 013-PP.
+- **Verificar OF con cantidades enormes**: 2,7 M u comprometidas en Santiago; sospecha de unidades
+  (metros/kilos/litros). Revisar el top 10; afecta excepciones.
 - **Consignación**: OF abiertas en 100/102/106 (241.352 u) atribuidas a 013-PP; confirmar quién repone.
 - **Bodegas `013-IN`, `957`, `959`**: confirmar.
 - **Antofagasta en tránsito**: `022` en `T…-…` = `002-02`; confirmar que no existe una 022 real.
@@ -85,6 +97,13 @@ quiebre real USD 717 mil vs brecha contra objetivo USD 3,94 M.
 - `03_sop_ui_ux.md`: revisar contra las pantallas nuevas.
 
 ## Hecho
+
+**28-oct-2026 (SPEC-21)**: Santiago como un solo stock (nodo `013`, incluye la 013 a secas);
+traslados solo Santiago ↔ sucursales en ambos sentidos con protección simétrica (compromisos +
+15 días de consumo propio); stock retenido visible para que decida jefatura; guía de picking
+("sacar de 013-xx") en cada traslado desde Santiago; sección "¿Comprar todo de una vez?" en la
+ficha (consumo por nodo mes a mes, compra en meses, compra mínima hasta el punto de pedido,
+Santiago por bodega). Caso 4 del documento: mismo resultado, origen Santiago (desde 013-03).
 
 **27-oct-2026 (noche, SPEC-20)**: ficha única del artículo (la de la Calculadora; la URL antigua
 redirige) con documentos cerrados de PC y OF; Dashboard, Reporte Gerencial, Consultar Stock y

@@ -8,7 +8,7 @@ from django.core.paginator import Paginator
 from django.db.models import Case, F, IntegerField, Q, Value, When
 from django.shortcuts import render
 
-from apps.data_ingestion.warehouses import SANTIAGO, SUCURSAL, SUCURSAL_CODES, zone_for
+from apps.data_ingestion.warehouses import SANTIAGO, SUCURSAL, SUCURSAL_CODES, zona_red
 
 from .excel import respuesta_excel
 from .glosario import GLOSARIO
@@ -103,7 +103,7 @@ def _tarjetas(f):
 
     tarjetas = []
     for code, d in datos.items():
-        zona = zone_for(code)
+        zona = zona_red(code)
         tarjetas.append({
             'code': code, 'nombre': d['nombre'], 'zona': zona,
             'riesgo': d['riesgo'], 'quiebre_usd': d['quiebre_usd'], 'espera': d['espera'],
@@ -135,7 +135,7 @@ def bodegas(request):
     pills = [(a, nombre, conteo.get(a, 0)) for a, nombre in ACCIONES if a != 'NINGUNA']
     codigos = sorted({t['code'] for t in tarjetas} | set(
         ResultadoBodega.objects.values_list('warehouse__code', flat=True).distinct()),
-        key=lambda c: (0 if zone_for(c) == SANTIAGO else 1, c))
+        key=lambda c: (0 if zona_red(c) == SANTIAGO else 1, c))
     sin_pagina = request.GET.copy()
     sin_pagina.pop('page', None)
     sin_accion = request.GET.copy()
@@ -154,7 +154,7 @@ def bodegas_excel(request):
     f = _filtros_bodegas(request)
     qs = _ordenar(_base_bodegas(f).select_related('resultado', 'resultado__product', 'warehouse'))
     filas = [{
-        'Bodega': b.warehouse.code, 'Zona': {SANTIAGO: 'Santiago', SUCURSAL: 'Sucursal'}.get(zone_for(b.warehouse.code), ''),
+        'Bodega': b.warehouse.code, 'Zona': {SANTIAGO: 'Santiago', SUCURSAL: 'Sucursal'}.get(zona_red(b.warehouse.code), ''),
         'Artículo': b.resultado.product_id, 'Descripción': b.resultado.product.description,
         'Letra': b.resultado.letra, 'Stock físico': b.stock_fisico, 'En tránsito': b.en_transito,
         'Comprometido': b.comprometido, 'Disponible a futuro': b.disponible_futuro, 'Objetivo': b.objetivo,

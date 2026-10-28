@@ -130,3 +130,13 @@ def evaluar_compra(politica, disponible, consumo_promedio, consumo_diario, costo
 def cantidad_minima(faltante, consumo_mes, params, min_compra=0, multiplo=0):
     """MAX(faltante; meses_minimo_compra x consumo; MinOrdrQty) al multiplo OrdrMulti."""
     return al_multiplo(max(faltante, params.meses_minimo_compra * consumo_mes, min_compra or 0), multiplo)
+
+
+def compra_hasta_punto_pedido(politica, disponible, params, min_compra=0, multiplo=0):
+    """Compra minima para llegar a la siguiente compra con el stock de seguridad (SPEC-21 §5):
+    el punto de pedido ya cubre el consumo del plazo mas el ciclo de revision. Informativa:
+    la sugerida sigue siendo hasta el maximo (§4.6)."""
+    if politica.metodo not in (GENERAL, INTERMITENTE, NUEVO):
+        return 0
+    falta = politica.punto_pedido - disponible
+    return cantidad_minima(falta, politica.consumo_usado, params, min_compra, multiplo) if falta > 0 else 0

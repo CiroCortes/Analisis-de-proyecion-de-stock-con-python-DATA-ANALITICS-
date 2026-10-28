@@ -1,5 +1,8 @@
 # SPEC-11: Compra para la Red y Distribución a Bodegas
 
+> **28-oct-2026: §1 y §4 reemplazados por SPEC-21** (Santiago es un solo nodo `013`, traslados
+> solo Santiago ↔ sucursales en ambos sentidos, protección simétrica). Se mantienen §2, §3 y §3.1.
+
 Documento fuente: §5. Código: `apps/calc/red.py`, `apps/calculadora/servicio.py` (`_entrada`, `_guardar`).
 Tests: `test_calc_golden.py::TestCaso4Traslado`, `test_calc_reglas.py::TestRed`.
 

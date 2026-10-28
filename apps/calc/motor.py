@@ -62,6 +62,7 @@ class ResultadoArticulo:
     stock_fisico: float
     en_transito: float
     comprometido: float
+    nodos: list                      # Santiago agrupado + sucursales (SPEC-21)
     acciones: list
     traslados: list
     serie: list
@@ -124,7 +125,8 @@ def calcular_articulo(e):
     disponible = pol.disponible_futuro(stock, transito, comprometido)
     compra = pol.evaluar_compra(politica, disponible, consumo.consumo_promedio_mes, consumo.consumo_diario,
                                 e.costo, p, e.min_compra, e.multiplo, e.es_dia_compra)
-    acciones, traslados = red.distribuir(letra, e.bodegas)
+    nodos = red.agrupar_santiago(e.bodegas)
+    acciones, traslados = red.distribuir(letra, nodos, p.dias_reserva_traslado)
 
     serie, excepcion, cantidad_exc, causa = [], None, 0, ''
     if politica.metodo in (pol.GENERAL, pol.INTERMITENTE, pol.NUEVO) and (consumo.consumo_diario > 0 or e.compromisos):
@@ -150,7 +152,7 @@ def calcular_articulo(e):
         codigo=e.codigo, clasificacion=clasif, es_nuevo=nuevo, es_inmovilizado=inmovilizado,
         nivel_servicio=nivel, consumo=consumo, plazo=plazo, politica=politica, compra=compra,
         stock_fisico=stock, en_transito=transito, comprometido=comprometido,
-        acciones=acciones, traslados=traslados, serie=serie, excepcion=excepcion,
+        nodos=nodos, acciones=acciones, traslados=traslados, serie=serie, excepcion=excepcion,
         cantidad_excepcion=cantidad_exc, causa_excepcion=causa,
         xyz=cl.clase_xyz(consumo.consumo_promedio_mes, consumo.variacion_consumo, p), avisos=avisos,
     )

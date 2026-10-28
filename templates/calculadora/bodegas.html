@@ -13,7 +13,7 @@
             <h1 class="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight mt-1">¿Qué bodega está en riesgo y qué se mueve?</h1>
             <p class="text-sm text-slate-500 mt-1 max-w-3xl">
                 Las bodegas no compran: se cubren por traslado o esperan la compra de la red {% ayuda 'compra_red' %}.
-                Lo comprometido en 013-PP nunca se traslada.
+                Santiago es un solo stock {% ayuda 'santiago_nodo' %}: los traslados son solo entre Santiago y sucursales, con stock libre {% ayuda 'stock_retenido' %}.
             </p>
         </div>
         <a href="{% url 'calculadora:bodegas_excel' %}?{{ request.GET.urlencode }}" class="bg-pesco-cyan hover:bg-pesco-darkcyan text-white text-xs font-bold px-5 py-3 rounded-full shadow-md uppercase tracking-wider whitespace-nowrap"><i class="fa-solid fa-file-excel mr-1"></i> Descargar Excel</a>
@@ -32,7 +32,7 @@
         <a href="?bodega={{ t.code }}{% if f.todo %}&todo=1{% endif %}" class="bg-white rounded-3xl border {% if f.bodega == t.code %}border-pesco-cyan ring-2 ring-pesco-lightcyan{% else %}border-slate-200{% endif %} p-5 shadow-sm hover:shadow-md hover:border-pesco-cyan transition block">
             <div class="flex justify-between items-start gap-2">
                 <div>
-                    <div class="font-mono font-black text-slate-900">{{ t.code }}</div>
+                    <div class="font-mono font-black text-slate-900">{{ t.code|nodo }}</div>
                     <div class="text-[11px] text-slate-500 leading-tight">{{ t.nombre }}</div>
                 </div>
                 <span class="text-[9px] font-black uppercase px-2 py-0.5 rounded-full {% if t.zona == 'SANTIAGO' %}bg-pesco-lightcyan text-pesco-darkcyan{% else %}bg-slate-100 text-slate-600{% endif %}">{% if t.zona == 'SANTIAGO' %}Santiago{% else %}Sucursal{% endif %}</span>
@@ -148,7 +148,7 @@
             <tbody>
             {% for b in filas %}
             <tr class="border-b border-slate-50 hover:bg-slate-50">
-                <td class="py-2 px-4 font-mono font-bold text-slate-700 whitespace-nowrap">{{ b.warehouse.code }}</td>
+                <td class="py-2 px-4 font-mono font-bold text-slate-700 whitespace-nowrap">{{ b.warehouse.code|nodo }}</td>
                 <td class="py-2 px-3">
                     <a href="{% url 'calculadora:articulo' b.resultado.product_id %}" class="font-mono font-bold text-pesco-darkcyan hover:underline">{{ b.resultado.product_id }}</a>
                     <div class="text-[11px] text-slate-500 truncate max-w-[280px]">{{ b.resultado.product.description }}</div>

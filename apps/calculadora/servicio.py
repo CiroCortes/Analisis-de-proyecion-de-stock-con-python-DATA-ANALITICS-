@@ -20,12 +20,13 @@ from apps.calc.clasificacion import PANOL, REPUESTOS, clases_abc
 from apps.calc.motor import EntradaArticulo, calcular_articulo
 from apps.calc.plazo import calcular_plazo
 from apps.calc.proyeccion import dia_llegada_oc
-from apps.calc.red import Bodega
+from apps.calc.red import NODO_SANTIAGO, Bodega
 from apps.calc.simulacion import Escenario, simular
 from apps.data_ingestion.datalake_ingest import find_data_file
-from apps.data_ingestion.warehouses import SANTIAGO, commitment_bodega
+from apps.data_ingestion.warehouses import SANTIAGO, nodo_red
 from apps.inventory.group_types import PANOL as TIPO_PANOL
 from apps.inventory.models import InventoryMetric, ProductSKU, StockProjection, Warehouse
+from apps.inventory.stock_actual_models import StockActual
 
 from . import alertas, publicacion
 from .models import (ArticuloConfig, CargaDatos, CompromisoAbierto, ConsumoMensual, Corrida, Equivalencia,
@@ -33,7 +34,8 @@ from .models import (ArticuloConfig, CargaDatos, CompromisoAbierto, ConsumoMensu
                      PlazoOC, Proveedor, ResultadoArticulo, ResultadoBodega, SolicitudCompra, TrasladoSugerido)
 from .parametros import Resolutor
 
-CENTRAL = '013-PP'
+# El motor anterior guarda su punto de pedido en 013-PP (escenario actual de los KPIs)
+CENTRAL_ANTERIOR = '013-PP'
 
 
 def meses_cerrados(hoy, n):
@@ -71,6 +73,9 @@ class Datos:
             self.productos = list(ProductSKU.objects.filter(is_active=True, category__is_active=True)
                                   .select_related('category'))
         self.bodegas = {w.code: w for w in Warehouse.objects.filter(is_active=True) if w.zone}
+        # Nodo Santiago (SPEC-21): la 013 no es fisica para las zonas, pero representa a Santiago
+        self.bodegas[NODO_SANTIAGO] = Warehouse.objects.get_or_create(
+            code=NODO_SANTIAGO, defaults={'name': 'PESCO STGO BODEGA CENTRAL', 'is_active': False})[0]
 
         # Consumo de la red por articulo y mes (todas las bodegas: las salidas de la 013 y
         # de consignacion son demanda de Santiago, SPEC-07 §5). Equivalencias suman al nuevo.
@@ -80,7 +85,7 @@ class Datos:
             antiguos = [a for a, n in equiv.items() if n == producto.code]
             consumo_qs = consumo_qs.filter(product_id__in=[producto.code] + antiguos)
         self.consumo = defaultdict(lambda: [0.0] * len(self.meses))
-        self.consumo_bodega = defaultdict(float)     # (sku, bodega) -> consumo de 12 meses (SPEC-19 §3.2)
+        self.consumo_nodo = defaultdict(float)       # (sku, nodo) -> consumo de 12 meses (SPEC-21)
         self.ultimo_mov = {}
         for sku, bodega, mes, q in consumo_qs.values_list('product_id', 'bodega', 'mes', 'cantidad'):
             sku = equiv.get(sku, sku)
@@ -89,12 +94,21 @@ class Datos:
             i = self.indice_mes.get(mes)
             if i is not None:
                 self.consumo[sku][i] += q
-                self.consumo_bodega[(sku, commitment_bodega(bodega))] += q
+                self.consumo_nodo[(sku, nodo_red(bodega))] += q
 
         self.metricas = defaultdict(list)
         for m in filtro(InventoryMetric.objects.select_related('warehouse')):
             if m.warehouse.code in self.bodegas:
                 self.metricas[m.product_id].append(m)
+
+        # Stock de la 013 a secas: llegadas de regiones y despacho de PC de Santiago (SPEC-21 §2).
+        # Sus compromisos ya vienen de las lineas de PC/OF.
+        self.stock_013 = defaultdict(float)
+        stock_qs = StockActual.objects.filter(bodega=NODO_SANTIAGO, stock_disponible__gt=0)
+        if producto:
+            stock_qs = stock_qs.filter(codigo=producto.code)
+        for sku, q in stock_qs.values_list('codigo', 'stock_disponible'):
+            self.stock_013[sku] += float(q or 0)
 
         # Compromisos con fecha (proyeccion) y fecha mas cercana por bodega (reparto)
         self.compromisos = defaultdict(list)
@@ -149,7 +163,7 @@ class Datos:
             filas = []
         for sku, bodega, rop, q in filas:
             self.sugerido_actual[sku] += q or 0
-            if bodega == CENTRAL:
+            if bodega == CENTRAL_ANTERIOR:
                 self.rop_actual[sku] = rop or 0
 
 
@@ -202,18 +216,24 @@ def _entrada(datos, p, abc):
     ancla = prov.fecha_ancla if prov and prov.fecha_ancla else calendario.ancla_por_defecto(prov_codigo or p.code, frecuencia)
     proxima = calendario.proxima_fecha_compra(hoy, frecuencia, ancla)
 
+    # Bodegas como vienen de SAP; el nucleo agrupa Santiago en un nodo (SPEC-21 §2). La 013
+    # aporta su stock, las solicitudes aprobadas y el consumo de todo Santiago.
     solicitado = datos.solicitado.get(p.code, 0)
     bodegas = []
     for m in datos.metricas.get(p.code, []):
         code = m.warehouse.code
-        transito = m.oc_po_qty + m.sc_qty + m.stock_transito_inter + (solicitado if code == CENTRAL else 0)
+        es_santiago = m.warehouse.zone == SANTIAGO
         bodegas.append(Bodega(
-            codigo=code, es_central=code == CENTRAL, es_santiago=m.warehouse.zone == SANTIAGO,
-            stock_fisico=m.stock_physical, en_transito=transito, comprometido=m.comp_pc_qty + m.comp_of_qty,
-            fecha_compromiso=datos.fecha_compromiso.get((p.code, code)),
+            codigo=code, es_santiago=es_santiago,
+            stock_fisico=m.stock_physical, en_transito=m.oc_po_qty + m.sc_qty + m.stock_transito_inter,
+            comprometido=m.comp_pc_qty + m.comp_of_qty, fecha_compromiso=datos.fecha_compromiso.get((p.code, code)),
+            consumo_diario=0.0 if es_santiago else datos.consumo_nodo.get((p.code, code), 0.0) / 365.0,
         ))
-    if solicitado and not any(b.es_central for b in bodegas):
-        bodegas.append(Bodega(CENTRAL, es_central=True, es_santiago=True, en_transito=solicitado))
+    stock_013 = datos.stock_013.get(p.code, 0)
+    consumo_stgo = datos.consumo_nodo.get((p.code, NODO_SANTIAGO), 0.0) / 365.0
+    if stock_013 or solicitado or consumo_stgo:
+        bodegas.append(Bodega(NODO_SANTIAGO, es_santiago=True, stock_fisico=stock_013,
+                              en_transito=solicitado, consumo_diario=consumo_stgo))
 
     lead_maestro = pc.lead_time_maestro if pc and pc.lead_time_maestro else p.lead_time_days
     llegadas, atrasada = [], False
@@ -439,15 +459,17 @@ def _guardar(corrida, datos, calculados, valor_anual):
     bodegas_obj, traslados_obj = [], []
     for p, e, r, prov, proxima in calculados:
         res = creados[p.code]
-        posicion = {b.codigo: b for b in e.bodegas}
+        posicion = {b.codigo: b for b in r.nodos}
         for a in r.acciones:
             b, wh = posicion.get(a.codigo), datos.bodegas.get(a.codigo)
             if not wh or not b or not (b.stock_fisico or b.en_transito or b.comprometido or a.faltante):
                 continue
-            consumo_dia = datos.consumo_bodega.get((p.code, a.codigo), 0.0) / 365.0
+            consumo_dia = b.consumo_diario
             bodegas_obj.append(ResultadoBodega(
                 consumo_diario=consumo_dia,
                 cobertura_dias=a.disponible_futuro / consumo_dia if consumo_dia > 0 else None,
+                protegido=a.protegido, retenido_en=[[o, q] for o, q in a.retenido_en],
+                componentes=[[c, q] for c, q in b.componentes],
                 resultado=res, warehouse=wh, stock_fisico=b.stock_fisico, en_transito=b.en_transito,
                 comprometido=b.comprometido, disponible_futuro=a.disponible_futuro, objetivo=a.objetivo,
                 faltante=a.faltante, excedente=a.excedente, accion=a.accion, cantidad_trasladar=a.cantidad_trasladar,
@@ -460,7 +482,7 @@ def _guardar(corrida, datos, calculados, valor_anual):
                 destino = posicion.get(t.destino)
                 traslados_obj.append(TrasladoSugerido(
                     resultado=res, product=p, origen=datos.bodegas[t.origen], destino=datos.bodegas[t.destino],
-                    cantidad=t.cantidad,
+                    cantidad=t.cantidad, detalle_origen=[[c, q] for c, q in t.desde],
                     urgencia='URGENTE' if destino is None or destino.disponible_futuro <= 0 else 'MEDIO'))
     ResultadoBodega.objects.bulk_create(bodegas_obj, batch_size=5000)
     TrasladoSugerido.objects.bulk_create(traslados_obj, batch_size=5000)

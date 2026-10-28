@@ -76,4 +76,4 @@ class FichaUnicaTest(TestCase):
         self.assertEqual(corrida.estado, Corrida.OK)
         self.assertTrue(corrida.resumen['publicado'])
         res = ResultadoArticulo.objects.get(product=self.sku)
-        self.assertEqual(StockProjection.objects.get(product=self.sku, warehouse=self.pp).rop, res.punto_pedido)
+        self.assertEqual(StockProjection.objects.get(product=self.sku, warehouse__code='013').rop, res.punto_pedido)

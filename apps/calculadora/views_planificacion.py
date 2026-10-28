@@ -12,6 +12,8 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 
 from apps.calc import politica as pol
+from apps.calc.red import NODO_SANTIAGO
+from apps.data_ingestion.warehouses import SANTIAGO, SUCURSAL_CITIES, nodo_red, zone_for
 from apps.inventory.models import ProductSKU
 
 from . import cargadores, servicio, solicitudes
@@ -415,6 +417,60 @@ def _grafico_linea(producto, r, e):
     }
 
 
+OTRAS_SANTIAGO = 'otras atribuidas'
+
+
+def _decision_compra(producto, e, r):
+    """¿Comprar todo de una vez? (SPEC-21 §5): consumo por nodo mes a mes, la compra en meses
+    de consumo, la compra minima hasta el punto de pedido y el stock de Santiago por bodega."""
+    meses = servicio.meses_cerrados(e.hoy, len(r.consumo.meses))
+    indice = {m: i for i, m in enumerate(meses)}
+    por_nodo = defaultdict(lambda: [0.0] * len(meses))
+    consumo_bodega_stgo = defaultdict(float)
+    for bodega, mes, q in ConsumoMensual.objects.filter(product=producto, mes__in=meses).values_list('bodega', 'mes', 'cantidad'):
+        nodo = nodo_red(bodega)
+        if nodo:
+            por_nodo[nodo][indice[mes]] += q
+        if nodo == NODO_SANTIAGO:
+            # Consignacion, exportacion, no conforme, etc. se atribuyen a Santiago (SPEC-07 §5)
+            fisica = bodega == NODO_SANTIAGO or zone_for(bodega) == SANTIAGO
+            consumo_bodega_stgo[bodega if fisica else OTRAS_SANTIAGO] += q
+    tope = e.params.multiplicador_atipico
+    filas = []
+    for nodo in [NODO_SANTIAGO] + list(SUCURSAL_CITIES):
+        valores = por_nodo.get(nodo)
+        if not valores or not any(v > 0 for v in valores):
+            continue
+        prom = sum(valores) / len(valores)
+        filas.append({
+            'nodo': nodo, 'nombre': 'Santiago' if nodo == NODO_SANTIAGO else SUCURSAL_CITIES[nodo],
+            'celdas': [{'v': v, 'pico': prom > 0 and v > tope * prom} for v in valores],
+            'total': sum(valores), 'promedio': prom, 'meses_con_consumo': sum(1 for v in valores if v > 0),
+        })
+    red_total = [sum(f['celdas'][i]['v'] for f in filas) for i in range(len(meses))]
+
+    co, pl = r.compra, r.politica
+    sugerida = co.cantidad_sugerida
+    consumo_mes = pl.consumo_usado or r.consumo.consumo_promedio_mes
+    minima = pol.compra_hasta_punto_pedido(pl, co.disponible_futuro, e.params, e.min_compra, e.multiplo)
+
+    stock_stgo = next((dict(n.componentes) for n in r.nodos if n.codigo == NODO_SANTIAGO), {})
+    bodegas_stgo = sorted((c for c in set(stock_stgo) | set(consumo_bodega_stgo)
+                           if stock_stgo.get(c, 0) > 0 or consumo_bodega_stgo.get(c, 0) > 0),
+                          key=lambda c: (c == OTRAS_SANTIAGO, -stock_stgo.get(c, 0), c))
+    return {
+        'meses': [_mes(m) for m in meses], 'filas': filas, 'red': red_total,
+        'red_promedio': sum(red_total) / len(meses) if meses else 0,
+        'sugerida': sugerida, 'meses_sugerida': sugerida / consumo_mes if consumo_mes > 0 else None,
+        'minima': minima, 'meses_minima': minima / consumo_mes if consumo_mes > 0 else None,
+        'ahorro_usd': (sugerida - minima) * e.costo if sugerida > minima else 0,
+        'plazo_dias': r.plazo.plazo_total_dias, 'frecuencia_dias': e.params.frecuencia_compra_dias,
+        'min_compra': e.min_compra, 'multiplo': e.multiplo,
+        'santiago': [{'bodega': c, 'stock': stock_stgo.get(c, 0), 'consumo_12m': consumo_bodega_stgo.get(c, 0)}
+                     for c in bodegas_stgo],
+    }
+
+
 LETRA_SIMPLE = {
     'R': 'Es un artículo R (se repone solo)',
     'E': 'Es un artículo E (estratégico: se mantiene siempre con su mínimo)',
@@ -467,12 +523,20 @@ def _que_dice(r, e, guardado, proxima, proveedor):
         for b in guardado.bodegas.select_related('warehouse').exclude(accion='NINGUNA').order_by('warehouse__code')[:4]:
             if b.accion in ('TRASLADAR', 'TRASLADAR_PARCIAL'):
                 origen = ', '.join(f'{_n(qq, 0)} desde {o}' for o, qq in b.origenes)
-                movs.append(f'{b.warehouse.code} recibe {origen}' + (' (el resto espera la compra)' if b.accion == 'TRASLADAR_PARCIAL' else ''))
+                origen = origen.replace(f'desde {NODO_SANTIAGO}', 'desde Santiago')
+                movs.append(f'{_nombre_nodo(b.warehouse.code)} recibe {origen}' + (' (el resto espera la compra)' if b.accion == 'TRASLADAR_PARCIAL' else ''))
             elif b.accion == 'ESPERA_COMPRA':
-                movs.append(f'{b.warehouse.code} espera la compra de la red ({_n(b.espera_compra, 0)} u)')
+                movs.append(f'{_nombre_nodo(b.warehouse.code)} espera la compra de la red ({_n(b.espera_compra, 0)} u)')
+            if b.retenido_en:
+                retenido = ', '.join(f'{_n(q, 0)} en {_nombre_nodo(o)}' for o, q in b.retenido_en)
+                movs.append(f'hay stock retenido por compromisos ({retenido}): moverlo es decisión de jefatura')
         if movs:
             frases.append('En bodegas: ' + '; '.join(movs) + '.')
     return frases
+
+
+def _nombre_nodo(codigo):
+    return 'Santiago' if codigo == NODO_SANTIAGO else codigo
 
 
 def _dias(n):
@@ -495,6 +559,7 @@ def articulo(request, code):
         'que_dice': _que_dice(r, e, guardado, proxima, proveedor),
         'grafico_consumo': json.dumps(_grafico_consumo(producto, r, e)),
         'grafico_linea': json.dumps(linea), 'hay_inconsistencia': linea['hay_inconsistencia'],
+        'decision': _decision_compra(producto, e, r),
         'bodegas': guardado.bodegas.select_related('warehouse').order_by('warehouse__code') if guardado else [],
         'traslados': guardado.traslados.select_related('origen', 'destino') if guardado else [],
         'oc_abiertas': OCAbierta.objects.filter(product=producto).order_by('fecha_comprometida'),
