@@ -1,15 +1,18 @@
 """Vistas de la fusion del Recomendador en la Calculadora (SPEC-19): bodegas y zonas (§4),
-segmentacion ABC-XYZ (§6) y guia en lenguaje simple (§7.2)."""
+segmentacion ABC-XYZ (§6) y guia en lenguaje simple (§7.2). Mas "Analizar articulos" (SPEC-24)."""
 import statistics
 from collections import defaultdict
 
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
 from django.db.models import Case, F, IntegerField, Q, Value, When
+from django.http import JsonResponse
 from django.shortcuts import render
 
+from apps.calc.red import NODO_SANTIAGO
 from apps.data_ingestion.warehouses import SANTIAGO, SUCURSAL, SUCURSAL_CITIES, SUCURSAL_CODES, zona_red
 
+from . import analisis
 from .excel import respuesta_excel
 from .glosario import GLOSARIO
 from .models import CargaDatos, ResultadoArticulo, ResultadoBodega, TrasladoSugerido
@@ -308,3 +311,53 @@ def guia(request):
         fuentes.append({'nombre': nombre, 'color': color, 'estado': estado, 'carga': c})
 
     return render(request, 'calculadora/guia.html', {'secciones': secciones, 'pasos': PASOS, 'fuentes': fuentes})
+
+
+# ── Analizar articulos (SPEC-24): vista tipo Slim4 ───────────────────────────
+
+def _filtros_analisis(request):
+    codigos = [c for c, _, _ in analisis.ubicaciones()]
+    ubicacion = request.GET.get('ubicacion', NODO_SANTIAGO)
+    return {'ubicacion': ubicacion if ubicacion in codigos else NODO_SANTIAGO,
+            'search': request.GET.get('search', '').strip(), 'a_pedir': request.GET.get('a_pedir') == '1',
+            'orden': request.GET.get('orden', '-meses')}
+
+
+@login_required
+def analizar(request):
+    f = _filtros_analisis(request)
+    filas = analisis.listado(f['ubicacion'], f['search'], f['a_pedir'], f['orden'])
+    page_obj = Paginator(filas, 100).get_page(request.GET.get('page'))
+    params = request.GET.copy()
+    params.pop('page', None)
+    sin_orden = params.copy()
+    sin_orden.pop('orden', None)
+    return render(request, 'calculadora/analizar.html', {
+        'f': f, 'page_obj': page_obj, 'query': params.urlencode(), 'query_sin_orden': sin_orden.urlencode(),
+        'ubicaciones': analisis.ubicaciones(), 'total': len(filas),
+        'es_bodega': f['ubicacion'].startswith('013-'),
+        'columnas': [('codigo', 'Código'), ('demanda', 'Demanda media'), ('a_pedir', 'A pedir'),
+                     ('stock', 'Stock'), ('recibir', 'Por recibir'), ('entregar', 'Por entregar'),
+                     ('venta12', 'Consumo 12 m'), ('meses', 'Meses c/ consumo'), ('costo', 'Costo USD'),
+                     ('valor', 'Stock USD')],
+    })
+
+
+@login_required
+def analizar_detalle(request, code):
+    return JsonResponse(analisis.detalle(code))
+
+
+@login_required
+def analizar_excel(request):
+    f = _filtros_analisis(request)
+    filas = [{
+        'Ubicacion': r['ubicacion'], 'Articulo': r['codigo'], 'Descripcion': r['descripcion'],
+        'Demanda media mes': r['demanda'], 'A pedir': r['a_pedir'] if r['a_pedir'] is not None else '',
+        'Stock': r['stock'], 'Por recibir': r['recibir'], 'Por entregar': r['entregar'],
+        'Consumo 12 meses': r['venta12'], 'Meses con consumo': r['meses'],
+        'Tendencia u/mes': round(r['prevision'].tendencia, 3),
+        'Prevision proximos 12 meses': round(sum(r['prevision'].valores), 2),
+        'Costo USD': r['costo'], 'Stock USD': r['valor'],
+    } for r in analisis.listado(f['ubicacion'], f['search'], f['a_pedir'], f['orden'])]
+    return respuesta_excel(f'analizar_{f["ubicacion"]}.xlsx', filas, 'Analizar articulos')

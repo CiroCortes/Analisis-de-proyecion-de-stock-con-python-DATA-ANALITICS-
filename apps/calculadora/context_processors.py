@@ -3,6 +3,7 @@
 SUBNAV = [
     ('panel', 'Hoy', 'fa-house', ('panel',)),
     ('grilla', 'Compras', 'fa-table-list', ('grilla', 'articulo')),
+    ('analizar', 'Analizar', 'fa-magnifying-glass-chart', ('analizar',)),
     ('solicitudes', 'Solicitudes', 'fa-file-invoice-dollar', ('solicitudes', 'solicitud_detalle')),
     ('bodegas', 'Bodegas', 'fa-warehouse', ('bodegas',)),
     ('traslados', 'Traslados', 'fa-truck-ramp-box', ('traslados',)),

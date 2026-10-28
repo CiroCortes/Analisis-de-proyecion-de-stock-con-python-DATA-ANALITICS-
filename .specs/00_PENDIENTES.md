@@ -53,7 +53,7 @@ quiebre real USD 717 mil vs brecha contra objetivo USD 3,94 M.
 | 17 | En 1.014 de 2.032 celdas con NC, OINM no registra movimiento (390 mil u; una NC de 360.000 u sobre factura sin movimiento) | Solo se reubica lo que OINM registró. Confirmar con contabilidad si son facturas de reserva |
 | 18 | El corte de 180 días de la consulta 5 dejaba fuera OC antiguas pendientes (pre-bodegas: SAP 12.630 u, cargadas ~3.700) | Corregido: consulta 5 sin corte. Tránsito de los nodos: 119 mil → 143 mil u |
 | 19 | PC/OF abiertos desde 2023. En el alcance: 6% de las u de PC y 8% de las de OF tienen más de 3 meses; el volumen grande es RETAIL y servicios | SPEC-23: cálculo híbrido (compra −3,6% con solo recientes) + informe de antigüedad para Contraloría |
-| 20 | Producción pide ver Santiago también por bodega (013-PS vs 013-PP rotan distinto) | Vista tipo Slim4 con detalle 013-xx (SPEC-24, pendiente) |
+| 20 | Producción pide ver Santiago también por bodega (013-PS vs 013-PP rotan distinto) | **Hecho 28-oct (SPEC-24)**: Analizar artículos, con Santiago unificado y cada 013-xx |
 
 ## Decisiones abiertas
 

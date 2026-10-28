@@ -1,0 +1,240 @@
+{% extends 'base.html' %}
+{% load calculadora_tags %}
+
+{% block title %}Analizar artículos | Calculadora Pesco{% endblock %}
+
+{% block content %}
+<div class="w-full space-y-5">
+    {% include 'calculadora/_subnav.html' %}
+
+    <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 bg-white p-6 rounded-3xl shadow-sm border border-slate-200 border-l-8 border-l-pesco-cyan">
+        <div>
+            <span class="text-xs font-bold text-pesco-cyan uppercase tracking-wider">Calculadora de compras · Consulta rápida</span>
+            <h1 class="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight mt-1">Analizar artículos</h1>
+            <p class="text-sm text-slate-500 mt-1 max-w-3xl">Elige una ubicación y recorre el listado con el mouse o las flechas ↑ ↓: a la derecha se ve la demanda de los últimos 12 meses y la previsión de los próximos 12; abajo, el mismo artículo en las demás ubicaciones (al pincharlas cambia el gráfico). La compra se decide por nodo {% ayuda 'santiago_nodo' %}: las bodegas 013-xx son detalle de Santiago.</p>
+        </div>
+        <a href="{% url 'calculadora:analizar_excel' %}?{{ request.GET.urlencode }}" class="bg-pesco-cyan hover:bg-pesco-darkcyan text-white text-xs font-bold px-5 py-3 rounded-full shadow-md uppercase tracking-wider whitespace-nowrap"><i class="fa-solid fa-file-excel mr-1"></i> Descargar Excel</a>
+    </div>
+
+    <form method="get" class="bg-white p-4 rounded-3xl shadow-sm border border-slate-200 flex flex-wrap gap-4 items-end">
+        <div>
+            <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Ubicación</label>
+            <select name="ubicacion" onchange="this.form.submit()" class="border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold min-w-[14rem]">
+                <option value="013" {% if f.ubicacion == '013' %}selected{% endif %}>Santiago (todas)</option>
+                <optgroup label="Bodegas de Santiago (detalle)">
+                    {% for c, nombre, tipo in ubicaciones %}{% if tipo == 'BODEGA' %}<option value="{{ c }}" {% if f.ubicacion == c %}selected{% endif %}>{{ nombre }}</option>{% endif %}{% endfor %}
+                </optgroup>
+                <optgroup label="Sucursales">
+                    {% for c, nombre, tipo in ubicaciones %}{% if tipo == 'NODO' and c != '013' %}<option value="{{ c }}" {% if f.ubicacion == c %}selected{% endif %}>{{ nombre }}</option>{% endif %}{% endfor %}
+                </optgroup>
+            </select>
+        </div>
+        <div class="flex-1 min-w-[12rem]">
+            <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Buscar</label>
+            <input name="search" value="{{ f.search }}" placeholder="Código o descripción" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm">
+        </div>
+        <label class="flex items-center gap-2 text-xs font-bold text-slate-600 pb-2"><input type="checkbox" name="a_pedir" value="1" {% if f.a_pedir %}checked{% endif %}> Solo con algo a pedir</label>
+        <input type="hidden" name="orden" value="{{ f.orden }}">
+        <div class="flex gap-2">
+            <button class="bg-pesco-cyan text-white text-xs font-bold px-5 py-2.5 rounded-full uppercase tracking-wider">Filtrar</button>
+            <a href="{% url 'calculadora:analizar' %}?ubicacion={{ f.ubicacion }}" class="text-xs font-bold text-slate-500 px-3 py-2.5">Limpiar</a>
+        </div>
+    </form>
+
+    <div class="grid grid-cols-1 xl:grid-cols-5 gap-5">
+        <!-- Ventana principal: listado de la ubicacion -->
+        <div class="xl:col-span-3 bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
+            <div class="px-5 py-3 border-b border-slate-100 flex justify-between items-center">
+                <span class="font-black text-slate-800 text-sm">{% for c, nombre, tipo in ubicaciones %}{% if c == f.ubicacion %}{{ nombre }}{% endif %}{% endfor %}</span>
+                <span class="text-xs text-slate-500 font-mono">{{ total }} artículos</span>
+            </div>
+            <div class="overflow-auto max-h-[34rem]" id="listado" tabindex="0">
+                <table class="min-w-full text-xs">
+                    <thead class="bg-slate-50 sticky top-0 z-10"><tr class="text-[10px] uppercase tracking-wider text-slate-500">
+                        {% for clave, etiqueta in columnas %}
+                        <th class="py-2 px-2 {% if clave == 'codigo' %}text-left pl-4{% else %}text-right{% endif %} whitespace-nowrap">
+                            <a href="?{{ query_sin_orden }}&orden={% if f.orden == '-'|add:clave %}{{ clave }}{% else %}-{{ clave }}{% endif %}" class="hover:text-pesco-cyan {% if f.orden == clave or f.orden == '-'|add:clave %}text-pesco-cyan{% endif %}">
+                                {{ etiqueta }}{% if f.orden == clave %} ↑{% elif f.orden == '-'|add:clave %} ↓{% endif %}</a>
+                            {% if clave == 'codigo' %}</th><th class="py-2 px-2 text-left">Descripción{% endif %}
+                        </th>
+                        {% endfor %}
+                    </tr></thead>
+                    <tbody>
+                    {% for r in page_obj %}
+                    <tr class="fila border-b border-slate-50 cursor-pointer hover:bg-cyan-50/60" data-codigo="{{ r.codigo }}">
+                        <td class="py-1.5 pl-4 pr-2 font-mono font-bold text-slate-800 whitespace-nowrap">{{ r.codigo }}</td>
+                        <td class="px-2 text-slate-600">{{ r.descripcion|truncatechars:42 }}</td>
+                        <td class="px-2 text-right font-mono">{{ r.demanda|floatformat:2 }}</td>
+                        <td class="px-2 text-right font-mono {% if r.a_pedir %}font-black text-emerald-700{% endif %}">{% if r.a_pedir is None %}<span class="text-slate-300" title="Bodega de Santiago: la compra se decide para todo Santiago">—</span>{% else %}{{ r.a_pedir|floatformat:"0g" }}{% endif %}</td>
+                        <td class="px-2 text-right font-mono">{{ r.stock|floatformat:"0g" }}</td>
+                        <td class="px-2 text-right font-mono">{{ r.recibir|floatformat:"0g" }}</td>
+                        <td class="px-2 text-right font-mono">{{ r.entregar|floatformat:"0g" }}</td>
+                        <td class="px-2 text-right font-mono">{{ r.venta12|floatformat:"0g" }}</td>
+                        <td class="px-2 text-right font-mono">{{ r.meses }}</td>
+                        <td class="px-2 text-right font-mono">{{ r.costo|floatformat:2 }}</td>
+                        <td class="px-2 pr-4 text-right font-mono">{{ r.valor|floatformat:"0g" }}</td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="11" class="p-8 text-center text-slate-500">No hay artículos con ese filtro.</td></tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% if page_obj.has_other_pages %}
+            <div class="px-5 py-2 flex justify-between items-center text-xs border-t border-slate-100 mt-auto">
+                <span class="text-slate-500">Página {{ page_obj.number }} de {{ page_obj.paginator.num_pages }}</span>
+                <span class="flex gap-3">
+                    {% if page_obj.has_previous %}<a href="?{{ query }}&page={{ page_obj.previous_page_number }}" class="font-bold text-pesco-cyan">Anterior</a>{% endif %}
+                    {% if page_obj.has_next %}<a href="?{{ query }}&page={{ page_obj.next_page_number }}" class="font-bold text-pesco-cyan">Siguiente</a>{% endif %}
+                </span>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Ventana de graficos y prevision -->
+        <div class="xl:col-span-2 bg-white rounded-3xl shadow-sm border border-slate-200 p-5 space-y-4">
+            <div>
+                <div class="flex justify-between items-start gap-3">
+                    <div>
+                        <div id="art-codigo" class="font-mono font-black text-slate-900">—</div>
+                        <div id="art-desc" class="text-xs text-slate-500"></div>
+                    </div>
+                    <a id="art-ficha" href="#" class="hidden text-[11px] font-bold text-pesco-cyan whitespace-nowrap hover:underline">Ver ficha <i class="fa-solid fa-arrow-up-right-from-square"></i></a>
+                </div>
+                <div class="mt-2 text-[11px] text-slate-600">Gráfico de <b id="graf-ubic">—</b>
+                    <span class="ml-2 inline-flex items-center gap-1"><span class="w-3 h-2 rounded-sm" style="background:#1e40af"></span> demanda real</span>
+                    <span class="ml-2 inline-flex items-center gap-1"><span class="w-3 h-2 rounded-sm" style="background:#facc15"></span> previsión</span>
+                </div>
+            </div>
+            <div class="h-64"><canvas id="chartPrevision"></canvas></div>
+            <div class="grid grid-cols-2 gap-3 text-xs">
+                <div class="rounded-2xl bg-slate-50 border border-slate-200 p-3"><div class="text-[10px] font-bold text-slate-400 uppercase">Demanda media</div><div class="font-mono font-black text-lg"><span id="p-prom">—</span> <span class="text-[10px] font-medium text-slate-400">u/mes</span></div></div>
+                <div class="rounded-2xl bg-slate-50 border border-slate-200 p-3"><div class="text-[10px] font-bold text-slate-400 uppercase">Tendencia</div><div class="font-mono font-black text-lg"><span id="p-tend">—</span> <span class="text-[10px] font-medium text-slate-400">u/mes por mes</span></div></div>
+                <div class="rounded-2xl bg-slate-50 border border-slate-200 p-3"><div class="text-[10px] font-bold text-slate-400 uppercase">Meses con demanda</div><div class="font-mono font-black text-lg"><span id="p-meses">—</span> <span class="text-[10px] font-medium text-slate-400">de 12</span></div></div>
+                <div class="rounded-2xl bg-amber-50 border border-amber-200 p-3"><div class="text-[10px] font-bold text-amber-700 uppercase">Previsión 12 meses</div><div class="font-mono font-black text-lg text-amber-800"><span id="p-total">—</span> <span class="text-[10px] font-medium">u</span></div></div>
+            </div>
+            <p class="text-[11px] text-slate-400">Previsión = demanda media con meses atípicos recortados (la misma que usa el cálculo) más la tendencia de los últimos 12 meses, acotada. No es estacional. <span id="p-ultima"></span></p>
+        </div>
+    </div>
+
+    <!-- Ventana de ubicaciones: el mismo articulo en todas -->
+    <div class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+        <div class="px-5 py-3 border-b border-slate-100 font-black text-slate-800 text-sm">Mismo artículo en todas las ubicaciones <span id="ubic-titulo" class="font-mono text-xs text-slate-400 font-medium"></span></div>
+        <div class="overflow-x-auto">
+            <table class="min-w-full text-xs">
+                <thead class="bg-slate-50"><tr class="text-[10px] uppercase tracking-wider text-slate-500">
+                    <th class="py-2 pl-5 pr-2 text-left">Ubicación</th><th class="px-2 text-right">Demanda media</th><th class="px-2 text-right">A pedir</th>
+                    <th class="px-2 text-right">Stock</th><th class="px-2 text-right">Por recibir</th><th class="px-2 text-right">Por entregar</th>
+                    <th class="px-2 text-right">Consumo 12 m</th><th class="px-2 text-right">Meses c/ consumo</th><th class="px-2 text-right">Tendencia</th><th class="px-2 pr-5 text-right">Stock USD</th>
+                </tr></thead>
+                <tbody id="ubic-cuerpo"><tr><td colspan="10" class="p-6 text-center text-slate-400">Elige un artículo del listado.</td></tr></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+    var URL_DATOS = "{% url 'calculadora:analizar_detalle' 'COD' %}";
+    var URL_FICHA = "{% url 'calculadora:articulo' 'COD' %}";
+    var UBICACION = "{{ f.ubicacion|escapejs }}";
+    var cache = {}, chart = null, actual = null, ubicGraf = UBICACION, pedido = 0;
+    var fmt = function (v, d) { return v === null || v === undefined ? '—' : Number(v).toLocaleString('es-CL', { maximumFractionDigits: d === undefined ? 2 : d }); };
+    var filas = Array.prototype.slice.call(document.querySelectorAll('#listado tr.fila'));
+
+    function celda(texto, clases) { var td = document.createElement('td'); td.className = clases; td.textContent = texto; return td; }
+
+    function dibujar(datos, codigoUbic) {
+        var u = datos.ubicaciones.filter(function (x) { return x.ubicacion === codigoUbic; })[0] || datos.ubicaciones[0];
+        if (!u) return;
+        ubicGraf = u.ubicacion;
+        document.getElementById('graf-ubic').textContent = u.nombre;
+        document.getElementById('p-prom').textContent = fmt(u.demanda);
+        document.getElementById('p-tend').textContent = (u.tendencia > 0 ? '+' : '') + fmt(u.tendencia, 3);
+        document.getElementById('p-meses').textContent = u.meses;
+        document.getElementById('p-total').textContent = fmt(u.valores.reduce(function (a, b) { return a + b; }, 0), 0);
+        document.getElementById('p-ultima').textContent = u.desde_ultima === null ? 'Sin demanda en 12 meses.'
+            : (u.desde_ultima === 0 ? 'Última demanda: el último mes cerrado.' : 'Última demanda: hace ' + u.desde_ultima + ' meses.');
+        var n = u.historia.length, nul = function (k) { return Array(k).fill(null); };
+        var ds = [
+            { label: 'Demanda real', data: u.historia.concat(nul(u.valores.length)), backgroundColor: '#1e40af', borderRadius: 2 },
+            { label: 'Previsión', data: nul(n).concat(u.valores), backgroundColor: '#facc15', borderRadius: 2 }
+        ];
+        marcarUbicacion();
+        if (chart) { chart.data.labels = datos.etiquetas; chart.data.datasets = ds; chart.update(); return; }
+        chart = new Chart(document.getElementById('chartPrevision'), {
+            type: 'bar', data: { labels: datos.etiquetas, datasets: ds },
+            options: { maintainAspectRatio: false, animation: { duration: 150 },
+                scales: { x: { stacked: true, ticks: { font: { size: 9 } } }, y: { beginAtZero: true, ticks: { font: { size: 10 } } } },
+                plugins: { legend: { display: false },
+                           tooltip: { callbacks: { label: function (c) { return c.dataset.label + ': ' + fmt(c.raw) + ' u'; } } } } }
+        });
+    }
+
+    function marcarUbicacion() {
+        document.querySelectorAll('#ubic-cuerpo tr').forEach(function (tr) {
+            tr.classList.toggle('bg-cyan-50', tr.dataset.ubic === ubicGraf);
+            tr.classList.toggle('font-bold', tr.dataset.ubic === ubicGraf);
+        });
+    }
+
+    function tablaUbicaciones(datos) {
+        var cuerpo = document.getElementById('ubic-cuerpo');
+        cuerpo.innerHTML = '';
+        datos.ubicaciones.forEach(function (u) {
+            var tr = document.createElement('tr');
+            tr.className = 'border-b border-slate-50 cursor-pointer hover:bg-cyan-50/60';
+            tr.dataset.ubic = u.ubicacion;
+            var nombre = celda((u.tipo === 'BODEGA' ? '↳ ' : '') + u.nombre, 'py-1.5 pr-2 ' + (u.tipo === 'BODEGA' ? 'pl-9 text-slate-500 font-mono' : 'pl-5 font-bold text-slate-800'));
+            tr.appendChild(nombre);
+            tr.appendChild(celda(fmt(u.demanda), 'px-2 text-right font-mono'));
+            tr.appendChild(celda(u.a_pedir === null ? '—' : fmt(u.a_pedir, 0), 'px-2 text-right font-mono' + (u.a_pedir ? ' font-black text-emerald-700' : (u.a_pedir === null ? ' text-slate-300' : ''))));
+            tr.appendChild(celda(fmt(u.stock, 0), 'px-2 text-right font-mono'));
+            tr.appendChild(celda(fmt(u.recibir, 0), 'px-2 text-right font-mono'));
+            tr.appendChild(celda(fmt(u.entregar, 0), 'px-2 text-right font-mono'));
+            tr.appendChild(celda(fmt(u.venta12, 0), 'px-2 text-right font-mono'));
+            tr.appendChild(celda(u.meses, 'px-2 text-right font-mono'));
+            tr.appendChild(celda((u.tendencia > 0 ? '+' : '') + fmt(u.tendencia, 3), 'px-2 text-right font-mono'));
+            tr.appendChild(celda(fmt(u.valor, 0), 'px-2 pr-5 text-right font-mono'));
+            tr.addEventListener('click', function () { dibujar(datos, u.ubicacion); });
+            cuerpo.appendChild(tr);
+        });
+    }
+
+    function mostrar(datos) {
+        document.getElementById('art-codigo').textContent = datos.codigo + (datos.letra ? '  ·  ' + datos.letra + ' · ' + datos.abc + datos.xyz : '');
+        document.getElementById('art-desc').textContent = datos.descripcion;
+        document.getElementById('ubic-titulo').textContent = '· ' + datos.codigo;
+        var ficha = document.getElementById('art-ficha');
+        ficha.href = URL_FICHA.replace('COD', encodeURIComponent(datos.codigo));
+        ficha.classList.remove('hidden');
+        tablaUbicaciones(datos);
+        dibujar(datos, UBICACION);
+    }
+
+    function seleccionar(tr) {
+        if (!tr) return;
+        filas.forEach(function (f) { f.classList.remove('bg-cyan-100'); });
+        tr.classList.add('bg-cyan-100');
+        actual = tr;
+        tr.scrollIntoView({ block: 'nearest' });
+        var codigo = tr.dataset.codigo, n = ++pedido;
+        if (cache[codigo]) { mostrar(cache[codigo]); return; }
+        fetch(URL_DATOS.replace('COD', encodeURIComponent(codigo)), { credentials: 'same-origin' })
+            .then(function (r) { return r.json(); })
+            .then(function (d) { cache[codigo] = d; if (n === pedido) mostrar(d); });
+    }
+
+    filas.forEach(function (tr) { tr.addEventListener('click', function () { seleccionar(tr); }); });
+    document.addEventListener('keydown', function (e) {
+        if (['INPUT', 'SELECT', 'TEXTAREA'].indexOf(document.activeElement.tagName) >= 0 || !actual) return;
+        var i = filas.indexOf(actual);
+        if (e.key === 'ArrowDown' && i < filas.length - 1) { e.preventDefault(); seleccionar(filas[i + 1]); }
+        if (e.key === 'ArrowUp' && i > 0) { e.preventDefault(); seleccionar(filas[i - 1]); }
+    });
+    if (filas.length) seleccionar(filas[0]);
+})();
+</script>
+{% endblock %}

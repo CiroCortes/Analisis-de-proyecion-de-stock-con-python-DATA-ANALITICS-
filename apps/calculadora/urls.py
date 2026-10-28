@@ -42,4 +42,7 @@ urlpatterns = [
     path('bodegas/excel/', fu.bodegas_excel, name='bodegas_excel'),
     path('segmentacion/', fu.segmentacion, name='segmentacion'),
     path('guia/', fu.guia, name='guia'),
+    path('analizar/', fu.analizar, name='analizar'),
+    path('analizar/excel/', fu.analizar_excel, name='analizar_excel'),
+    path('analizar/<str:code>/datos/', fu.analizar_detalle, name='analizar_detalle'),
 ]
