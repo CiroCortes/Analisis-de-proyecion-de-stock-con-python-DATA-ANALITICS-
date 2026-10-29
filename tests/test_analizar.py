@@ -104,7 +104,9 @@ class BodegasSapTest(TestCase):
             Warehouse.objects.create(code=code, name=f'{code} - Bodega', is_active=activa)
         for bodega, q, pedido in (('013-03', 10, 0), ('000-022', 0, 20), ('966', 14, 0), ('013', 1, 0)):
             StockActual.objects.create(codigo='35071069', bodega=bodega, stock_disponible=q, stock_pedido=pedido)
-        OCAbierta.objects.create(nro_oc='1', product=cls.sku, bodega='000-022', cantidad_pendiente=5)
+        # La OC a una pre-bodega se acredita al destino (SPEC-22) y guarda su bodega de SAP (SPEC-29)
+        OCAbierta.objects.create(nro_oc='1', product=cls.sku, bodega='002-02', bodega_sap='000-022', cantidad_pendiente=5)
+        ejecutar_corrida(hoy=HOY)
 
     def test_cada_bodega_con_su_tratamiento(self):
         d = analisis.bodegas_sap('35071069')
@@ -122,3 +124,23 @@ class BodegasSapTest(TestCase):
         fila = next(f for f in d['bodegas_sap'] if f['bodega'] == '000-022')
         self.assertEqual((fila['pedido_sap'], fila['oc'], fila['sin_oc']), (20, 5, 15))
         self.assertEqual(d['totales_sap']['sin_oc'], 15)
+
+    def test_selector_ofrece_pre_bodegas_y_otras(self):
+        tipos = {c: t for c, _, t in analisis.ubicaciones()}
+        self.assertEqual(tipos['000-022'], analisis.EN_CAMINO)
+        self.assertEqual(tipos['966'], analisis.OTRA)
+        self.assertNotIn('013', [c for c, _, t in analisis.ubicaciones() if t != analisis.NODO])
+
+    def test_detalle_muestra_cada_bodega_bajo_su_nodo(self):
+        filas = analisis.detalle('35071069')['ubicaciones']
+        orden = [(f['tipo'], f['ubicacion']) for f in filas]
+        i_stgo, i_paso = orden.index(('NODO', '013')), orden.index(('DETALLE', '013'))
+        i_antof, i_pre = orden.index(('NODO', '002-02')), orden.index(('DETALLE', '000-022'))
+        self.assertLess(i_stgo, i_paso)                       # la 013 de paso, dentro de Santiago
+        self.assertLess(i_antof, i_pre)                       # la pre-bodega, dentro de Antofagasta
+        self.assertEqual(orden[-1], ('FUERA', '966'))         # consignacion, al final
+        self.assertNotIn(('DETALLE', '002-02'), orden)        # una sucursal no se repite como detalle
+
+    def test_listado_de_una_pre_bodega(self):
+        filas = analisis.listado('000-022')
+        self.assertEqual([(f['codigo'], f['stock'], f['recibir'], f['a_pedir']) for f in filas], [('35071069', 0, 5, None)])

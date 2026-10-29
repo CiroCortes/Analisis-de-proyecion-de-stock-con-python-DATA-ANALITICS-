@@ -9,6 +9,7 @@ import datetime
 import os
 from collections import defaultdict
 
+from django.db.models import Q
 from django.utils import timezone
 
 from apps.calc.prevision import prever
@@ -24,15 +25,59 @@ from .parametros import Resolutor
 from .servicio import meses_cerrados
 
 NODO, BODEGA = 'NODO', 'BODEGA'
+# Bodegas fuera de los nodos (SPEC-29): pre-bodegas y transitos (EN_CAMINO) y las demas con stock
+# (OTRA: consignacion, notas de credito, exportacion, 013 excluidas...). Se ven como en SAP.
+EN_CAMINO, OTRA = 'EN_CAMINO', 'OTRA'
 MESES = 12
 
 
 def ubicaciones():
-    """[(codigo, nombre, tipo)]: Santiago, sus bodegas 013-xx activas y las sucursales."""
+    """[(codigo, nombre, tipo)]: Santiago, sus bodegas 013-xx activas, las sucursales y las demas
+    bodegas de SAP con stock, pedido u OC (pre-bodegas, transitos, consignacion...)."""
     bodegas = sorted(w.code for w in Warehouse.objects.filter(is_active=True) if zone_for(w.code) == SANTIAGO)
     return ([(NODO_SANTIAGO, 'Santiago (todas)', NODO)]
             + [(b, b, BODEGA) for b in bodegas]
-            + [(c, f'{c} {n}', NODO) for c, n in SUCURSAL_CITIES.items()])
+            + [(c, f'{c} {n}', NODO) for c, n in SUCURSAL_CITIES.items()]
+            + _otras_bodegas())
+
+
+def _otras_bodegas():
+    con_algo = (set(StockActual.objects.filter(Q(stock_disponible__gt=0) | Q(stock_pedido__gt=0))
+                    .values_list('bodega', flat=True).distinct())
+                | set(OCAbierta.objects.values_list('bodega_sap', flat=True).distinct()))
+    out = []
+    for w in Warehouse.objects.filter(code__in=con_algo).order_by('code'):
+        if w.code == NODO_SANTIAGO or (w.es_de_red and w.is_active):
+            continue
+        tipo, nodo, _, _ = w.tratamiento_efectivo
+        if tipo == TRANSITO:
+            out.append((w.code, f'{w.name} → {nombre_nodo(nodo)}', EN_CAMINO))
+        else:
+            out.append((w.code, w.name + (' (no cuenta)' if tipo == NO_CUENTA else f' (stock de {nombre_nodo(nodo)})'), OTRA))
+    return out
+
+
+def es_otra_bodega(codigo):
+    """Bodega fuera de los nodos: ni Santiago, ni sucursal, ni una 013-xx incluida en la red."""
+    if not codigo or codigo == NODO_SANTIAGO or codigo in SUCURSAL_CITIES:
+        return False
+    if zone_for(codigo) == SANTIAGO:
+        return not Warehouse.objects.filter(code=codigo, is_active=True).exists()
+    return True
+
+
+def _posicion_otra(codigo, sku=None):
+    """Posicion de una bodega fuera de los nodos, tal como en SAP: stock y OC abiertas cargadas."""
+    datos = {}
+    stock = StockActual.objects.filter(bodega=codigo)
+    ocs = OCAbierta.objects.filter(bodega_sap=codigo)
+    if sku:
+        stock, ocs = stock.filter(codigo=sku), ocs.filter(product_id=sku)
+    for s, q in stock.values_list('codigo', 'stock_disponible'):
+        datos.setdefault((s, codigo), {'stock': 0, 'recibir': 0, 'entregar': 0, 'a_pedir': None})['stock'] += q
+    for s, q in ocs.values_list('product_id', 'cantidad_pendiente'):
+        datos.setdefault((s, codigo), {'stock': 0, 'recibir': 0, 'entregar': 0, 'a_pedir': None})['recibir'] += q
+    return datos
 
 
 def _ubicacion_de(bodega):
@@ -61,6 +106,8 @@ def _consumo(meses, sku=None, ubicacion=None):
 def _posicion(sku=None, ubicacion=None):
     """(sku, ubicacion) -> dict(stock, recibir, entregar, a_pedir). Nodos desde la ultima corrida
     (la misma posicion con la que calcula); bodegas 013-xx desde las metricas de inventario."""
+    if es_otra_bodega(ubicacion):
+        return _posicion_otra(ubicacion, sku)
     datos = {}
     nodos = ResultadoBodega.objects.all()
     bodegas = InventoryMetric.objects.filter(warehouse__code__startswith='013-')
@@ -96,7 +143,8 @@ def _posicion(sku=None, ubicacion=None):
 
 def _fila(sku, ubicacion, historia, pos, params, costo):
     p = prever(historia, params, MESES)
-    pos = pos or {'stock': 0, 'recibir': 0, 'entregar': 0, 'a_pedir': None if ubicacion.startswith('013-') else 0}
+    sin_compra = ubicacion.startswith('013-') or es_otra_bodega(ubicacion)
+    pos = pos or {'stock': 0, 'recibir': 0, 'entregar': 0, 'a_pedir': None if sin_compra else 0}
     return {
         'codigo': sku, 'ubicacion': ubicacion, 'demanda': round(p.promedio, 2), 'a_pedir': pos['a_pedir'],
         'stock': pos['stock'], 'recibir': pos['recibir'], 'entregar': pos['entregar'],
@@ -155,6 +203,8 @@ def detalle(sku, hoy=None):
     posicion = _posicion(sku=sku)
     filas = []
     for codigo, nombre, tipo in ubicaciones():
+        if tipo not in (NODO, BODEGA):
+            continue
         historia = consumo.get((sku, codigo), [0.0] * MESES)
         f = _fila(sku, codigo, historia, posicion.get((sku, codigo)), params, costo)
         # Las 013-xx sin movimiento ni stock no aportan; Santiago y las sucursales siempre se ven
@@ -173,9 +223,41 @@ def detalle(sku, hoy=None):
         'codigo': sku, 'descripcion': r.product.description if r else '', 'letra': r.letra if r else '',
         'abc': r.abc if r else '', 'xyz': r.xyz if r else '',
         'etiquetas': [f'{m.month:02d}-{str(m.year)[2:]}' for m in meses] + futuro,
-        'ubicaciones': filas,
-        **bodegas_sap(sku),
+        **_con_bodegas_sap(filas, sku, costo),
     }
+
+
+def _con_bodegas_sap(filas, sku, costo):
+    """Inserta bajo cada nodo las bodegas de SAP que no tienen fila propia (la 013 de paso, las
+    pre-bodegas y los transitos hacia ese nodo) y al final las que no cuentan, para ver el articulo
+    completo como en SAP sin salir de la tabla (SPEC-29)."""
+    sap = bodegas_sap(sku)
+    # Ya tienen fila: las 013-xx y las sucursales (su nodo es la misma bodega). La 013 de paso no.
+    con_fila = {f['ubicacion'] for f in filas} - {NODO_SANTIAGO}
+    hijas, fuera = defaultdict(list), []
+    for b in sap['bodegas_sap']:
+        extra = {'ubicacion': b['bodega'], 'nombre': b['nombre'], 'cuenta': b['cuenta'], 'stock': b['stock'],
+                 'recibir': b['oc'], 'pedido_sap': b['pedido_sap'], 'sin_oc': b['sin_oc'],
+                 'valor': round(b['stock'] * costo, 2), 'motivo': b['motivo']}
+        if b['tipo'] == NO_CUENTA:
+            fuera.append({**extra, 'tipo': 'FUERA'})
+        elif b['bodega'] not in con_fila:
+            hijas[b['nodo']].append({**extra, 'tipo': 'DETALLE'})
+    ordenadas, nodo_actual = [], None
+
+    def cerrar():
+        ordenadas.extend(hijas.pop(nodo_actual, []))
+
+    for f in filas:
+        if f['tipo'] == NODO:
+            cerrar()
+            nodo_actual = f['ubicacion']
+        ordenadas.append(f)
+    cerrar()
+    for resto in hijas.values():          # nodos sin fila (no deberia pasar): no se pierden
+        ordenadas.extend(resto)
+    ordenadas.extend(fuera)
+    return {'ubicaciones': ordenadas, **sap}
 
 
 # Consultas que forman la posicion de un articulo, con la fecha en que se exportaron (SPEC-29)
@@ -207,8 +289,8 @@ def bodegas_sap(sku):
     Avisa cuando SAP tiene unidades pedidas sin OC abierta cargada: suele ser un desfase entre la
     exportacion del stock y la de las OC (lo recibido entre ambas no aparece en ninguna)."""
     oc = defaultdict(float)
-    for bodega, q in OCAbierta.objects.filter(product_id=sku).values_list('bodega', 'cantidad_pendiente'):
-        oc[bodega] += q
+    for bodega, q in OCAbierta.objects.filter(product_id=sku).values_list('bodega_sap', 'cantidad_pendiente'):
+        oc[bodega or '013'] += q          # sin bodega en SAP: se postea en la 013
     stock = {b: (q, ped) for b, q, ped in StockActual.objects.filter(codigo=sku).values_list(
         'bodega', 'stock_disponible', 'stock_pedido')}
     codigos = {b for b, (q, ped) in stock.items() if q or ped} | {b for b, q in oc.items() if q}
@@ -222,7 +304,7 @@ def bodegas_sap(sku):
         sin_oc = max(0.0, pedido - oc.get(codigo, 0.0))
         totales[tipo] += q
         totales['sin_oc'] += sin_oc
-        filas.append({'bodega': codigo, 'nombre': w.name if w else codigo, 'stock': q, 'pedido_sap': pedido,
+        filas.append({'bodega': codigo, 'nombre': w.name if w else codigo, 'nodo': nodo, 'stock': q, 'pedido_sap': pedido,
                       'oc': oc.get(codigo, 0.0), 'sin_oc': sin_oc, 'tipo': tipo, 'cuenta': texto, 'motivo': motivo,
                       'manual': manual})
     orden = {STOCK: 0, TRANSITO: 1, NO_CUENTA: 2}

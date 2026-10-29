@@ -8,6 +8,21 @@ Código: `analisis.bodegas_sap`, `analisis.fechas_datos`, `templates/calculadora
 
 ---
 
+## 0. Dónde se ve (corrección del 29-oct, tarde)
+
+La primera versión dejaba el detalle en una ventana aparte y el usuario seguía viendo Santiago
+consolidado. Ahora el detalle está en los dos lugares que se usan:
+
+- **Selector de ubicación**: además de Santiago, sus 013-xx y las sucursales, los grupos
+  **Importación y tránsito** (pre-bodegas 000-xxx y T…, con el nodo al que llegan) y **Otras
+  bodegas de SAP** (consignación, notas de crédito, exportación, 013 excluidas…). El listado de
+  una de ellas muestra su stock y sus OC tal como en SAP, con cómo cuenta en el cálculo.
+- **Mismo artículo en todas las ubicaciones**: bajo cada nodo aparecen sus bodegas de SAP sin fila
+  propia (la 013 de paso dentro de Santiago, la 000-022 dentro de Antofagasta, los T… hacia cada
+  nodo) y al final, en gris, las que no cuentan.
+- Las OC guardan su bodega de SAP (`OCAbierta.bodega_sap`): las de pre-bodega se acreditan al
+  destino (SPEC-22), pero se muestran y se comparan con el pedido de SAP en la pre-bodega.
+
 ## 1. Ventana "Stock en SAP por bodega"
 
 Debajo de "Mismo artículo en todas las ubicaciones", para el artículo seleccionado:
@@ -45,9 +60,16 @@ Las 35 u pedidas a pre-bodegas llegaron entre la exportación del stock (27-oct 
 (28-oct 16:03): la OC ya estaba cerrada y el stock todavía no las tenía. El cálculo no las vio y
 sugirió comprar 95 u. No es un error de la regla: es el desfase entre exportaciones.
 
-En toda la red (artículos del alcance), el pedido en SAP sin OC abierta cargada suma
-**USD 1,17 M en pre-bodegas** (686 líneas), USD 1,15 M en bodegas de la red (OnOrder también
+En toda la red (artículos del alcance, comparando cada bodega con la bodega de SAP de sus OC), el
+pedido en SAP sin OC abierta cargada suma
+**USD 1,17 M en pre-bodegas** (643 líneas), USD 1,13 M en bodegas de la red (OnOrder también
 incluye órdenes de fabricación) y USD 60 mil en tránsitos (solicitudes de traslado).
+
+Casi todo está en la pre-bodega central **000** (USD 1,05 M) y en la **013** (USD 0,94 M). Hay
+artículos con pedido en SAP y **ninguna** OC en el archivo (39010038 mueble Sprinter, 30 u,
+USD 66 mil; 31203614, 236 u). Eso no lo explica un desfase de un día: probablemente al Datalake le
+faltan OC (como le faltan movimientos de OINM). Por verificar con la consulta de diagnóstico de la
+bitácora.
 
 ## 4. Regla operativa
 

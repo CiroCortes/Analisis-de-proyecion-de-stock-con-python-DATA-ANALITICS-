@@ -22,6 +22,12 @@
                 <optgroup label="Sucursales">
                     {% for c, nombre, tipo in ubicaciones %}{% if tipo == 'NODO' and c != '013' %}<option value="{{ c }}" {% if f.ubicacion == c %}selected{% endif %}>{{ nombre }}</option>{% endif %}{% endfor %}
                 </optgroup>
+                <optgroup label="Importación y tránsito (en camino)">
+                    {% for c, nombre, tipo in ubicaciones %}{% if tipo == 'EN_CAMINO' %}<option value="{{ c }}" {% if f.ubicacion == c %}selected{% endif %}>{{ nombre }}</option>{% endif %}{% endfor %}
+                </optgroup>
+                <optgroup label="Otras bodegas de SAP">
+                    {% for c, nombre, tipo in ubicaciones %}{% if tipo == 'OTRA' %}<option value="{{ c }}" {% if f.ubicacion == c %}selected{% endif %}>{{ nombre }}</option>{% endif %}{% endfor %}
+                </optgroup>
             </select>
         </div>
         <div class="flex-1 min-w-[12rem]">
@@ -44,7 +50,7 @@
             <div class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
                 <div class="px-5 py-3 border-b border-slate-100 flex justify-between items-center">
                     <span class="font-black text-slate-800 text-sm">{% for c, nombre, tipo in ubicaciones %}{% if c == f.ubicacion %}{{ nombre }}{% endif %}{% endfor %}</span>
-                    <span class="text-xs text-slate-500 font-mono">{{ total }} artículos</span>
+                    <span class="text-xs text-slate-500 font-mono">{% if es_otra %}<span class="font-sans font-bold text-amber-700 mr-2">Stock y OC tal como en SAP · {{ trat_otra }}</span>{% endif %}{{ total }} artículos</span>
                 </div>
                 <div class="overflow-auto" id="listado" tabindex="0" style="height: 23rem; overflow: auto;">
                     <table class="min-w-full text-xs">
@@ -63,7 +69,7 @@
                             <td class="py-1.5 pl-4 pr-2 font-mono font-bold text-slate-800 whitespace-nowrap">{{ r.codigo }}</td>
                             <td class="px-2 text-slate-600 whitespace-nowrap">{{ r.descripcion|truncatechars:42 }}</td>
                             <td class="px-2 text-right font-mono">{{ r.demanda|floatformat:2 }}</td>
-                            <td class="px-2 text-right font-mono {% if r.a_pedir %}font-black text-emerald-700{% endif %}">{% if r.a_pedir is None %}<span class="text-slate-300" title="Bodega de Santiago: la compra se decide para todo Santiago">—</span>{% else %}{{ r.a_pedir|floatformat:"0g" }}{% endif %}</td>
+                            <td class="px-2 text-right font-mono {% if r.a_pedir %}font-black text-emerald-700{% endif %}">{% if r.a_pedir is None %}<span class="text-slate-300" title="{% if es_otra %}Bodega fuera de los nodos: la compra se decide por nodo{% else %}Bodega de Santiago: la compra se decide para todo Santiago{% endif %}">—</span>{% else %}{{ r.a_pedir|floatformat:"0g" }}{% endif %}</td>
                             <td class="px-2 text-right font-mono">{{ r.stock|floatformat:"0g" }}</td>
                             <td class="px-2 text-right font-mono">{{ r.recibir|floatformat:"0g" }}</td>
                             <td class="px-2 text-right font-mono">{{ r.entregar|floatformat:"0g" }}</td>
@@ -167,7 +173,8 @@
     function celda(texto, clases) { var td = document.createElement('td'); td.className = clases; td.textContent = texto; return td; }
 
     function dibujar(datos, codigoUbic) {
-        var u = datos.ubicaciones.filter(function (x) { return x.ubicacion === codigoUbic; })[0] || datos.ubicaciones[0];
+        var conHistoria = datos.ubicaciones.filter(function (x) { return x.historia; });
+        var u = conHistoria.filter(function (x) { return x.ubicacion === codigoUbic; })[0] || conHistoria[0];
         if (!u) return;
         ubicGraf = u.ubicacion;
         document.getElementById('graf-ubic').textContent = u.nombre;
@@ -200,10 +207,41 @@
         });
     }
 
+    // Bodega de SAP sin consumo propio: la 013 de paso, pre-bodegas, transitos y las que no cuentan
+    function filaSap(u) {
+        var tr = document.createElement('tr');
+        var fuera = u.tipo === 'FUERA';
+        tr.className = 'border-b border-slate-50 ' + (fuera ? 'text-slate-400' : '');
+        tr.title = u.motivo;
+        var etiqueta = (fuera ? '' : '↳ ') + u.nombre + ' · ' + u.cuenta;
+        tr.appendChild(celda(etiqueta, 'py-1.5 pr-2 font-mono ' + (fuera ? 'pl-5' : 'pl-9 ' + (u.cuenta.indexOf('En camino') === 0 ? 'text-amber-700' : 'text-slate-500'))));
+        tr.appendChild(celda('', 'px-2'));
+        tr.appendChild(celda('', 'px-2'));
+        tr.appendChild(celda(fmt(u.stock, 0), 'px-2 text-right font-mono'));
+        var recibir = fmt(u.recibir, 0) + (u.sin_oc > 0 ? ' ⚠' : '');
+        var td = celda(recibir, 'px-2 text-right font-mono' + (u.sin_oc > 0 ? ' text-amber-700 font-bold' : ''));
+        if (u.sin_oc > 0) td.title = 'SAP tiene ' + fmt(u.pedido_sap, 0) + ' u pedidas a esta bodega y hay ' + fmt(u.recibir, 0) + ' u en OC abiertas cargadas';
+        tr.appendChild(td);
+        for (var k = 0; k < 4; k++) tr.appendChild(celda('', 'px-2'));
+        tr.appendChild(celda(fmt(u.valor, 0), 'px-2 pr-5 text-right font-mono'));
+        return tr;
+    }
+
     function tablaUbicaciones(datos) {
         var cuerpo = document.getElementById('ubic-cuerpo');
         cuerpo.innerHTML = '';
+        var hubo_fuera = false;
         datos.ubicaciones.forEach(function (u) {
+            if (u.tipo === 'DETALLE' || u.tipo === 'FUERA') {
+                if (u.tipo === 'FUERA' && !hubo_fuera) {
+                    hubo_fuera = true;
+                    var sep = document.createElement('tr');
+                    sep.innerHTML = '<td colspan="10" class="pt-2 pb-1 pl-5 text-[10px] font-black uppercase tracking-wider text-slate-400">No cuentan en el cálculo</td>';
+                    cuerpo.appendChild(sep);
+                }
+                cuerpo.appendChild(filaSap(u));
+                return;
+            }
             var tr = document.createElement('tr');
             tr.className = 'border-b border-slate-50 cursor-pointer hover:bg-cyan-50/60';
             tr.dataset.ubic = u.ubicacion;

@@ -220,7 +220,7 @@ def cargar_oc_abiertas(data_dir=None):
         if sku not in skus or pendiente <= 0:
             continue
         filas.append(OCAbierta(
-            nro_oc=cols[0].replace(',', ''), product_id=sku, bodega=purchase_bodega(cols[1]),
+            nro_oc=cols[0].replace(',', ''), product_id=sku, bodega=purchase_bodega(cols[1]), bodega_sap=cols[1][:20],
             proveedor_codigo=cols[3], fecha_oc=parse_date(cols[5]), fecha_comprometida=parse_date(cols[6]),
             cantidad_pendiente=pendiente,
         ))

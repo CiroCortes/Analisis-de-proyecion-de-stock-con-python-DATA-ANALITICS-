@@ -11,6 +11,7 @@ from django.shortcuts import render
 
 from apps.calc.red import NODO_SANTIAGO
 from apps.data_ingestion.warehouses import SANTIAGO, SUCURSAL, SUCURSAL_CITIES, SUCURSAL_CODES, zona_red
+from apps.inventory.models import Warehouse
 
 from . import analisis
 from .excel import respuesta_excel
@@ -336,11 +337,23 @@ def analizar(request):
         'f': f, 'page_obj': page_obj, 'query': params.urlencode(), 'query_sin_orden': sin_orden.urlencode(),
         'ubicaciones': analisis.ubicaciones(), 'total': len(filas),
         'es_bodega': f['ubicacion'].startswith('013-'),
+        'es_otra': analisis.es_otra_bodega(f['ubicacion']),
+        'trat_otra': _tratamiento_texto(f['ubicacion']) if analisis.es_otra_bodega(f['ubicacion']) else '',
         'columnas': [('codigo', 'Código'), ('demanda', 'Demanda media'), ('a_pedir', 'A pedir'),
                      ('stock', 'Stock'), ('recibir', 'Por recibir'), ('entregar', 'Por entregar'),
                      ('venta12', 'Consumo 12 m'), ('meses', 'Meses c/ consumo'), ('costo', 'Costo USD'),
                      ('valor', 'Stock USD')],
     })
+
+
+def _tratamiento_texto(codigo):
+    from apps.data_ingestion.warehouses import NO_CUENTA, STOCK, TRANSITO, nombre_nodo
+    w = Warehouse.objects.filter(code=codigo).first()
+    if not w:
+        return ''
+    tipo, nodo, motivo, _ = w.tratamiento_efectivo
+    texto = {STOCK: f'cuenta como stock de {nombre_nodo(nodo)}', TRANSITO: f'cuenta como en camino a {nombre_nodo(nodo)}'}
+    return texto.get(tipo, f'no cuenta: {motivo}')
 
 
 @login_required

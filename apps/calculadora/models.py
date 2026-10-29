@@ -67,7 +67,8 @@ class OCAbierta(models.Model):
     """Linea de OC con cantidad pendiente: transito con fecha para la proyeccion diaria."""
     nro_oc = models.CharField(max_length=30)
     product = models.ForeignKey(ProductSKU, on_delete=models.CASCADE, related_name='oc_abiertas')
-    bodega = models.CharField(max_length=20)
+    bodega = models.CharField(max_length=20)            # bodega que recibe en el calculo (purchase_bodega)
+    bodega_sap = models.CharField(max_length=20, blank=True, default='')   # la de la OC en SAP (SPEC-29)
     proveedor_codigo = models.CharField(max_length=30, blank=True, default='', db_index=True)
     fecha_oc = models.DateField(null=True)
     fecha_comprometida = models.DateField(null=True)
