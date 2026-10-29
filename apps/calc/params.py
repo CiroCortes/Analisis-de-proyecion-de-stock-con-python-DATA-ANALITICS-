@@ -34,6 +34,10 @@ class Params:
     meses_historia_consumo: int = 12
     multiplicador_atipico: float = 3
     recortar_atipicos: bool = True
+    # Pico de consumo (SPEC-26, 29-oct-2026): un mes sobre k veces la mediana de los meses con
+    # consumo se recorta a ese tope. Con 4 se recortan 404 articulos (-10,9% de demanda en USD).
+    # 0 deja solo la regla del documento (promedio + 3 desvest).
+    multiplicador_pico_mediana: float = 4
 
     # Clasificacion
     umbral_r: int = 3
@@ -100,6 +104,7 @@ CATALOGO = {
     'min_oc_plazo_real': ('Minimo de OC para usar plazo real', (GENERAL,), 1, 20),
     'variacion_entrega_defecto': ('Variacion de entrega por defecto (% del plazo)', (GENERAL,), 0, 1),
     'multiplicador_atipico': ('Multiplicador del tope de mes atipico', (GENERAL,), 1, 10),
+    'multiplicador_pico_mediana': ('Pico de consumo: veces la mediana mensual (0 = sin tope)', (GENERAL,), 0, 20),
     'umbral_r': ('Umbral R (meses con consumo de 12)', (GENERAL,), 1, 12),
     'umbral_r_regular': ('Umbral R-Regular (meses con consumo de 12)', (GENERAL,), 1, 12),
     'nuevo_meses_repuestos': ('Antiguedad para Nuevo, repuestos (meses)', (GENERAL,), 0, 36),

@@ -1,6 +1,7 @@
 """Vistas de planificacion de la Calculadora (SPEC-18 §4.1): panel, grilla de compras,
 detalle del articulo con la memoria de calculo e indicadores de gestion."""
 import json
+import statistics
 from collections import defaultdict
 
 from django.contrib import messages
@@ -292,9 +293,14 @@ def _memoria(e, r):
          _n(c.consumo_promedio_mes))
     paso('Consumo', 'consumo_diario', f'Suma {n} meses ÷ 365 = {_n(c.consumo_total_12m)} ÷ 365', _n(c.consumo_diario, 3))
     paso('Consumo', 'variacion_consumo', 'DESVEST.M de los meses', _n(c.variacion_consumo))
+    # SPEC-26: el tope es el menor entre promedio + 3 desvest y k x mediana (se muestra la regla que mando)
+    prom_orig = sum(c.meses_originales) / n if n else 0
+    var_orig = statistics.stdev(c.meses_originales) if n > 1 else 0
+    formula_tope = (f'{_n(p.multiplicador_pico_mediana, 0)} × mediana de los meses con consumo {_n(c.mediana_con_consumo)}'
+                    if c.tope_por_mediana else
+                    f'{_n(prom_orig)} + {_n(p.multiplicador_atipico, 0)} × {_n(var_orig)}')
     paso('Consumo', 'tope_mes_atipico',
-         f'{_n(c.consumo_promedio_mes)} + {_n(p.multiplicador_atipico, 0)} × {_n(c.variacion_consumo)}'
-         + (f' · meses recortados: {len(c.meses_atipicos)}' if c.meses_atipicos else ''), _n(c.tope_mes_atipico))
+         formula_tope + (f' · meses recortados: {len(c.meses_atipicos)}' if c.meses_atipicos else ''), _n(c.tope_mes_atipico))
     if e.ajuste_comercial:
         paso('Consumo', 'consumo_promedio_ajustado', f'{_n(c.consumo_promedio_mes)} + ajuste {_n(e.ajuste_comercial)}',
              _n(po.consumo_usado))

@@ -271,6 +271,8 @@ class ResultadoArticulo(models.Model):
     consumo_diario = models.FloatField(default=0)
     variacion_consumo = models.FloatField(default=0)
     tope_mes_atipico = models.FloatField(default=0)
+    meses_atipicos = models.JSONField(default=list)      # indices de consumo_meses recortados (SPEC-26)
+    mediana_con_consumo = models.FloatField(default=0)
     mayor_consumo_mes = models.FloatField(default=0)
     valor_consumo_anual = models.FloatField(default=0)
 
@@ -495,6 +497,7 @@ class Alerta(models.Model):
         ('CONTRATO', 'Contrato'),
         ('DATOS', 'Datos'),
         ('TRASLADO_SUCURSALES', 'Traslado entre sucursales'),
+        ('PICO', 'Pico de consumo recortado'),
     ]
     tipo = models.CharField(max_length=20, choices=TIPOS, db_index=True)
     product = models.ForeignKey(ProductSKU, null=True, blank=True, on_delete=models.CASCADE, related_name='alertas')

@@ -49,11 +49,19 @@ quiebre real USD 717 mil vs brecha contra objetivo USD 3,94 M.
 
 | # | Hallazgo | Acción |
 |---|---|---|
-| 16 | Las NC se restan en la 013-NC/013-IN (Santiago), no en la bodega de la factura: infla la demanda de la sucursal | SPEC-22: reubicar al origen. **Pendiente: re-exportar la consulta 8** (ahora separa las NC) |
+| 16 | Las NC se restan en la 013-NC/013-IN (Santiago), no en la bodega de la factura: infla la demanda de la sucursal | SPEC-22: reubicar al origen. Consulta 8 re-exportada el 29-oct; la regla se corrige en la SPEC-25 (ver #22) |
 | 17 | En 1.014 de 2.032 celdas con NC, OINM no registra movimiento (390 mil u; una NC de 360.000 u sobre factura sin movimiento) | Solo se reubica lo que OINM registró. Confirmar con contabilidad si son facturas de reserva |
 | 18 | El corte de 180 días de la consulta 5 dejaba fuera OC antiguas pendientes (pre-bodegas: SAP 12.630 u, cargadas ~3.700) | Corregido: consulta 5 sin corte. Tránsito de los nodos: 119 mil → 143 mil u |
 | 19 | PC/OF abiertos desde 2023. En el alcance: 6% de las u de PC y 8% de las de OF tienen más de 3 meses; el volumen grande es RETAIL y servicios | SPEC-23: cálculo híbrido (compra −3,6% con solo recientes) + informe de antigüedad para Contraloría |
 | 20 | Producción pide ver Santiago también por bodega (013-PS vs 013-PP rotan distinto) | **Hecho 28-oct (SPEC-24)**: Analizar artículos, con Santiago unificado y cada 013-xx |
+
+## Hallazgos del 29-oct (Datalake, NC y picos)
+
+| # | Hallazgo | Acción |
+|---|---|---|
+| 21 | La tabla `oinm` del Datalake repite movimientos (nov-25: 39.226 filas para 14.660 `transnum`) y le faltan otros (ago-26 del 70100011; feb-25 y jul-25 casi vacíos). Cambia entre exportaciones diarias | **Corregido el duplicado**: consultas 8 y 13 cuentan cada movimiento una vez (compra 3,36 → 2,21 M USD). **Faltantes pendientes**: IT o Service Layer |
+| 22 | 013-NC y 013-NC_E son de Cobranzas (facturas rechazadas): NC y refactura sin repuesto físico. 013-IN = devoluciones físicas. 0EX = exportación (venta real) | SPEC-25 (pendiente): excluir 013-NC/NC_E del consumo y compensar NC con refacturas en las demás bodegas. Consulta 8 ya separa `FACTURA` |
+| 23 | Promedio + 3 desvest casi no recorta picos (el pico infla la desvest): 262 de 462 picos sin tocar | **Hecho (SPEC-26)**: tope = menor entre la regla del documento y 4 × mediana; alerta PICO. Compra 2,21 → 2,04 M USD |
 
 ## Decisiones abiertas
 

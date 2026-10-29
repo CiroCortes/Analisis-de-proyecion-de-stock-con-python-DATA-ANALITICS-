@@ -19,6 +19,12 @@ def _prom(v):
     return sum(v) / len(v) if v else 0.0
 
 
+def _meses(hoy, n):
+    """'AAAA-MM' de los ultimos n meses cerrados, del mas antiguo al mas reciente."""
+    total = hoy.year * 12 + hoy.month - 1
+    return [f'{(total - i) // 12}-{(total - i) % 12 + 1:02d}' for i in range(n, 0, -1)]
+
+
 def _reglas_articulo(r, p, mes_txt):
     """Alertas de un ResultadoArticulo. Devuelve [(clave, tipo, severidad, mensaje)]."""
     out = []
@@ -71,6 +77,15 @@ def _reglas_articulo(r, p, mes_txt):
         if abs(var6 - r.variacion_consumo) > 0.5 * r.variacion_consumo:
             out.append((f'CONSUMO_IRREGULAR|{sku}|{mes_txt}', 'CONSUMO_IRREGULAR', BAJA,
                         f'Variacion de 6 meses {var6:.1f} vs 12 meses {r.variacion_consumo:.1f}'))
+    # Pico recortado (SPEC-26): queda fuera de la demanda; Abastecimiento revisa si fue una venta
+    # puntual, un proyecto o un error de registro (PC con muchas salidas, NC y refacturas...)
+    if repone and r.meses_atipicos:
+        etiquetas = _meses(r.corrida.fecha_calculo, len(meses))
+        for i in r.meses_atipicos:
+            out.append((f'PICO|{sku}|{etiquetas[i]}', 'PICO', BAJA,
+                        f'{etiquetas[i]}: {meses[i]:,.0f} u recortado a {r.tope_mes_atipico:,.1f} '
+                        f'(mediana de los meses con consumo {r.mediana_con_consumo:,.1f}). '
+                        'Revisar si fue venta puntual, proyecto o error de registro'))
     if r.letra in ('P', 'O') and sum(1 for v in ult3 if v > 0) >= 2:
         out.append((f'NUEVO_CONSUMO|{sku}|{mes_txt}', 'NUEVO_CONSUMO', MEDIA,
                     f'Articulo {r.letra} con consumo en 2 de los ultimos 3 meses'))

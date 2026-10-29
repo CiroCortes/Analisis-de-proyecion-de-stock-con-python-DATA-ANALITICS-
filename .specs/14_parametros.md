@@ -26,6 +26,7 @@ G = general, F = familia, P = proveedor, A = artículo, B = bodega.
 | min_oc_plazo_real | Mínimo de OC para plazo real | 3 | 1–20 | G |
 | variacion_entrega_defecto | Variación de entrega por defecto | 0,25 | 0–1 | G |
 | multiplicador_atipico | Tope de mes atípico | 3 | 1–10 | G |
+| multiplicador_pico_mediana | Pico de consumo: veces la mediana mensual, 0 = sin tope (SPEC-26) | 4 | 0–20 | G |
 | umbral_r / umbral_r_regular | Meses con consumo para R / R-Regular | 3 / 9 | 1–12 | G |
 | nuevo_meses_repuestos / _panol | Antigüedad para Nuevo | 8 / 4 | 0–36 | G |
 | inmovilizado_meses_repuestos / _panol | Meses para Inmovilizado | 24 / 12 | 6–60 | G |

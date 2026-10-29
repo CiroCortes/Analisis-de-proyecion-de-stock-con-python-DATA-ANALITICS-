@@ -474,6 +474,7 @@ def _guardar(corrida, datos, calculados, valor_anual, otra_base=None):
             consumo_ajustado_mes=po.consumo_usado if e.ajuste_comercial else None,
             consumo_diario=c.consumo_diario, variacion_consumo=c.variacion_consumo,
             tope_mes_atipico=c.tope_mes_atipico, mayor_consumo_mes=c.mayor_consumo_mes,
+            meses_atipicos=list(c.meses_atipicos), mediana_con_consumo=c.mediana_con_consumo,
             valor_consumo_anual=valor_anual.get(p.code, 0),
             dias_entrega_promedio=pl.dias_entrega_promedio, variacion_entrega_dias=pl.variacion_entrega_dias,
             plazo_total_dias=pl.plazo_total_dias, origen_plazo=pl.origen, n_oc=pl.n_oc,

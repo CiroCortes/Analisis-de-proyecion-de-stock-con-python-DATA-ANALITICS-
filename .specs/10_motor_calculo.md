@@ -24,8 +24,8 @@ política → disponible → compra → distribución → proyección → excepc
 | consumo_promedio_mes | Σ meses ÷ 12 (los ceros cuentan) |
 | consumo_diario | Σ meses ÷ 365 |
 | variacion_consumo | DESVEST.M de los 12 meses |
-| tope_mes_atipico | promedio + 3 × variación |
-| meses_atipicos | Meses > tope, **solo si meses_con_consumo ≥ umbral_r (3)** y no asociados a evento |
+| tope_mes_atipico | El menor entre promedio + 3 × variación y 4 × mediana de los meses con consumo (**SPEC-26**) |
+| meses_atipicos | Meses > tope, **solo si meses_con_consumo ≥ umbral_r (3)** y no asociados a evento; si 2 de los últimos 3 superan el tope es alza sostenida y no se recortan (SPEC-26) |
 | mayor_consumo_mes | MAX de los meses sin atípicos ni meses de evento; si queda 0, el máximo recortado |
 
 - Los atípicos se recortan al tope (`recortar_atipicos`) y promedio/variación se recalculan con la

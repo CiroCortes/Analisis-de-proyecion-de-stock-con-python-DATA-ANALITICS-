@@ -20,6 +20,7 @@ Pantallas: `/calculadora/alertas/`, `/calculadora/indicadores/`.
 | ALZA_CONSUMO | **Solo R/E**: promedio 3 meses > 150% del promedio | MEDIA | tipo + sku + mes |
 | CONSUMO_IRREGULAR | **Solo R/E**: desvest 6 meses difiere > 50% de la de 12 | BAJA | tipo + sku + mes |
 | NUEVO_CONSUMO | P u O con consumo en 2 de los últimos 3 meses | MEDIA | tipo + sku + mes |
+| PICO | **Solo R/E**: mes recortado por pico de consumo (SPEC-26) | BAJA | tipo + sku + mes del pico |
 | CAMBIO_LETRA | `HistorialMensual` del mes con letra anterior distinta | MEDIA | tipo + sku + mes |
 | TRASLADO_SUCURSALES | Bodega en espera y otra sucursal con stock libre | MEDIA | tipo + sku + bodega |
 | EVENTO_COMERCIAL | Evento propuesto pendiente; o aprobado vencido con consumo real < 50% de lo anunciado | MEDIA / BAJA | tipo + pend/venc + id |
