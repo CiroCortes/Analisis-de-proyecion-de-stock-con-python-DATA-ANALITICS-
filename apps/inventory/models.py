@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.db import models
 from apps.inventory.stock_actual_models import StockActual, CargaStockActual  # noqa: F401
 
@@ -22,6 +23,14 @@ class Warehouse(models.Model):
     code = models.CharField(max_length=20, unique=True, db_index=True, verbose_name="Código Bodega")
     name = models.CharField(max_length=100, verbose_name="Nombre Bodega")
     is_active = models.BooleanField(default=True, db_index=True, verbose_name="Activa")
+    # Tratamiento manual del stock en el calculo (SPEC-27); vacio = automatico por codigo.
+    # Solo para bodegas fuera de la red: las 013-xx y sucursales usan is_active.
+    tratamiento = models.CharField(max_length=10, blank=True, default='', verbose_name="Tratamiento manual")
+    nodo_destino = models.CharField(max_length=10, blank=True, default='', verbose_name="Nodo (stock o destino)")
+    motivo = models.CharField(max_length=200, blank=True, default='', verbose_name="Motivo del tratamiento")
+    modificado_por = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+                                       related_name='+', verbose_name="Modificado por")
+    modificado_en = models.DateTimeField(null=True, blank=True, verbose_name="Modificado el")
 
     @property
     def zone(self):
@@ -51,6 +60,19 @@ class Warehouse(models.Model):
     @property
     def is_santiago(self):
         return self.zone == 'SANTIAGO'
+
+    @property
+    def es_de_red(self):
+        from apps.data_ingestion.warehouses import es_bodega_de_red
+        return es_bodega_de_red(self.code)
+
+    @property
+    def tratamiento_efectivo(self):
+        """(tipo, nodo, motivo, manual) que usa el calculo para el stock de esta bodega (SPEC-27)."""
+        from apps.data_ingestion.warehouses import tratamiento_por_defecto
+        if self.tratamiento and not self.es_de_red:
+            return self.tratamiento, self.nodo_destino, self.motivo or 'Definido en Configuración', True
+        return (*tratamiento_por_defecto(self.code, self.is_active), False)
 
     class Meta:
         verbose_name = "Bodega"

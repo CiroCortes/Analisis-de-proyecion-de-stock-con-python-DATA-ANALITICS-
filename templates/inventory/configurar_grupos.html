@@ -64,203 +64,147 @@
     {% if active_tab == 'bodegas' %}
     <div class="space-y-6">
 
-        <!-- KPI Cards Bodegas -->
+        <!-- Resumen: como usa el calculo el stock de cada bodega (SPEC-27) -->
         <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            <div class="bg-white rounded-2xl border border-slate-200 p-5 text-center shadow-sm">
-                <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Bodegas Detectadas SAP</div>
-                <div class="text-3xl font-black text-slate-900 mt-1 font-mono">{{ total_warehouses }}</div>
-                <span class="text-[10px] text-slate-400 font-medium block mt-0.5">Catálogo Físico Completo</span>
-            </div>
             <div class="bg-emerald-50 rounded-2xl border border-emerald-200 p-5 text-center shadow-sm">
-                <div class="text-[10px] font-bold text-emerald-700 uppercase tracking-wider">Bodegas Auditadas (S&amp;OP)</div>
-                <div class="text-3xl font-black text-emerald-600 mt-1 font-mono" id="kpiActiveWhCount">{{ active_warehouses_count }}</div>
-                <span class="text-[10px] text-emerald-600 font-bold block mt-0.5">Incluidas en balance DRP</span>
+                <div class="text-[10px] font-bold text-emerald-700 uppercase tracking-wider">Aportan stock</div>
+                <div class="text-3xl font-black text-emerald-600 mt-1 font-mono">{{ resumen_trat.STOCK.0 }}</div>
+                <span class="text-[10px] text-emerald-700 font-bold block mt-0.5">USD {{ resumen_trat.STOCK.1|floatformat:0 }} en el alcance</span>
             </div>
-            <div class="bg-rose-50 rounded-2xl border border-rose-200 p-5 text-center shadow-sm">
-                <div class="text-[10px] font-bold text-rose-700 uppercase tracking-wider">Bodegas Excluidas</div>
-                <div class="text-3xl font-black text-rose-600 mt-1 font-mono" id="kpiInactiveWhCount">{{ inactive_warehouses_count }}</div>
-                <span class="text-[10px] text-rose-600 font-bold block mt-0.5">Omitidas en reposición</span>
+            <div class="bg-amber-50 rounded-2xl border border-amber-200 p-5 text-center shadow-sm">
+                <div class="text-[10px] font-bold text-amber-700 uppercase tracking-wider">En camino a un nodo</div>
+                <div class="text-3xl font-black text-amber-600 mt-1 font-mono">{{ resumen_trat.TRANSITO.0 }}</div>
+                <span class="text-[10px] text-amber-700 font-bold block mt-0.5">USD {{ resumen_trat.TRANSITO.1|floatformat:0 }} (traslados y pre-bodegas)</span>
+            </div>
+            <div class="bg-slate-50 rounded-2xl border border-slate-200 p-5 text-center shadow-sm">
+                <div class="text-[10px] font-bold text-slate-500 uppercase tracking-wider">No cuentan</div>
+                <div class="text-3xl font-black text-slate-700 mt-1 font-mono">{{ resumen_trat.NO_CUENTA.0 }}</div>
+                <span class="text-[10px] text-slate-500 font-bold block mt-0.5">USD {{ resumen_trat.NO_CUENTA.1|floatformat:0 }} fuera del cálculo</span>
             </div>
             <div class="bg-slate-900 rounded-2xl border border-slate-700 p-5 text-center shadow-sm">
-                <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Stock Disponible Auditado</div>
-                <div class="text-2xl sm:text-3xl font-black text-white mt-1 font-mono">{{ total_audited_stock|default:0|floatformat:0 }} <span class="text-xs text-pesco-cyan font-sans">u</span></div>
-                <span class="text-[10px] text-slate-400 font-medium block mt-0.5">Bajo supervisión S&amp;OP</span>
+                <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Bodegas de SAP</div>
+                <div class="text-3xl font-black text-white mt-1 font-mono">{{ total_warehouses }}</div>
+                <span class="text-[10px] text-slate-400 font-medium block mt-0.5">USD: artículos activos de grupos activos</span>
             </div>
         </div>
 
-        <!-- Presets & Toolbar Bodegas -->
+        <!-- Como se lee la pantalla -->
         <div class="bg-white p-5 sm:p-6 rounded-3xl shadow-sm border border-slate-200 space-y-4">
             <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
-                <div>
+                <div class="max-w-3xl">
                     <h3 class="text-sm font-black text-slate-900 flex items-center gap-2">
-                        <i class="fa-solid fa-wand-magic-sparkles text-pesco-cyan"></i> Presets de Bodegas Operativas
+                        <i class="fa-solid fa-warehouse text-pesco-cyan"></i> Cómo cuenta cada bodega en la Calculadora
                     </h3>
-                    <p class="text-xs text-slate-500 mt-0.5">Selecciona el alcance territorial para la auditoría de stock y balance DRP.</p>
+                    <p class="text-xs text-slate-500 mt-1">
+                        <b class="text-emerald-700">Stock</b>: disponible en un nodo (Santiago o una sucursal).
+                        <b class="text-amber-700">En camino</b>: llega a un nodo (traslados T…, pre-bodegas 000-xxx).
+                        <b class="text-slate-700">No cuenta</b>: no está disponible para abastecer (notas de crédito, exportación, consignación, demos…).
+                        Las bodegas de la red (013-xx y sucursales) se incluyen o excluyen; las demás pueden pasar a stock o a tránsito de un nodo.
+                        Cada cambio queda con usuario y fecha y se aplica al recalcular.
+                    </p>
                 </div>
-
                 <div class="flex flex-wrap items-center gap-2">
-                    <!-- Preset: Matriz Oficial 10 Bodegas (Incluye 013-03) -->
                     <form method="POST" action="{% url 'inventory:configuracion' %}">
                         {% csrf_token %}
                         <input type="hidden" name="action" value="preset_warehouses_operational">
-                        <button type="submit" class="bg-pesco-cyan hover:bg-pesco-darkcyan text-white text-xs font-black px-4 py-2.5 rounded-xl shadow-sm transition flex items-center gap-2" title="Activa las 5 bodegas operativas de Santiago (013-PP, 013-PS, 013-07, 013-09, 013-03) y las 5 sucursales regionales">
-                            <i class="fa-solid fa-star text-amber-300"></i> Matriz Oficial (10 Bodegas)
+                        <button type="submit" class="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold px-4 py-2.5 rounded-xl transition flex items-center gap-1.5" title="Incluye todas las 013-xx y las 5 sucursales">
+                            <i class="fa-solid fa-star text-amber-500"></i> Red completa
                         </button>
                     </form>
-
-                    <!-- Preset: Solo Santiago -->
-                    <form method="POST" action="{% url 'inventory:configuracion' %}">
+                    <form method="POST" action="{% url 'inventory:configuracion' %}?tab=bodegas">
                         {% csrf_token %}
-                        <input type="hidden" name="action" value="preset_warehouses_stgo">
-                        <button type="submit" class="bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200 text-xs font-bold px-4 py-2.5 rounded-xl transition flex items-center gap-1.5" title="Activa solo los pañoles y bodegas centrales de Santiago">
-                            <i class="fa-solid fa-city text-indigo-600"></i> Solo Santiago (013-*)
-                        </button>
-                    </form>
-
-                    <!-- Preset: Activar Todas -->
-                    <form method="POST" action="{% url 'inventory:configuracion' %}">
-                        {% csrf_token %}
-                        <input type="hidden" name="action" value="preset_warehouses_all">
-                        <button type="submit" class="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold px-4 py-2.5 rounded-xl transition flex items-center gap-1.5">
-                            <i class="fa-solid fa-check-double text-slate-600"></i> Activar Todas
+                        <input type="hidden" name="action" value="recalculate_sop">
+                        <button type="submit" class="bg-pesco-cyan hover:bg-pesco-darkcyan text-white text-xs font-black px-4 py-2.5 rounded-xl shadow-sm transition flex items-center gap-2">
+                            <i class="fa-solid fa-rotate"></i> Recalcular con esta configuración
                         </button>
                     </form>
                 </div>
             </div>
-
-            <!-- Búsqueda en Vivo de Bodegas -->
             <div class="pt-3 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3">
                 <div class="relative w-full sm:w-96">
                     <i class="fa-solid fa-magnifying-glass absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
                     <input type="text" id="filterWhInput" placeholder="Buscar bodega por código o nombre..."
                            class="w-full pl-9 pr-4 py-2.5 border border-slate-300 rounded-xl text-xs font-medium focus:ring-2 focus:ring-pesco-cyan focus:border-pesco-cyan bg-slate-50 outline-none transition">
                 </div>
-                <span class="text-xs text-slate-400 font-medium">Usa los switches individuales o guarda la selección en bloque.</span>
+                <span id="whAviso" class="text-xs font-bold text-amber-700" style="display:none">
+                    <i class="fa-solid fa-circle-exclamation"></i> Hay cambios sin recalcular
+                </span>
+                {% if not puede_editar_bodegas %}
+                <span class="text-xs text-slate-400 font-medium">Solo lectura: tu usuario no puede cambiar bodegas.</span>
+                {% endif %}
             </div>
         </div>
 
-        <!-- Formulario Masivo y Tabla de Bodegas -->
-        <form method="POST" action="{% url 'inventory:configuracion' %}" id="whBulkForm">
-            {% csrf_token %}
-            <input type="hidden" name="action" value="save_warehouses">
-
-            <div class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
-                <div class="p-4 sm:p-5 bg-slate-50/80 border-b border-slate-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-                    <div class="flex items-center gap-3">
-                        <label class="inline-flex items-center gap-2 cursor-pointer select-none">
-                            <input type="checkbox" id="selectAllWh" class="w-4 h-4 text-pesco-cyan rounded border-slate-300 focus:ring-pesco-cyan">
-                            <span class="text-xs font-bold text-slate-700">Seleccionar Visibles</span>
-                        </label>
-                        <span class="text-xs text-slate-400 font-medium">|</span>
-                        <span class="text-xs font-bold text-slate-500" id="selectedWhCounter">0 bodegas seleccionadas</span>
-                    </div>
-                    <button type="submit" class="bg-slate-900 hover:bg-slate-800 text-white text-xs font-black px-6 py-2.5 rounded-xl shadow-sm transition flex items-center gap-2">
-                        <i class="fa-solid fa-floppy-disk text-pesco-cyan"></i> Guardar Selección de Bodegas
-                    </button>
-                </div>
-
-                <div class="overflow-x-auto max-h-[650px] overflow-y-auto">
-                    <table class="w-full text-left border-collapse text-xs">
-                        <thead class="sticky top-0 bg-slate-100 text-slate-600 uppercase text-[10px] font-black tracking-wider border-b border-slate-200 z-10">
-                            <tr>
-                                <th class="py-3 px-4 w-12 text-center">Sel.</th>
-                                <th class="py-3 px-4 w-28">Código</th>
-                                <th class="py-3 px-4">Nombre / Descripción Bodega</th>
-                                <th class="py-3 px-4 w-44">Zona Operativa</th>
-                                <th class="py-3 px-4 w-28 text-right">SKUs en Bodega</th>
-                                <th class="py-3 px-4 w-36 text-right">Stock Disponible</th>
-                                <th class="py-3 px-4 w-32 text-center">Estado Auditoría</th>
-                                <th class="py-3 px-4 w-28 text-center">Acción Rápida</th>
-                            </tr>
-                        </thead>
-                        <tbody class="divide-y divide-slate-100 text-slate-700" id="whTableBody">
-                            {% for w in warehouses %}
-                            <tr class="wh-row transition hover:bg-slate-50/80 {% if not w.is_active %}bg-slate-50/60 opacity-75{% endif %}"
-                                data-code="{{ w.code }}"
-                                data-name="{{ w.name|lower }}"
-                                data-active="{{ w.is_active|yesno:'true,false' }}">
-                                <td class="py-3 px-4 text-center">
-                                    <input type="checkbox" name="active_warehouses" value="{{ w.code }}"
-                                           class="wh-checkbox w-4 h-4 text-pesco-cyan rounded border-slate-300 focus:ring-pesco-cyan cursor-pointer"
-                                           {% if w.is_active %}checked{% endif %}{% if not w.is_physical %} disabled{% endif %}>
-                                </td>
-                                <td class="py-3 px-4 font-mono font-black text-slate-900">
-                                    <span class="inline-flex items-center px-2 py-0.5 rounded-md {% if w.is_stgo %}bg-indigo-100 text-indigo-900{% else %}bg-slate-100 text-slate-800{% endif %}">
-                                        {{ w.code }}
-                                    </span>
-                                </td>
-                                <td class="py-3 px-4 font-semibold text-slate-800">
-                                    {{ w.name }}
-                                    {% if w.code == '013-03' %}
-                                    <span class="ml-2 bg-emerald-100 text-emerald-800 text-[10px] font-black px-2 py-0.5 rounded-full border border-emerald-300">
-                                        ⭐ Nueva Incorporación S&amp;OP
-                                    </span>
+        <div class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+            <div class="overflow-x-auto max-h-[650px] overflow-y-auto">
+                <table class="w-full text-left border-collapse text-xs">
+                    <thead class="sticky top-0 bg-slate-100 text-slate-600 uppercase text-[10px] font-black tracking-wider border-b border-slate-200 z-10">
+                        <tr>
+                            <th class="py-3 px-4 w-28">Código</th>
+                            <th class="py-3 px-4">Bodega</th>
+                            <th class="py-3 px-4">Cómo cuenta en el cálculo</th>
+                            <th class="py-3 px-4 w-20 text-right">SKUs</th>
+                            <th class="py-3 px-4 w-28 text-right">Stock</th>
+                            <th class="py-3 px-4 w-32 text-right">USD alcance</th>
+                            <th class="py-3 px-4" style="min-width:320px">Cambiar</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-100 text-slate-700" id="whTableBody">
+                        {% for w in warehouses %}
+                        <tr class="wh-row transition hover:bg-slate-50/80" data-code="{{ w.code }}" data-name="{{ w.name|lower }}">
+                            <td class="py-3 px-4 font-mono font-black text-slate-900">
+                                <span class="inline-flex items-center px-2 py-0.5 rounded-md {% if w.is_stgo %}bg-indigo-100 text-indigo-900{% else %}bg-slate-100 text-slate-800{% endif %}">{{ w.code }}</span>
+                            </td>
+                            <td class="py-3 px-4 font-semibold text-slate-800">{{ w.name }}</td>
+                            <td class="py-3 px-4">
+                                <span class="wh-badge inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black border {% if w.trat_tipo == 'STOCK' %}bg-emerald-100 text-emerald-800 border-emerald-300{% elif w.trat_tipo == 'TRANSITO' %}bg-amber-100 text-amber-900 border-amber-300{% else %}bg-slate-200 text-slate-600 border-slate-300{% endif %}">{{ w.trat_texto }}</span>
+                                <span class="wh-manual ml-1 text-[10px] font-black text-indigo-700" {% if not w.trat_manual %}style="display:none"{% endif %} title="Tratamiento definido en Configuración">MANUAL{% if w.modificado_por %} · {{ w.modificado_por.get_username }} · {{ w.modificado_en|date:"d-m H:i" }}{% endif %}</span>
+                                <div class="wh-motivo text-[11px] text-slate-500 mt-1">{{ w.trat_motivo }}</div>
+                            </td>
+                            <td class="py-3 px-4 text-right font-mono font-bold text-slate-600">{{ w.sku_count|default:0 }}</td>
+                            <td class="py-3 px-4 text-right font-mono font-bold {% if w.stock_disponible > 0 %}text-slate-900{% else %}text-slate-400{% endif %}">{{ w.stock_disponible|default:0|floatformat:0 }} u</td>
+                            <td class="py-3 px-4 text-right font-mono font-bold {% if w.usd_alcance > 0 %}text-slate-900{% else %}text-slate-400{% endif %}">{{ w.usd_alcance|floatformat:0 }}</td>
+                            <td class="py-3 px-4">
+                                {% if w.trat_editable %}
+                                <div class="flex items-center gap-2">
+                                    <select class="wh-select border border-slate-300 rounded-lg px-2 py-1.5 text-[11px] bg-white" {% if not puede_editar_bodegas %}disabled{% endif %}>
+                                        {% if w.es_de_red %}
+                                        <option value="STOCK" {% if w.is_active %}selected{% endif %}>Stock de {{ w.trat_nodo_nombre }} (incluida)</option>
+                                        <option value="NO_CUENTA" {% if not w.is_active %}selected{% endif %}>No cuenta (excluida)</option>
+                                        {% else %}
+                                        <option value="" {% if not w.trat_manual %}selected{% endif %}>Automático: {{ w.trat_auto }}</option>
+                                        <optgroup label="Stock disponible en">
+                                            {% for codigo, nombre in nodos_red %}
+                                            <option value="STOCK|{{ codigo }}" {% if w.trat_manual and w.trat_tipo == 'STOCK' and w.trat_nodo == codigo %}selected{% endif %}>Stock de {{ nombre }}</option>
+                                            {% endfor %}
+                                        </optgroup>
+                                        <optgroup label="En camino a">
+                                            {% for codigo, nombre in nodos_red %}
+                                            <option value="TRANSITO|{{ codigo }}" {% if w.trat_manual and w.trat_tipo == 'TRANSITO' and w.trat_nodo == codigo %}selected{% endif %}>En camino a {{ nombre }}</option>
+                                            {% endfor %}
+                                        </optgroup>
+                                        <option value="NO_CUENTA|" {% if w.trat_manual and w.trat_tipo == 'NO_CUENTA' %}selected{% endif %}>No cuenta</option>
+                                        {% endif %}
+                                    </select>
+                                    {% if not w.es_de_red %}
+                                    <input type="text" class="wh-motivo-input border border-slate-300 rounded-lg px-2 py-1.5 text-[11px] w-32" maxlength="200" placeholder="Motivo" value="{% if w.trat_manual %}{{ w.motivo }}{% endif %}" {% if not puede_editar_bodegas %}disabled{% endif %}>
                                     {% endif %}
-                                </td>
-                                <td class="py-3 px-4 font-medium">
-                                    {% if not w.is_physical %}
-                                    <span class="inline-flex items-center gap-1.5 text-slate-500 font-bold" title="No es una bodega física del S&amp;OP (tránsito, consignación o no conforme): se excluye de los cálculos">
-                                        <i class="fa-solid fa-ban text-xs"></i> {{ w.kind_label|default:"No física" }}
-                                    </span>
-                                    {% elif w.is_stgo %}
-                                    <span class="inline-flex items-center gap-1.5 text-indigo-700 font-bold">
-                                        <i class="fa-solid fa-city text-xs"></i> Santiago
-                                    </span>
-                                    {% elif w.zone == 'SUCURSAL' %}
-                                    <span class="inline-flex items-center gap-1.5 text-violet-700 font-bold">
-                                        <i class="fa-solid fa-location-dot text-xs text-amber-500"></i> Sucursal {{ w.city }}
-                                    </span>
-                                    {% else %}
-                                    <span class="inline-flex items-center gap-1.5 text-slate-400 font-bold">Otra bodega</span>
+                                    {% if puede_editar_bodegas %}
+                                    <button type="button" class="wh-guardar bg-slate-900 hover:bg-slate-800 text-white text-[10px] font-black px-3 py-1.5 rounded-lg" data-code="{{ w.code }}">Guardar</button>
                                     {% endif %}
-                                </td>
-                                <td class="py-3 px-4 text-right font-mono font-bold text-slate-600">
-                                    {{ w.sku_count|default:0 }}
-                                </td>
-                                <td class="py-3 px-4 text-right font-mono font-bold {% if w.stock_disponible > 0 %}text-slate-900{% else %}text-slate-400{% endif %}">
-                                    {{ w.stock_disponible|default:0|floatformat:0 }} u
-                                </td>
-                                <td class="py-3 px-4 text-center">
-                                    {% if w.is_active %}
-                                    <span class="wh-status-badge inline-flex items-center gap-1 px-3 py-1 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-300">
-                                        <i class="fa-solid fa-check"></i> AUDITADA
-                                    </span>
-                                    {% else %}
-                                    <span class="wh-status-badge inline-flex items-center gap-1 px-3 py-1 rounded-full text-[10px] font-black bg-slate-200 text-slate-600 border border-slate-300">
-                                        <i class="fa-solid fa-xmark"></i> EXCLUIDA
-                                    </span>
-                                    {% endif %}
-                                </td>
-                                <td class="py-3 px-4 text-center">
-                                    <button type="button" 
-                                            class="wh-toggle-btn inline-flex items-center justify-center gap-1 px-3 py-1 rounded-xl text-[10px] font-black transition {% if w.is_active %}bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100{% else %}bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100{% endif %}"
-                                            data-code="{{ w.code }}"
-                                            data-active="{{ w.is_active|yesno:'true,false' }}">
-                                        {% if w.is_active %}Excluir{% else %}Incluir{% endif %}
-                                    </button>
-                                </td>
-                            </tr>
-                            {% empty %}
-                            <tr>
-                                <td colspan="8" class="text-center py-12 text-slate-400 font-medium">
-                                    No se encontraron bodegas registradas.
-                                </td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-
-                <div class="p-4 sm:p-5 bg-slate-50 border-t border-slate-200 flex flex-col sm:flex-row justify-between items-center gap-3">
-                    <span class="text-xs text-slate-500 font-medium">
-                        Las bodegas auditadas participan en el balanceo DRP para donar stock y recibir sugerencias de compras o traslados.
-                    </span>
-                    <button type="submit" class="bg-slate-900 hover:bg-slate-800 text-white text-xs font-black px-6 py-2.5 rounded-xl shadow-sm transition flex items-center gap-2">
-                        <i class="fa-solid fa-floppy-disk text-pesco-cyan"></i> Guardar Selección de Bodegas
-                    </button>
-                </div>
+                                </div>
+                                {% else %}
+                                <span class="text-[11px] text-slate-400">Es el nodo Santiago: siempre cuenta</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr><td colspan="7" class="text-center py-12 text-slate-400 font-medium">No se encontraron bodegas registradas.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
             </div>
-        </form>
+        </div>
     </div>
     {% endif %}
 
@@ -594,41 +538,15 @@
 document.addEventListener('DOMContentLoaded', function() {
 
     // =========================================================================
-    // JS PARA PESTAÑA BODEGAS
+    // JS PARA PESTAÑA BODEGAS (SPEC-27: tratamiento de cada bodega en el calculo)
     // =========================================================================
     const filterWhInput = document.getElementById('filterWhInput');
     const whRows = document.querySelectorAll('.wh-row');
-    const selectAllWh = document.getElementById('selectAllWh');
-    const whCheckboxes = document.querySelectorAll('.wh-checkbox');
-    const selectedWhCounter = document.getElementById('selectedWhCounter');
-    const kpiActiveWhCount = document.getElementById('kpiActiveWhCount');
-    const kpiInactiveWhCount = document.getElementById('kpiInactiveWhCount');
-
-    function updateWhCounter() {
-        if (!selectedWhCounter) return;
-        const totalChecked = Array.from(whCheckboxes).filter(cb => cb.checked).length;
-        selectedWhCounter.textContent = `${totalChecked} bodegas seleccionadas`;
-        if (kpiActiveWhCount) kpiActiveWhCount.textContent = totalChecked;
-        if (kpiInactiveWhCount) kpiInactiveWhCount.textContent = whCheckboxes.length - totalChecked;
-    }
-
-    if (whCheckboxes.length > 0) {
-        updateWhCounter();
-        whCheckboxes.forEach(cb => cb.addEventListener('change', updateWhCounter));
-    }
-
-    if (selectAllWh) {
-        selectAllWh.addEventListener('change', function() {
-            const isChecked = this.checked;
-            whRows.forEach(row => {
-                if (row.style.display !== 'none') {
-                    const cb = row.querySelector('.wh-checkbox');
-                    if (cb) cb.checked = isChecked;
-                }
-            });
-            updateWhCounter();
-        });
-    }
+    const COLORES_TRAT = {
+        STOCK: 'bg-emerald-100 text-emerald-800 border-emerald-300',
+        TRANSITO: 'bg-amber-100 text-amber-900 border-amber-300',
+        NO_CUENTA: 'bg-slate-200 text-slate-600 border-slate-300',
+    };
 
     if (filterWhInput) {
         filterWhInput.addEventListener('input', function() {
@@ -636,60 +554,40 @@ document.addEventListener('DOMContentLoaded', function() {
             whRows.forEach(row => {
                 const code = row.getAttribute('data-code').toLowerCase();
                 const name = row.getAttribute('data-name').toLowerCase();
-                if (!term || code.includes(term) || name.includes(term)) {
-                    row.style.display = '';
-                } else {
-                    row.style.display = 'none';
-                }
+                row.style.display = (!term || code.includes(term) || name.includes(term)) ? '' : 'none';
             });
         });
     }
 
-    // Toggle individual bodega con AJAX
-    document.querySelectorAll('.wh-toggle-btn').forEach(btn => {
-        btn.addEventListener('click', async function(e) {
-            e.preventDefault();
-            const code = this.getAttribute('data-code');
+    document.querySelectorAll('.wh-guardar').forEach(btn => {
+        btn.addEventListener('click', async function() {
             const row = this.closest('tr');
-            const cb = row.querySelector('.wh-checkbox');
-
+            const motivoInput = row.querySelector('.wh-motivo-input');
             const formData = new FormData();
-            formData.append('action', 'toggle_warehouse');
-            formData.append('warehouse_code', code);
+            formData.append('action', 'set_tratamiento');
+            formData.append('warehouse_code', this.getAttribute('data-code'));
+            formData.append('valor', row.querySelector('.wh-select').value);
+            formData.append('motivo', motivoInput ? motivoInput.value : '');
             formData.append('csrfmiddlewaretoken', '{{ csrf_token }}');
-
+            this.disabled = true;
             try {
                 const res = await fetch("{% url 'inventory:configuracion' %}", {
-                    method: 'POST',
-                    body: formData,
-                    headers: { 'X-Requested-With': 'XMLHttpRequest' }
+                    method: 'POST', body: formData, headers: { 'X-Requested-With': 'XMLHttpRequest' }
                 });
                 const data = await res.json();
-                if (data.status === 'ok') {
-                    cb.checked = data.is_active;
-                    if (data.is_active) {
-                        row.classList.remove('bg-slate-50/60', 'opacity-75');
-                        btn.className = 'wh-toggle-btn inline-flex items-center justify-center gap-1 px-3 py-1 rounded-xl text-[10px] font-black transition bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100';
-                        btn.textContent = 'Excluir';
-                        const badge = row.querySelector('.wh-status-badge');
-                        if (badge) {
-                            badge.className = 'wh-status-badge inline-flex items-center gap-1 px-3 py-1 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-300';
-                            badge.innerHTML = '<i class="fa-solid fa-check"></i> AUDITADA';
-                        }
-                    } else {
-                        row.classList.add('bg-slate-50/60', 'opacity-75');
-                        btn.className = 'wh-toggle-btn inline-flex items-center justify-center gap-1 px-3 py-1 rounded-xl text-[10px] font-black transition bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100';
-                        btn.textContent = 'Incluir';
-                        const badge = row.querySelector('.wh-status-badge');
-                        if (badge) {
-                            badge.className = 'wh-status-badge inline-flex items-center gap-1 px-3 py-1 rounded-full text-[10px] font-black bg-slate-200 text-slate-600 border border-slate-300';
-                            badge.innerHTML = '<i class="fa-solid fa-xmark"></i> EXCLUIDA';
-                        }
-                    }
-                    updateWhCounter();
-                }
+                if (data.status !== 'ok') { alert(data.mensaje || 'No se pudo guardar'); return; }
+                const badge = row.querySelector('.wh-badge');
+                badge.className = 'wh-badge inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black border ' + COLORES_TRAT[data.tipo];
+                badge.textContent = data.texto;
+                row.querySelector('.wh-motivo').textContent = data.motivo;
+                const manual = row.querySelector('.wh-manual');
+                manual.style.display = data.manual ? '' : 'none';
+                manual.textContent = 'MANUAL · ' + data.quien;
+                document.getElementById('whAviso').style.display = '';
             } catch (err) {
-                console.error(err);
+                alert('No se pudo guardar: ' + err);
+            } finally {
+                this.disabled = false;
             }
         });
     });

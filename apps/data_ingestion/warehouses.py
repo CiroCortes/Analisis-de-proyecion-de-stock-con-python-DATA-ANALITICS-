@@ -137,3 +137,57 @@ def nodo_red(code):
 def zona_red(code):
     """Zona de una bodega o del nodo Santiago (la 013 no es fisica para zone_for)."""
     return SANTIAGO if (code or '').upper() == NODO_SANTIAGO else zone_for(code)
+
+
+# ── Tratamiento del stock de cada bodega en el calculo (SPEC-27) ─────────────
+# STOCK: disponible en un nodo de la red. TRANSITO: va en camino a un nodo. NO_CUENTA: no esta
+# disponible para abastecer. Las bodegas de la red (013-xx y sucursales) siguen con el switch
+# de auditoria (is_active); las demas pueden cambiar su tratamiento en Configuracion.
+STOCK, TRANSITO, NO_CUENTA = 'STOCK', 'TRANSITO', 'NO_CUENTA'
+TRATAMIENTOS = [(STOCK, 'Stock disponible'), (TRANSITO, 'En camino'), (NO_CUENTA, 'No cuenta')]
+
+# Motivos de las bodegas que no cuentan, acordados con Distribucion y Cobranzas (29-oct-2026)
+_MOTIVOS_NO_CUENTA = [
+    (_NO_CONFORME_RE, 'Notas de crédito de Cobranzas (facturas rechazadas): stock contable, el repuesto está con el cliente'),
+    (re.compile(r'^0EX$'), 'Exportación: ya vendido, espera la factura de COMEX'),
+    (_CONSIGNACION_RE, 'Consignación en el cliente: no disponible (su consumo sí es demanda de Santiago)'),
+    (re.compile(r'^95\d$'), 'Consignación en el cliente: no disponible (su consumo sí es demanda de Santiago)'),
+    (re.compile(r'^90\d$'), 'Equipos de demostración'),
+    (re.compile(r'^710$'), 'Repuestos en garantía'),
+    (re.compile(r'^85\d$'), 'Proveedores o bodegas externas'),
+    (re.compile(r'^99\d$'), 'Equipos en desarme'),
+]
+
+
+def nodos_red():
+    """[(codigo, nombre)] de los nodos de la Calculadora: Santiago y cada sucursal."""
+    return [(NODO_SANTIAGO, 'Santiago')] + list(SUCURSAL_CITIES.items())
+
+
+def nombre_nodo(nodo):
+    return dict(nodos_red()).get(nodo, nodo or '')
+
+
+def tratamiento_por_defecto(code, is_active=True):
+    """(tipo, nodo, motivo) que aplica el calculo a una bodega sin configuracion manual."""
+    code = (code or '').strip().upper()
+    if code == NODO_SANTIAGO:
+        return STOCK, NODO_SANTIAGO, 'Bodega de paso de Santiago: llegadas de regiones y despacho de PC'
+    destino = transit_destination(code) or prebodega_destino(code)
+    if destino:
+        tipo = 'Pre-bodega de importación' if prebodega_destino(code) else 'Traslado en camino'
+        return TRANSITO, nodo_red(destino), f'{tipo} hacia {nombre_nodo(nodo_red(destino))}'
+    zona = zone_for(code)
+    if zona:
+        if is_active:
+            return STOCK, nodo_red(code), 'Bodega de la red'
+        return NO_CUENTA, nodo_red(code), 'Bodega de la red excluida en Configuración'
+    for patron, motivo in _MOTIVOS_NO_CUENTA:
+        if patron.match(code):
+            return NO_CUENTA, '', motivo
+    return NO_CUENTA, '', 'Fuera de la red de abastecimiento'
+
+
+def es_bodega_de_red(code):
+    """013-xx fisicas y sucursales: su tratamiento se define con el switch de auditoria."""
+    return bool(zone_for(code))

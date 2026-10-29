@@ -13,6 +13,7 @@ from django.db import transaction
 from apps.data_ingestion.datalake_ingest import _clean_num, find_data_file, iter_txt_rows, parse_date
 from apps.data_ingestion.warehouses import commitment_bodega, nodo_red, purchase_bodega
 from apps.inventory.models import ProductionOrderMovement, ProductSKU, SalesOrderMovement, Warehouse
+from apps.inventory.stock_actual_models import StockActual
 
 from .models import (AcuerdoGlobal, CargaDatos, CompromisoAbierto, CompromisoDetalle, ConsumoMensual, OCAbierta, ParametroCompra,
                      PlazoOC, Proveedor)
@@ -374,15 +375,28 @@ def cargar_proveedores(data_dir=None):
 
 
 def cargar_bodegas(data_dir=None):
-    """Consulta 14: nombres reales de bodega (el tipo y la zona se definen en la plataforma)."""
+    """Consulta 14: nombres reales de bodega (el tipo y la zona se definen en la plataforma).
+    Las bodegas que vienen en la consulta 14 o en el stock y no estan en el catalogo se crean
+    excluidas (SPEC-27): asi aparecen en Configuracion con su tratamiento automatico (las T...
+    siguen contando como transito) y no entran como stock de la red sin que alguien lo decida."""
     ruta = archivo('bodegas', data_dir)
-    if not os.path.exists(ruta):
-        return 0
+    existentes = set(Warehouse.objects.values_list('code', flat=True))
+    nuevas = {}
     n = 0
-    for cols in iter_txt_rows(ruta, 3):
-        n += Warehouse.objects.filter(code=cols[0]).update(name=f'{cols[0]} - {cols[1]}'[:100])
-    _registrar('bodegas', ruta, n)
-    return n
+    if os.path.exists(ruta):
+        for cols in iter_txt_rows(ruta, 3):
+            nombre = f'{cols[0]} - {cols[1]}'[:100]
+            if cols[0] in existentes:
+                n += Warehouse.objects.filter(code=cols[0]).update(name=nombre)
+            elif cols[0]:
+                nuevas[cols[0]] = nombre
+    for code, nombre in StockActual.objects.values_list('bodega', 'bodega_nombre').distinct():
+        if code and code not in existentes and code not in nuevas:
+            nuevas[code] = (nombre if nombre and code in nombre else f'{code} - {nombre or "Bodega sin nombre en SAP"}')[:100]
+    Warehouse.objects.bulk_create([Warehouse(code=c, name=nm, is_active=False) for c, nm in nuevas.items()])
+    _registrar('bodegas', ruta if os.path.exists(ruta) else '', n + len(nuevas),
+               nota=f'{len(nuevas)} bodegas nuevas en el catalogo (excluidas)' if nuevas else '')
+    return n + len(nuevas)
 
 
 def cargar_acuerdos(data_dir=None):

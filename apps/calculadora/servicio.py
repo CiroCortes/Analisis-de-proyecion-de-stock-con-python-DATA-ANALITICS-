@@ -23,7 +23,7 @@ from apps.calc.proyeccion import dia_llegada_oc
 from apps.calc.red import NODO_SANTIAGO, Bodega
 from apps.calc.simulacion import Escenario, simular
 from apps.data_ingestion.datalake_ingest import find_data_file
-from apps.data_ingestion.warehouses import SANTIAGO, nodo_red
+from apps.data_ingestion.warehouses import SANTIAGO, STOCK, TRANSITO, nodo_red, tratamiento_por_defecto
 from apps.inventory.group_types import PANOL as TIPO_PANOL
 from apps.inventory.models import InventoryMetric, ProductSKU, StockProjection, Warehouse
 from apps.inventory.stock_actual_models import StockActual
@@ -42,6 +42,47 @@ def meses_cerrados(hoy, n):
     """Primer dia de los ultimos n meses cerrados, del mas antiguo al mas reciente."""
     total = hoy.year * 12 + hoy.month - 1
     return [datetime.date((total - i) // 12, (total - i) % 12 + 1, 1) for i in range(n, 0, -1)]
+
+
+def ajustes_por_tratamiento(producto=None):
+    """SPEC-27: diferencia entre el tratamiento elegido en Configuracion y el automatico, para las
+    bodegas fuera de la red con tratamiento manual. El automatico ya viene en la carga (transito
+    de T.../000-xxx en InventoryMetric, stock de la 013 en `stock_013`); aqui se resta lo que
+    aportaba y se suma lo que aporta el elegido. Sin configuracion manual no cambia nada.
+    Devuelve (stock, transito): sku -> {nodo: unidades}, con signo."""
+    stock, transito = defaultdict(lambda: defaultdict(float)), defaultdict(lambda: defaultdict(float))
+    manuales = {w.code: w for w in Warehouse.objects.exclude(tratamiento='') if not w.es_de_red}
+    if not manuales:
+        return stock, transito
+    qs = StockActual.objects.filter(bodega__in=list(manuales), stock_disponible__gt=0)
+    if producto:
+        qs = qs.filter(codigo=producto.code)
+    destino = {STOCK: stock, TRANSITO: transito}
+    for sku, bodega, q in qs.values_list('codigo', 'bodega', 'stock_disponible'):
+        anterior = tratamiento_por_defecto(bodega)
+        elegido = manuales[bodega].tratamiento_efectivo
+        for signo, (tipo, nodo) in ((-1, anterior[:2]), (1, elegido[:2])):
+            if tipo in destino and nodo:
+                destino[tipo][sku][nodo] += signo * float(q or 0)
+    return stock, transito
+
+
+def _aplicar_ajustes(bodegas, stock_013, aj_stock, aj_transito):
+    """Suma los ajustes de SPEC-27 a las bodegas del articulo. Santiago recibe el ajuste en la
+    bodega 013 (el nucleo suma todo Santiago en un nodo); una sucursal, en su propia bodega.
+    Devuelve (bodegas, stock_013, transito_neto)."""
+    stock_013 += aj_stock.get(NODO_SANTIAGO, 0.0)
+    transito_neto = sum(aj_transito.values())
+    for nodo in (set(aj_stock) | set(aj_transito)) - {NODO_SANTIAGO}:
+        ds, dt = aj_stock.get(nodo, 0.0), aj_transito.get(nodo, 0.0)
+        i = next((k for k, b in enumerate(bodegas) if b.codigo == nodo), None)
+        if i is None:
+            bodegas.append(Bodega(nodo, stock_fisico=max(0.0, ds), en_transito=max(0.0, dt)))
+        else:
+            b = bodegas[i]
+            bodegas[i] = replace(b, stock_fisico=max(0.0, b.stock_fisico + ds),
+                                 en_transito=max(0.0, b.en_transito + dt))
+    return bodegas, max(0.0, stock_013), transito_neto
 
 
 def _en_rango(mes, inicio, fin):
@@ -110,6 +151,8 @@ class Datos:
             stock_qs = stock_qs.filter(codigo=producto.code)
         for sku, q in stock_qs.values_list('codigo', 'stock_disponible'):
             self.stock_013[sku] += float(q or 0)
+        # Tratamiento manual de bodegas fuera de la red (SPEC-27)
+        self.ajuste_stock, self.ajuste_transito = ajustes_por_tratamiento(producto)
 
         # Compromisos con fecha (proyeccion) y fecha mas cercana por bodega (reparto). Los
         # emitidos antes del corte son "antiguos" (SPEC-23): se guardan aparte por bodega para
@@ -257,10 +300,14 @@ def _entrada(datos, p, abc, solo_recientes=None):
             consumo_diario=0.0 if es_santiago else datos.consumo_nodo.get((p.code, code), 0.0) / datos.dias_historia,
         ))
     stock_013 = datos.stock_013.get(p.code, 0)
+    aj_transito = datos.ajuste_transito.get(p.code, {})
+    bodegas, stock_013, transito_ajuste = _aplicar_ajustes(bodegas, stock_013, datos.ajuste_stock.get(p.code, {}),
+                                                           aj_transito)
     consumo_stgo = datos.consumo_nodo.get((p.code, NODO_SANTIAGO), 0.0) / datos.dias_historia
-    if stock_013 or solicitado or consumo_stgo:
+    transito_013 = aj_transito.get(NODO_SANTIAGO, 0.0)
+    if stock_013 or solicitado or consumo_stgo or transito_013:
         bodegas.append(Bodega(NODO_SANTIAGO, es_santiago=True, stock_fisico=stock_013,
-                              en_transito=solicitado, consumo_diario=consumo_stgo))
+                              en_transito=solicitado + transito_013, consumo_diario=consumo_stgo))
 
     lead_maestro = pc.lead_time_maestro if pc and pc.lead_time_maestro else p.lead_time_days
     llegadas, atrasada = [], False
@@ -268,7 +315,7 @@ def _entrada(datos, p, abc, solo_recientes=None):
         dias = (o.fecha_comprometida - hoy).days if o.fecha_comprometida else 0
         atrasada = atrasada or (o.fecha_comprometida is not None and o.fecha_comprometida < hoy)
         llegadas.append((dia_llegada_oc(dias, params.dias_recepcion), o.cantidad_pendiente))
-    transito_inter = sum(m.stock_transito_inter for m in datos.metricas.get(p.code, []))
+    transito_inter = max(0.0, sum(m.stock_transito_inter for m in datos.metricas.get(p.code, [])) + transito_ajuste)
     if transito_inter:
         llegadas.append((int(math.ceil(params.dias_recepcion)), transito_inter))
     if solicitado:

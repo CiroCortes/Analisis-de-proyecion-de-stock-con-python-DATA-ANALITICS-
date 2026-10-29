@@ -6,6 +6,12 @@ from django.db import transaction
 from django.db.models import Sum, Count, Q
 from django.core.paginator import Paginator
 
+from django.utils import timezone
+
+from apps.calculadora.parametros import puede_editar
+from apps.data_ingestion.warehouses import (NO_CUENTA, NODO_SANTIAGO, STOCK, TRANSITO, TRATAMIENTOS, nodos_red,
+                                            nombre_nodo, tratamiento_por_defecto)
+
 from .models import ProductSKU, InventoryMetric, Warehouse, Category
 from .stock_actual_models import StockActual, CargaStockActual
 
@@ -52,6 +58,71 @@ def consultar_stock_actual(request):
     return render(request, 'inventory/consultar_stock_actual.html', context)
 
 
+def _stock_alcance_por_bodega():
+    """bodega -> (unidades, USD) de stock en articulos del alcance (activos de grupos activos)."""
+    costo = dict(ProductSKU.objects.filter(is_active=True, category__is_active=True)
+                 .values_list('code', 'unit_cost_usd'))
+    out = {}
+    for sku, bodega, q in StockActual.objects.filter(stock_disponible__gt=0).values_list(
+            'codigo', 'bodega', 'stock_disponible'):
+        if sku in costo:
+            u, usd = out.get(bodega, (0, 0.0))
+            out[bodega] = (u + q, usd + q * float(costo[sku] or 0))
+    return out
+
+
+def _decorar_tratamiento(w, alcance):
+    """Atributos de la fila de la bodega: como la usa el calculo (SPEC-27)."""
+    tipo, nodo, motivo, manual = w.tratamiento_efectivo
+    w.trat_tipo, w.trat_nodo, w.trat_motivo, w.trat_manual = tipo, nodo, motivo, manual
+    w.trat_nodo_nombre = nombre_nodo(nodo)
+    w.u_alcance, w.usd_alcance = alcance
+    if tipo == STOCK:
+        w.trat_texto = f'Stock de {w.trat_nodo_nombre}'
+    elif tipo == TRANSITO:
+        w.trat_texto = f'En camino a {w.trat_nodo_nombre}'
+    else:
+        w.trat_texto = 'No cuenta'
+    # Las bodegas de la red se excluyen o incluyen; la 013 es el propio nodo Santiago
+    w.trat_editable = w.code != NODO_SANTIAGO
+    auto_tipo, auto_nodo, _ = tratamiento_por_defecto(w.code, w.is_active)
+    w.trat_auto = {STOCK: f'Stock de {nombre_nodo(auto_nodo)}', TRANSITO: f'En camino a {nombre_nodo(auto_nodo)}'}.get(
+        auto_tipo, 'No cuenta')
+    w.trat_valor = (f'{tipo}|{nodo}' if manual else '') if not w.es_de_red else (STOCK if w.is_active else NO_CUENTA)
+
+
+def _guardar_tratamiento(request):
+    """POST AJAX: cambia el tratamiento de una bodega. Valor '' (automatico), 'TIPO|NODO' o, en
+    bodegas de la red, STOCK / NO_CUENTA (equivale a incluir o excluir)."""
+    if not puede_editar(request.user):
+        return JsonResponse({'status': 'error', 'mensaje': 'No tienes permiso para cambiar bodegas'}, status=403)
+    w = Warehouse.objects.filter(code=request.POST.get('warehouse_code', '')).first()
+    valor = request.POST.get('valor', '').strip()
+    motivo = request.POST.get('motivo', '').strip()[:200]
+    if not w or w.code == NODO_SANTIAGO:
+        return JsonResponse({'status': 'error', 'mensaje': 'Bodega no editable'}, status=400)
+    validos_nodo = dict(nodos_red())
+    if w.es_de_red:
+        if valor not in (STOCK, NO_CUENTA):
+            return JsonResponse({'status': 'error', 'mensaje': 'Opción no válida'}, status=400)
+        w.is_active = valor == STOCK
+    elif valor:
+        tipo, _, nodo = valor.partition('|')
+        if tipo == NO_CUENTA:
+            nodo = ''
+        elif tipo not in (STOCK, TRANSITO) or nodo not in validos_nodo:
+            return JsonResponse({'status': 'error', 'mensaje': 'Opción no válida'}, status=400)
+        w.tratamiento, w.nodo_destino, w.motivo = tipo, nodo, motivo
+    else:
+        w.tratamiento, w.nodo_destino, w.motivo = '', '', ''
+    w.modificado_por, w.modificado_en = request.user, timezone.now()
+    w.save(update_fields=['is_active', 'tratamiento', 'nodo_destino', 'motivo', 'modificado_por', 'modificado_en'])
+    _decorar_tratamiento(w, (0, 0.0))
+    return JsonResponse({'status': 'ok', 'code': w.code, 'texto': w.trat_texto, 'tipo': w.trat_tipo,
+                         'motivo': w.trat_motivo, 'manual': w.trat_manual,
+                         'quien': f'{request.user.get_username()} · {timezone.localtime(w.modificado_en):%d-%m %H:%M}'})
+
+
 @login_required
 def configuracion_view(request):
     """
@@ -78,6 +149,9 @@ def configuracion_view(request):
                     return JsonResponse({'status': 'ok', 'code': wh.code, 'is_active': wh.is_active})
                 messages.success(request, f"Bodega '{wh.code} - {wh.name}' {'activada para S&OP' if wh.is_active else 'excluida de auditoría'}.")
             return redirect(f"{request.path}?tab=bodegas")
+
+        elif action == 'set_tratamiento':
+            return _guardar_tratamiento(request)
 
         elif action == 'save_warehouses':
             active_codes = {c for c in request.POST.getlist('active_warehouses') if Warehouse(code=c).is_physical}
@@ -189,21 +263,22 @@ def configuracion_view(request):
     if search_q and active_tab == 'bodegas':
         warehouses_qs = warehouses_qs.filter(Q(code__icontains=search_q) | Q(name__icontains=search_q))
 
+    # Tratamiento de cada bodega en el calculo y su stock valorizado en el alcance (SPEC-27)
+    valor_alcance = _stock_alcance_por_bodega()
     warehouses_list = []
-    total_audited_stock = 0
+    resumen_trat = {STOCK: [0, 0.0], TRANSITO: [0, 0.0], NO_CUENTA: [0, 0.0]}
     for w in warehouses_qs:
         stk_info = stock_by_bodega.get(w.code, {})
         w.sku_count = stk_info.get('skus', 0)
         w.stock_disponible = stk_info.get('total_disp', 0)
         w.stock_fisico = stk_info.get('total_fisico', 0)
         w.is_stgo = w.is_santiago
-        if w.is_active:
-            total_audited_stock += w.stock_disponible
+        _decorar_tratamiento(w, valor_alcance.get(w.code, (0, 0.0)))
+        resumen_trat[w.trat_tipo][0] += 1
+        resumen_trat[w.trat_tipo][1] += w.usd_alcance
         warehouses_list.append(w)
-
-    total_warehouses = Warehouse.objects.count()
-    active_warehouses_count = Warehouse.objects.filter(is_active=True).count()
-    inactive_warehouses_count = total_warehouses - active_warehouses_count
+    orden = {STOCK: 0, TRANSITO: 1, NO_CUENTA: 2}
+    warehouses_list.sort(key=lambda w: (orden[w.trat_tipo], -w.usd_alcance, w.code))
 
     # 2. CATEGORÍAS (grupos de articulos SAP)
     from .group_types import TIPOS
@@ -282,10 +357,11 @@ def configuracion_view(request):
         'search_q': search_q,
         # Bodegas
         'warehouses': warehouses_list,
-        'total_warehouses': total_warehouses,
-        'active_warehouses_count': active_warehouses_count,
-        'inactive_warehouses_count': inactive_warehouses_count,
-        'total_audited_stock': total_audited_stock,
+        'total_warehouses': len(warehouses_list),
+        'resumen_trat': resumen_trat,
+        'nodos_red': nodos_red(),
+        'tratamientos': TRATAMIENTOS,
+        'puede_editar_bodegas': puede_editar(request.user),
         # Grupos
         'categories': categories,
         'total_categories': total_categories,
