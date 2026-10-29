@@ -103,6 +103,25 @@
                     </table>
                 </div>
             </div>
+
+            <!-- Ventana de bodegas SAP: como el maestro de articulos > Datos de inventario (SPEC-29) -->
+            <div class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+                <div class="px-5 py-3 border-b border-slate-100 flex flex-wrap justify-between items-center gap-2">
+                    <div class="font-black text-slate-800 text-sm">Stock en SAP por bodega <span class="font-mono text-xs text-slate-400 font-medium">y cómo cuenta en el cálculo</span></div>
+                    <div id="sap-fechas" class="text-[10px] text-slate-500 font-mono"></div>
+                </div>
+                <div id="sap-aviso" class="px-5 py-2 text-[11px] font-bold text-amber-900 bg-amber-50 border-b border-amber-200" style="display:none"></div>
+                <div class="overflow-auto" style="max-height: 14rem; overflow: auto;">
+                    <table class="min-w-full text-xs whitespace-nowrap">
+                        <thead class="bg-slate-50 sticky top-0 z-10" style="position: sticky; top: 0;"><tr class="text-[10px] uppercase tracking-wider text-slate-500">
+                            <th class="py-2 pl-5 pr-2 text-left">Bodega</th><th class="px-2 text-right">En stock</th><th class="px-2 text-right">Pedido SAP</th>
+                            <th class="px-2 text-right">OC abiertas</th><th class="px-2 pr-5 text-left">Cómo cuenta</th>
+                        </tr></thead>
+                        <tbody id="sap-cuerpo"><tr><td colspan="5" class="p-6 text-center text-slate-400">Elige un artículo del listado.</td></tr></tbody>
+                    </table>
+                </div>
+                <div id="sap-totales" class="px-5 py-2 border-t border-slate-100 text-[11px] text-slate-600"></div>
+            </div>
         </div>
 
         <div class="min-w-0">
@@ -204,7 +223,46 @@
         });
     }
 
+    var COLOR_TIPO = { STOCK: 'text-emerald-700', TRANSITO: 'text-amber-700', NO_CUENTA: 'text-slate-400' };
+
+    function tablaSap(datos) {
+        var cuerpo = document.getElementById('sap-cuerpo');
+        cuerpo.innerHTML = '';
+        document.getElementById('sap-fechas').textContent = datos.fechas_datos.map(function (f) { return f.dato + ' ' + f.fecha; }).join(' · ');
+        var t = datos.totales_sap, avisos = [];
+        if (datos.desfase_aviso) {
+            avisos.push('Las consultas se exportaron con ' + fmt(datos.desfase_horas, 0) + ' h de diferencia: lo recibido entre una y otra puede no aparecer ni en stock ni en OC.');
+        }
+        if (t.sin_oc > 0) {
+            avisos.push('SAP tiene ' + fmt(t.sin_oc, 0) + ' u pedidas sin OC abierta cargada: el cálculo no las ve. Exportar stock y OC el mismo día.');
+        }
+        var aviso = document.getElementById('sap-aviso');
+        aviso.innerHTML = avisos.map(function (a) { return '<i class="fa-solid fa-triangle-exclamation"></i> ' + a; }).join('<br>');
+        aviso.style.display = avisos.length ? '' : 'none';
+        if (!datos.bodegas_sap.length) {
+            cuerpo.innerHTML = '<tr><td colspan="5" class="p-6 text-center text-slate-400">Sin stock ni pedidos en SAP.</td></tr>';
+        }
+        datos.bodegas_sap.forEach(function (b) {
+            var tr = document.createElement('tr');
+            tr.className = 'border-b border-slate-50' + (b.tipo === 'NO_CUENTA' ? ' text-slate-400' : '');
+            tr.title = b.motivo + (b.manual ? ' (definido en Configuración)' : '');
+            tr.appendChild(celda(b.nombre, 'py-1.5 pl-5 pr-2 font-mono'));
+            tr.appendChild(celda(fmt(b.stock, 0), 'px-2 text-right font-mono'));
+            tr.appendChild(celda(b.pedido_sap ? fmt(b.pedido_sap, 0) : '', 'px-2 text-right font-mono'));
+            tr.appendChild(celda(b.oc ? fmt(b.oc, 0) : '', 'px-2 text-right font-mono'));
+            var cuenta = celda((b.sin_oc > 0 ? '⚠ ' + fmt(b.sin_oc, 0) + ' u sin OC · ' : '') + b.cuenta + (b.manual ? ' (manual)' : ''),
+                               'px-2 pr-5 font-bold ' + (b.sin_oc > 0 ? 'text-amber-700' : COLOR_TIPO[b.tipo]));
+            tr.appendChild(cuenta);
+            cuerpo.appendChild(tr);
+        });
+        document.getElementById('sap-totales').innerHTML =
+            '<b class="text-emerald-700">Stock que usa el cálculo: ' + fmt(t.STOCK, 0) + ' u</b> · ' +
+            '<b class="text-amber-700">En camino (pre-bodegas y tránsito): ' + fmt(t.TRANSITO, 0) + ' u</b> + OC y SC en "Por recibir" · ' +
+            '<span class="text-slate-500">No cuenta: ' + fmt(t.NO_CUENTA, 0) + ' u</span>';
+    }
+
     function mostrar(datos) {
+        tablaSap(datos);
         document.getElementById('art-codigo').textContent = datos.codigo + (datos.letra ? '  ·  ' + datos.letra + ' · ' + datos.abc + datos.xyz : '');
         document.getElementById('art-desc').textContent = datos.descripcion;
         document.getElementById('ubic-titulo').textContent = '· ' + datos.codigo;

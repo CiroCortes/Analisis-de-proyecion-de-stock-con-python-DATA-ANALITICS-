@@ -65,6 +65,8 @@ quiebre real USD 717 mil vs brecha contra objetivo USD 3,94 M.
 | 24 | Bodegas con stock marcadas "EXCLUIDA" que sí contaban (pre-bodegas, 013) y otras sin motivo visible; el catálogo no tenía las T… | **Hecho (SPEC-27)**: tratamiento visible y editable (stock / en camino / no cuenta) con auditoría; catálogo 51 → 131 bodegas. **Pendiente: decidir la 013-IN** |
 | 25 | La 013-NC tiene ~USD 1,63 M (USD 33 mil en el alcance) que debería estar en cero tras cada refactura | Lista en la bitácora local para Cobranzas y Contraloría |
 | 26 | Dashboard y Analítica no cuadraban con la Calculadora (502 vs 200 urgentes; unidades sumadas) | **Hecho (SPEC-28)**: Panel S&OP único con las cifras de la corrida, en USD |
+| 27 | Analizar no mostraba pre-bodegas, consignación ni 013; pedidos en SAP sin OC cargada (USD 1,17 M en pre-bodegas) por exportar stock y OC en días distintos | **Hecho (SPEC-29)**: ventana "Stock en SAP por bodega" con cómo cuenta cada una y avisos. **Regla: exportar todo el mismo día** |
+| 28 | Las devoluciones y NC no se ven en la ficha ni en Analizar (riesgo de desconfianza) | Propuesto: conciliación del consumo con SAP, junto con SPEC-25 (requiere separar TransType 16 en la consulta 8) |
 
 ## Decisiones abiertas
 

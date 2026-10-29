@@ -17,6 +17,8 @@ class StockActual(models.Model):
     ubicacion_2 = models.CharField(max_length=100, null=True, blank=True, verbose_name="Ubicación 2")
     stock_disponible = models.IntegerField(default=0, verbose_name="Stock Disponible")
     stock_reservado = models.IntegerField(default=0, verbose_name="Stock Reservado")
+    # OITW.OnOrder: lo pedido en SAP hacia esta bodega (para contrastar con las OC cargadas, SPEC-29)
+    stock_pedido = models.IntegerField(default=0, verbose_name="Pedido en SAP")
     precio = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True, verbose_name="Precio Unitario $")
     total = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True, verbose_name="Valorización Total $")
     categoria = models.CharField(max_length=100, null=True, blank=True, verbose_name="Categoría")

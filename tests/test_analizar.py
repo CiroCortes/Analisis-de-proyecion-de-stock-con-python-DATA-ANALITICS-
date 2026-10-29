@@ -89,3 +89,36 @@ class AnalizarTest(TestCase):
         self.assertEqual(r.json()['descripcion'], 'LIMPIA CONTACTOS')
         r = self.client.get(reverse('calculadora:analizar_excel'), {'ubicacion': '013'})
         self.assertIn('spreadsheetml', r['Content-Type'])
+
+
+class BodegasSapTest(TestCase):
+    """SPEC-29: el articulo en cada bodega de SAP y como cuenta (caso real 35071069, 27-oct)."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from apps.calculadora.models import OCAbierta
+        from apps.inventory.stock_actual_models import StockActual
+        cat = Category.objects.create(code='G1', name='RPTS', is_active=True, tipo='REPUESTO')
+        cls.sku = ProductSKU.objects.create(code='35071069', description='BATERIA HIDUO', category=cat, unit_cost_usd=98)
+        for code, activa in (('013-03', True), ('000-022', False), ('966', False), ('013', False)):
+            Warehouse.objects.create(code=code, name=f'{code} - Bodega', is_active=activa)
+        for bodega, q, pedido in (('013-03', 10, 0), ('000-022', 0, 20), ('966', 14, 0), ('013', 1, 0)):
+            StockActual.objects.create(codigo='35071069', bodega=bodega, stock_disponible=q, stock_pedido=pedido)
+        OCAbierta.objects.create(nro_oc='1', product=cls.sku, bodega='000-022', cantidad_pendiente=5)
+
+    def test_cada_bodega_con_su_tratamiento(self):
+        d = analisis.bodegas_sap('35071069')
+        filas = {f['bodega']: f for f in d['bodegas_sap']}
+        self.assertEqual(filas['013-03']['cuenta'], 'Stock de Santiago')
+        self.assertEqual(filas['013']['cuenta'], 'Stock de Santiago')
+        self.assertEqual(filas['000-022']['cuenta'], 'En camino a Antofagasta')
+        self.assertEqual(filas['966']['cuenta'], 'No cuenta')
+        self.assertEqual(d['totales_sap']['STOCK'], 11)
+        self.assertEqual(d['totales_sap']['NO_CUENTA'], 14)
+        self.assertEqual([f['bodega'] for f in d['bodegas_sap']][-1], '966')   # los que no cuentan, al final
+
+    def test_avisa_pedido_en_sap_sin_oc_cargada(self):
+        d = analisis.bodegas_sap('35071069')
+        fila = next(f for f in d['bodegas_sap'] if f['bodega'] == '000-022')
+        self.assertEqual((fila['pedido_sap'], fila['oc'], fila['sin_oc']), (20, 5, 15))
+        self.assertEqual(d['totales_sap']['sin_oc'], 15)

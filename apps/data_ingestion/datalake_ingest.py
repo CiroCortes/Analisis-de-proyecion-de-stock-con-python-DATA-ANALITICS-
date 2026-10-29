@@ -290,6 +290,7 @@ def ingest_datalake_stock_fisico(file_path):
                 bodega_nombre=f"Bodega {wh_code}",
                 stock_disponible=stk_fis,
                 stock_reservado=comp,
+                stock_pedido=onorder,
             ))
 
             # Si la bodega está registrada en el motor S&OP

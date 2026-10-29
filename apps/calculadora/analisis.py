@@ -5,16 +5,21 @@ Ubicaciones: Santiago completo (nodo 013, con el que calcula la Calculadora), ca
 (detalle informativo pedido por Produccion: 013-PS y 013-PP rotan distinto) y cada sucursal.
 La compra y los traslados se deciden por nodo (SPEC-21); en una 013-xx no hay "a pedir".
 """
+import datetime
+import os
 from collections import defaultdict
 
 from django.utils import timezone
 
 from apps.calc.prevision import prever
 from apps.calc.red import NODO_SANTIAGO
-from apps.data_ingestion.warehouses import SUCURSAL_CITIES, nodo_red, zone_for, SANTIAGO
+from apps.data_ingestion.datalake_ingest import find_data_file
+from apps.data_ingestion.warehouses import (NO_CUENTA, STOCK, TRANSITO, SUCURSAL_CITIES, nodo_red, nombre_nodo,
+                                            tratamiento_por_defecto, zone_for, SANTIAGO)
 from apps.inventory.models import InventoryMetric, Warehouse
+from apps.inventory.stock_actual_models import StockActual
 
-from .models import ConsumoMensual, ResultadoArticulo, ResultadoBodega
+from .models import ConsumoMensual, OCAbierta, ResultadoArticulo, ResultadoBodega
 from .parametros import Resolutor
 from .servicio import meses_cerrados
 
@@ -169,4 +174,59 @@ def detalle(sku, hoy=None):
         'abc': r.abc if r else '', 'xyz': r.xyz if r else '',
         'etiquetas': [f'{m.month:02d}-{str(m.year)[2:]}' for m in meses] + futuro,
         'ubicaciones': filas,
+        **bodegas_sap(sku),
     }
+
+
+# Consultas que forman la posicion de un articulo, con la fecha en que se exportaron (SPEC-29)
+_ARCHIVOS_POSICION = [
+    ('Stock', 'Stock Físico por Bodega.txt', 'oitw.txt'),
+    ('OC', 'Órdenes de Compra en Tránsito (OC).txt', 'opor_por1.txt'),
+    ('SC', 'Solicitudes de Compra (SC).txt', 'oprq_prq1.txt'),
+    ('PC', 'Pedidos de Clientes (PC).txt', 'ordr_rdr1.txt'),
+    ('OF', 'Órdenes de Fabricación (OF).txt', 'owor_wor1.txt'),
+]
+DESFASE_AVISO_HORAS = 4
+
+
+def fechas_datos():
+    """[(dato, fecha de exportacion)] y el desfase en horas entre la mas antigua y la mas nueva.
+    La fecha es la del archivo: una consulta exportada otro dia ve otra foto de SAP."""
+    fechas = []
+    for dato, largo, alt in _ARCHIVOS_POSICION:
+        ruta = find_data_file(largo, alt)
+        if os.path.exists(ruta):
+            fechas.append((dato, datetime.datetime.fromtimestamp(os.path.getmtime(ruta))))
+    horas = ((max(f for _, f in fechas) - min(f for _, f in fechas)).total_seconds() / 3600) if fechas else 0
+    return [{'dato': d, 'fecha': f'{f:%d-%m %H:%M}'} for d, f in fechas], round(horas, 1)
+
+
+def bodegas_sap(sku):
+    """El articulo en cada bodega de SAP (como el maestro de articulos > Datos de inventario): stock,
+    lo pedido en SAP (OITW.OnOrder), las OC abiertas cargadas y como cuenta en el calculo (SPEC-27).
+    Avisa cuando SAP tiene unidades pedidas sin OC abierta cargada: suele ser un desfase entre la
+    exportacion del stock y la de las OC (lo recibido entre ambas no aparece en ninguna)."""
+    oc = defaultdict(float)
+    for bodega, q in OCAbierta.objects.filter(product_id=sku).values_list('bodega', 'cantidad_pendiente'):
+        oc[bodega] += q
+    stock = {b: (q, ped) for b, q, ped in StockActual.objects.filter(codigo=sku).values_list(
+        'bodega', 'stock_disponible', 'stock_pedido')}
+    codigos = {b for b, (q, ped) in stock.items() if q or ped} | {b for b, q in oc.items() if q}
+    almacenes = {w.code: w for w in Warehouse.objects.filter(code__in=codigos)}
+    filas, totales = [], {STOCK: 0.0, TRANSITO: 0.0, NO_CUENTA: 0.0, 'sin_oc': 0.0}
+    for codigo in codigos:
+        q, pedido = stock.get(codigo, (0, 0))
+        w = almacenes.get(codigo)
+        tipo, nodo, motivo, manual = w.tratamiento_efectivo if w else (*tratamiento_por_defecto(codigo, False), False)
+        texto = {STOCK: f'Stock de {nombre_nodo(nodo)}', TRANSITO: f'En camino a {nombre_nodo(nodo)}'}.get(tipo, 'No cuenta')
+        sin_oc = max(0.0, pedido - oc.get(codigo, 0.0))
+        totales[tipo] += q
+        totales['sin_oc'] += sin_oc
+        filas.append({'bodega': codigo, 'nombre': w.name if w else codigo, 'stock': q, 'pedido_sap': pedido,
+                      'oc': oc.get(codigo, 0.0), 'sin_oc': sin_oc, 'tipo': tipo, 'cuenta': texto, 'motivo': motivo,
+                      'manual': manual})
+    orden = {STOCK: 0, TRANSITO: 1, NO_CUENTA: 2}
+    filas.sort(key=lambda f: (orden[f['tipo']], -f['stock'], f['bodega']))
+    fechas, desfase = fechas_datos()
+    return {'bodegas_sap': filas, 'totales_sap': totales, 'fechas_datos': fechas, 'desfase_horas': desfase,
+            'desfase_aviso': desfase > DESFASE_AVISO_HORAS}
