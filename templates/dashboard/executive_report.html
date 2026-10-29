@@ -19,7 +19,7 @@
             <p class="text-sm text-slate-400 mt-1">Disponibilidad · Inventario por Sucursal · Quiebres · Materiales a Pedido</p>
         </div>
         <div class="flex items-center gap-3">
-            <a href="{% url 'dashboard:analytics' %}" class="bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs font-bold px-4 py-2.5 rounded-xl transition flex items-center gap-2">
+            <a href="{% url 'dashboard:home' %}" class="bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs font-bold px-4 py-2.5 rounded-xl transition flex items-center gap-2">
                 <i class="fa-solid fa-chart-bar"></i> Analytics Slim4
             </a>
             <a href="{% url 'calculadora:panel' %}" class="bg-pesco-cyan hover:bg-pesco-darkcyan text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow transition flex items-center gap-2">
@@ -193,8 +193,8 @@
         <div class="p-6 border-b border-slate-100 flex items-center justify-between">
             <div>
                 <div class="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-0.5">Módulo 3</div>
-                <h2 class="text-lg font-black text-slate-900">SKUs en Quiebre Activo — Ordenados por Días de Quiebre</h2>
-                <p class="text-xs text-slate-400 mt-0.5">Mayor a menor. Días estimados = Unidades en quiebre ÷ Demanda diaria real.</p>
+                <h2 class="text-lg font-black text-slate-900">SKUs en Quiebre Activo — Ordenados por días de demanda faltante</h2>
+                <p class="text-xs text-slate-400 mt-0.5">Mayor a menor. Días de demanda faltante = unidades en quiebre ÷ demanda diaria (no son días que lleva sin stock).</p>
             </div>
             <span class="bg-red-100 text-red-700 text-xs font-black px-4 py-2 rounded-xl">{{ quiebre_list|length }} SKUs en quiebre</span>
         </div>
@@ -208,7 +208,7 @@
                         <th class="py-3 px-4 text-center">REPO</th>
                         <th class="py-3 px-4 text-center">Bodega</th>
                         <th class="py-3 px-4 text-center">Urgencia</th>
-                        <th class="py-3 px-4 text-right font-black text-red-900">Días Quiebre ↓</th>
+                        <th class="py-3 px-4 text-right font-black text-red-900">Días de demanda faltante ↓</th>
                         <th class="py-3 px-4 text-right">Unidades</th>
                         <th class="py-3 px-5 text-right">Quiebre USD</th>
                     </tr>

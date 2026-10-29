@@ -62,6 +62,9 @@ quiebre real USD 717 mil vs brecha contra objetivo USD 3,94 M.
 | 21 | La tabla `oinm` del Datalake repite movimientos (nov-25: 39.226 filas para 14.660 `transnum`) y le faltan otros (ago-26 del 70100011; feb-25 y jul-25 casi vacíos). Cambia entre exportaciones diarias | **Corregido el duplicado**: consultas 8 y 13 cuentan cada movimiento una vez (compra 3,36 → 2,21 M USD). **Faltantes pendientes**: IT o Service Layer |
 | 22 | 013-NC y 013-NC_E son de Cobranzas (facturas rechazadas): NC y refactura sin repuesto físico. 013-IN = devoluciones físicas. 0EX = exportación (venta real) | SPEC-25 (pendiente): excluir 013-NC/NC_E del consumo y compensar NC con refacturas en las demás bodegas. Consulta 8 ya separa `FACTURA` |
 | 23 | Promedio + 3 desvest casi no recorta picos (el pico infla la desvest): 262 de 462 picos sin tocar | **Hecho (SPEC-26)**: tope = menor entre la regla del documento y 4 × mediana; alerta PICO. Compra 2,21 → 2,04 M USD |
+| 24 | Bodegas con stock marcadas "EXCLUIDA" que sí contaban (pre-bodegas, 013) y otras sin motivo visible; el catálogo no tenía las T… | **Hecho (SPEC-27)**: tratamiento visible y editable (stock / en camino / no cuenta) con auditoría; catálogo 51 → 131 bodegas. **Pendiente: decidir la 013-IN** |
+| 25 | La 013-NC tiene ~USD 1,63 M (USD 33 mil en el alcance) que debería estar en cero tras cada refactura | Lista en la bitácora local para Cobranzas y Contraloría |
+| 26 | Dashboard y Analítica no cuadraban con la Calculadora (502 vs 200 urgentes; unidades sumadas) | **Hecho (SPEC-28)**: Panel S&OP único con las cifras de la corrida, en USD |
 
 ## Decisiones abiertas
 

@@ -74,284 +74,34 @@ def _apply_filters(queryset, request):
 
 @login_required
 def dashboard_home_view(request):
-    categories = Category.objects.filter(productsku__isnull=False).distinct().order_by('name')
-    warehouses = _nodos()
-    inactive_groups_count = Category.objects.filter(is_active=False).count()
-
-    projections = StockProjection.objects.select_related('product', 'warehouse', 'product__category', 'product__classification').all()
-    projections, f = _apply_filters(projections, request)
-
-    sku_qs = ProductSKU.objects.filter(is_active=True)
-    if f['category']:
-        sku_qs = sku_qs.filter(category__code=f['category'])
-    elif not f['include_all_groups']:
-        sku_qs = sku_qs.filter(category__is_active=True)
-
-    if f['segment']:
-        sku_qs = sku_qs.filter(classification__segment=f['segment'])
-    if f['abc']:
-        sku_qs = sku_qs.filter(classification__abc_class=f['abc'])
-    if f['policy']:
-        sku_qs = sku_qs.filter(classification__stock_policy=f['policy'])
-
-    total_skus = sku_qs.count()
-    total_critical_skus = projections.filter(urgency_level='URGENTE').values('product').distinct().count()
-    total_shortage_usd = float(projections.aggregate(total=Sum('shortage_usd'))['total'] or 0)
-    total_suggested_buy = projections.aggregate(total=Sum('suggested_buy_units'))['total'] or 0
-
-    # Desglose S&OP Slim4
-    total_panol = sku_qs.filter(classification__segment='PANOL').count()
-    total_repuestos = sku_qs.filter(classification__segment='REPUESTOS').count()
-    total_si_stock = sku_qs.filter(classification__stock_policy='SI_STOCK').count()
-    total_no_stock = sku_qs.filter(classification__stock_policy='NO_STOCK').count()
-    total_inmovilizados = sku_qs.filter(classification__is_inmovilizado=True).count()
-    total_nuevos = sku_qs.filter(classification__is_new=True).count()
-
-    wh_stats = []
-    target_warehouses = _nodos(f['warehouse'])
-    for wh in target_warehouses:
-        wh_proj = projections.filter(warehouse=wh)
-        wh_crit = wh_proj.filter(urgency_level='URGENTE').count()
-        wh_usd = float(wh_proj.aggregate(total=Sum('shortage_usd'))['total'] or 0)
-        wh_stats.append({
-            'code': wh.label,
-            'name': wh.name,
-            'critical_count': wh_crit,
-            'urgente_count': wh_crit,
-            'shortage_usd': wh_usd,
-        })
-
-    top_critical_items = (
-        projections.filter(urgency_level='URGENTE')
-        .order_by('-shortage_usd')
-        .select_related('product', 'warehouse', 'product__category', 'product__classification')[:15]
-    )
-
-    context = {
-        'total_skus': total_skus,
-        'total_critical_skus': total_critical_skus,
-        'total_urgente_skus': total_critical_skus,
-        'total_shortage_usd': total_shortage_usd,
-        'total_suggested_buy': total_suggested_buy,
-        'total_panol': total_panol,
-        'total_repuestos': total_repuestos,
-        'total_si_stock': total_si_stock,
-        'total_no_stock': total_no_stock,
-        'total_inmovilizados': total_inmovilizados,
-        'total_nuevos': total_nuevos,
-        'wh_stats': wh_stats,
-        'top_critical_items': top_critical_items,
-        'categories': categories,
-        'warehouses': warehouses,
-        'inactive_groups_count': inactive_groups_count,
-        'include_all_groups': f['include_all_groups'],
-        'selected_category': f['category'],
-        'selected_warehouse': f['warehouse'],
-        'selected_segment': f['segment'],
-        'selected_abc': f['abc'],
-        'selected_policy': f['policy'],
+    """Panel S&OP (SPEC-28): cifras de la ultima corrida de la Calculadora, en USD."""
+    from django.urls import reverse
+    from . import panel
+    filtros = {c: request.GET.get(c, '').strip() for c in ('grupo', 'letra', 'abc')}
+    corrida = panel.ultima_corrida()
+    datos = panel.indicadores(corrida, filtros) if corrida else None
+    evolucion = panel.evolucion()
+    grafico = {
+        'nodos': {'labels': [n['nombre'] for n in datos['nodos']], 'faltante': [round(n['faltante_usd']) for n in datos['nodos']]} if datos else {},
+        'cobertura': {'labels': [c['tramo'] for c in datos['cobertura']], 'articulos': [c['articulos'] for c in datos['cobertura']]} if datos else {},
+        'evolucion': {'labels': [f"{e['fecha']:%d-%m %H:%M} · #{e['id']}" for e in evolucion],
+                      'compra': [round(e['compra_hoy_usd']) for e in evolucion]},
     }
-    return render(request, 'dashboard/home.html', context)
+    return render(request, 'dashboard/home.html', {
+        'corrida': corrida, 'datos': datos, 'filtros': filtros, 'hay_filtros': any(filtros.values()),
+        'grupos': Category.objects.filter(is_active=True, productsku__isnull=False).distinct().order_by('name'),
+        'letras': panel.LETRAS, 'cargas': panel.cargas_recientes(), 'grafico': grafico,
+        'url_articulo': reverse('calculadora:articulo', args=['__SKU__']),
+    })
 
 
 @login_required
 def analytics_view(request):
-    """Vista de Analítica S&OP con filtros de Segmento (Pañol vs Repuestos), ABC y Bodega."""
-    categories = Category.objects.filter(productsku__isnull=False).distinct().order_by('name')
-    warehouses = _nodos()
-    inactive_groups_count = Category.objects.filter(is_active=False).count()
-
-    projections = StockProjection.objects.select_related('product', 'warehouse', 'product__category', 'product__classification').all()
-    projections, f = _apply_filters(projections, request)
-
-    sku_qs = ProductSKU.objects.filter(is_active=True)
-    if f['category']:
-        sku_qs = sku_qs.filter(category__code=f['category'])
-    elif not f['include_all_groups']:
-        sku_qs = sku_qs.filter(category__is_active=True)
-
-    if f['segment']:
-        sku_qs = sku_qs.filter(classification__segment=f['segment'])
-    if f['abc']:
-        sku_qs = sku_qs.filter(classification__abc_class=f['abc'])
-    if f['policy']:
-        sku_qs = sku_qs.filter(classification__stock_policy=f['policy'])
-
-    total_skus = sku_qs.count()
-    total_shortage_usd = float(projections.aggregate(t=Sum('shortage_usd'))['t'] or 0)
-    total_urgentes     = projections.filter(urgency_level='URGENTE').values('product').distinct().count()
-    total_medios       = projections.filter(urgency_level='MEDIO').values('product').distinct().count()
-    total_normales     = projections.filter(urgency_level='NORMAL').values('product').distinct().count()
-    total_sugerido     = projections.aggregate(t=Sum('suggested_buy_units'))['t'] or 0
-
-    # Métricas Slim4
-    total_panol = sku_qs.filter(classification__segment='PANOL').count()
-    total_repuestos = sku_qs.filter(classification__segment='REPUESTOS').count()
-    total_si_stock = sku_qs.filter(classification__stock_policy='SI_STOCK').count()
-
-    context = {
-        'total_skus': total_skus,
-        'total_shortage_usd': total_shortage_usd,
-        'total_urgentes': total_urgentes,
-        'total_criticos': total_urgentes,
-        'total_medios': total_medios,
-        'total_normales': total_normales,
-        'total_sugerido': total_sugerido,
-        'total_panol': total_panol,
-        'total_repuestos': total_repuestos,
-        'total_si_stock': total_si_stock,
-        'categories': categories,
-        'warehouses': warehouses,
-        'inactive_groups_count': inactive_groups_count,
-        'include_all_groups': f['include_all_groups'],
-        'selected_category': f['category'],
-        'selected_warehouse': f['warehouse'],
-        'selected_segment': f['segment'],
-        'selected_abc': f['abc'],
-        'selected_policy': f['policy'],
-    }
-    return render(request, 'dashboard/analytics.html', context)
-
-
-# ── API Endpoints para Chart.js (filtrables dinámicamente) ──────────────────
-
-@login_required
-def api_chart_urgency_distribution(request):
-    """Distribución de urgencias por bodega → Stacked Bar Chart."""
-    projections = StockProjection.objects.all()
-    projections, f = _apply_filters(projections, request)
-
-    warehouses = _nodos(f['warehouse'])
-
-    labels = []
-    urgente_data, medio_data, normal_data = [], [], []
-
-    for wh in warehouses:
-        proj_wh = projections.filter(warehouse=wh)
-        labels.append(wh.label)
-        urgente_data.append(proj_wh.filter(urgency_level='URGENTE').count())
-        medio_data.append(proj_wh.filter(urgency_level='MEDIO').count())
-        normal_data.append(proj_wh.filter(urgency_level='NORMAL').count())
-
-    return JsonResponse({
-        'labels': labels,
-        'datasets': [
-            {'label': 'URGENTE', 'data': urgente_data, 'backgroundColor': '#ef4444', 'hidden': False},
-            {'label': 'MEDIO',   'data': medio_data,   'backgroundColor': '#f59e0b', 'hidden': False},
-            {'label': 'NORMAL',  'data': normal_data,  'backgroundColor': '#10b981', 'hidden': True},
-        ]
-    })
-
-
-@login_required
-def api_chart_shortage_usd_by_warehouse(request):
-    """Quiebre total en USD por bodega → Horizontal Bar."""
-    projections = StockProjection.objects.all()
-    projections, f = _apply_filters(projections, request)
-
-    warehouses = _nodos(f['warehouse'])
-
-    labels, data, colors = [], [], []
-    palette = ['#0099DE','#0077B6','#00B4D8','#48CAE4','#90E0EF','#e03131','#f59e0b','#10b981','#7c3aed']
-
-    for i, wh in enumerate(warehouses):
-        usd = float(projections.filter(warehouse=wh).aggregate(t=Sum('shortage_usd'))['t'] or 0)
-        labels.append(wh.label)
-        data.append(round(usd, 2))
-        colors.append(palette[i % len(palette)])
-
-    return JsonResponse({
-        'labels': labels,
-        'datasets': [{'label': 'Quiebre USD', 'data': data, 'backgroundColor': colors}]
-    })
-
-
-@login_required
-def api_chart_top_shortage_skus(request):
-    """Top 15 SKUs con mayor quiebre valorizado en USD."""
-    projections = StockProjection.objects.filter(shortage_usd__gt=0)
-    projections, f = _apply_filters(projections, request)
-
-    top = (projections
-           .order_by('-shortage_usd')
-           .select_related('product')[:15])
-
-    labels = [f"{p.product.code}" for p in top]
-    data   = [float(p.shortage_usd) for p in top]
-    urgencies = [p.urgency_level for p in top]
-    colors = ['#ef4444' if u == 'URGENTE' else '#f59e0b' for u in urgencies]
-
-    return JsonResponse({
-        'labels': labels,
-        'datasets': [{'label': 'Quiebre USD', 'data': data, 'backgroundColor': colors}]
-    })
-
-
-@login_required
-def api_chart_coverage_histogram(request):
-    """Histograma de días de cobertura."""
-    projections = StockProjection.objects.all()
-    projections, f = _apply_filters(projections, request)
-
-    buckets = {
-        '0 días (Sin Stock)': 0,
-        '1-7 días': 0,
-        '8-30 días': 0,
-        '31-60 días': 0,
-        '61-90 días': 0,
-        '91-180 días': 0,
-        '> 180 días': 0,
-    }
-    all_proj = projections.values_list('coverage_days', flat=True)
-    for days in all_proj:
-        if days == 0:
-            buckets['0 días (Sin Stock)'] += 1
-        elif days <= 7:
-            buckets['1-7 días'] += 1
-        elif days <= 30:
-            buckets['8-30 días'] += 1
-        elif days <= 60:
-            buckets['31-60 días'] += 1
-        elif days <= 90:
-            buckets['61-90 días'] += 1
-        elif days <= 180:
-            buckets['91-180 días'] += 1
-        else:
-            buckets['> 180 días'] += 1
-
-    bg = ['#ef4444','#f59e0b','#fb923c','#facc15','#a3e635','#34d399','#0099DE']
-    return JsonResponse({
-        'labels': list(buckets.keys()),
-        'datasets': [{'label': 'Cantidad de Registros', 'data': list(buckets.values()), 'backgroundColor': bg}]
-    })
-
-
-@login_required
-def api_chart_risk_matrix(request):
-    """Matriz de riesgo: disp_future vs ROP por bodega."""
-    projections = StockProjection.objects.filter(rop__gt=0)
-    projections, f = _apply_filters(projections, request)
-
-    warehouses = _nodos(f['warehouse'])
-
-    datasets = []
-    palette = ['#0099DE','#ef4444','#f59e0b','#10b981','#7c3aed','#e03131','#00B4D8','#facc15','#fb923c']
-
-    for i, wh in enumerate(warehouses):
-        points = (projections
-                  .filter(warehouse=wh)
-                  .select_related('product')
-                  .values('rop', 'shortage_units', 'urgency_level')[:300])
-
-        scatter = [{'x': float(p['rop']), 'y': float(p['shortage_units'])} for p in points]
-        datasets.append({
-            'label': wh.label,
-            'data': scatter,
-            'backgroundColor': palette[i % len(palette)] + 'aa',
-            'pointRadius': 4,
-        })
-
-    return JsonResponse({'datasets': datasets})
+    """Analitica se fusiono en el Panel S&OP (SPEC-28); la URL antigua sigue funcionando."""
+    from django.shortcuts import redirect
+    from django.urls import reverse
+    qs = request.META.get('QUERY_STRING', '')
+    return redirect(reverse('dashboard:home') + (f'?{qs}' if qs else ''))
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -665,7 +415,7 @@ def api_quiebres_por_dias(request):
     return JsonResponse({
         'labels': [f"{r['sku']} ({r['bodega']})" for r in top20],
         'datasets': [{
-            'label': 'Días en Quiebre Estimados',
+            'label': 'Días de demanda faltante',
             'data': [r['dias'] for r in top20],
             'backgroundColor': [
                 '#ef4444' if r['urgency'] == 'URGENTE' else '#f59e0b'

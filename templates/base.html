@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Sistema S&OP & Proyección de Stock | Pesco S.A.{% endblock %}</title>
     <!-- Tailwind compilado localmente (colores Pesco en tailwind/tailwind.config.js; regenerar: tailwind/README.md) -->
-    <link rel="stylesheet" href="/static/css/tailwind.css?v=20261028b">
+    <link rel="stylesheet" href="/static/css/tailwind.css?v=20261029a">
     <!-- FontAwesome for icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <!-- Chart.js -->
@@ -50,14 +50,9 @@
             <!-- Navigation Links -->
             {% if user.is_authenticated %}
             <nav class="hidden md:flex items-center space-x-1 lg:space-x-1.5 text-xs font-bold uppercase tracking-wider">
-                <!-- 1. Dashboard S&OP -->
+                <!-- 1. Panel S&OP (Dashboard + Analitica, SPEC-28) -->
                 <a href="{% url 'dashboard:home' %}" class="px-3 py-2 rounded-xl transition flex items-center gap-1.5 {% if request.resolver_match.url_name == 'home' %}bg-pesco-cyan text-white shadow-sm font-black{% else %}text-slate-700 hover:bg-pesco-lightcyan hover:text-pesco-cyan{% endif %}">
-                    <i class="fa-solid fa-chart-pie {% if request.resolver_match.url_name == 'home' %}text-white{% else %}text-pesco-cyan{% endif %}"></i> Dashboard S&amp;OP
-                </a>
-
-                <!-- 2. Analítica Gráfica -->
-                <a href="{% url 'dashboard:analytics' %}" class="px-3 py-2 rounded-xl transition flex items-center gap-1.5 {% if request.resolver_match.url_name == 'analytics' %}bg-pesco-cyan text-white shadow-sm font-black{% else %}text-slate-700 hover:bg-pesco-lightcyan hover:text-pesco-cyan{% endif %}">
-                    <i class="fa-solid fa-chart-line {% if request.resolver_match.url_name == 'analytics' %}text-white{% else %}text-pesco-cyan{% endif %}"></i> Analítica
+                    <i class="fa-solid fa-chart-pie {% if request.resolver_match.url_name == 'home' %}text-white{% else %}text-pesco-cyan{% endif %}"></i> Panel S&amp;OP
                 </a>
 
                 <!-- 2b. Reporte Ejecutivo Gerencial -->
