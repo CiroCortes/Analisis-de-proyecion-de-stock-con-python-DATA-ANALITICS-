@@ -224,20 +224,29 @@ WHERE gr.canceled = 'N'
 -- cantidad_neta = salidas - entradas (devoluciones restan en el mes en que ocurren).
 -- origen 'NC' (28-oct, SPEC-22): las notas de credito van aparte; la plataforma las reemplaza por la
 -- consulta 15, que las resta en la bodega y el mes de su factura de origen.
+-- origen 'FACTURA' (29-oct, SPEC-25): facturas que mueven stock (13), aparte de entregas y
+-- devoluciones (15/16), para compensar las NC con sus refacturas.
 -- ============================================================================
 SELECT
     m.itemcode                                           AS codigo_sku,
     m.warehouse                                          AS bodega,
     SUBSTR(CAST(m.docdate AS VARCHAR), 1, 7)             AS mes,
     CASE WHEN m.transtype = 14                THEN 'NC'
-         WHEN m.transtype IN (13, 15, 16)     THEN 'VENTA'
+         WHEN m.transtype = 13                THEN 'FACTURA'
+         WHEN m.transtype IN (15, 16)         THEN 'VENTA'
          WHEN m.transtype = 60                THEN 'SALIDA'
          ELSE 'OTRO' END                                 AS origen,
     CAST(SUM(COALESCE(m.outqty, 0) - COALESCE(m.inqty, 0)) AS DECIMAL(18, 2)) AS cantidad_neta
-FROM pesco_sbo_pescousd.oinm m
+FROM (
+    -- El Datalake repite movimientos (29-oct: nov-25 trae 39.226 filas para 14.660 transnum).
+    -- En SAP transnum es la llave de OINM: se cuenta cada movimiento una sola vez.
+    SELECT o.*, ROW_NUMBER() OVER (PARTITION BY o.transnum ORDER BY o.transnum) AS rn
+    FROM pesco_sbo_pescousd.oinm o
+    WHERE o.transtype IN (13, 14, 15, 16, 60)
+) m
 INNER JOIN pesco_sbo_pescousd.oitm t
     ON t.itemcode = m.itemcode
-WHERE m.transtype IN (13, 14, 15, 16, 60)
+WHERE m.rn = 1
   AND t.invntitem = 'Y'
   AND SUBSTR(CAST(m.docdate AS VARCHAR), 1, 10) >= CAST(DATE_ADD('month', -24, DATE_TRUNC('month', CURRENT_DATE)) AS VARCHAR)
   AND SUBSTR(CAST(m.docdate AS VARCHAR), 1, 10) <  CAST(DATE_TRUNC('month', CURRENT_DATE) AS VARCHAR)
@@ -246,7 +255,8 @@ GROUP BY
     m.warehouse,
     SUBSTR(CAST(m.docdate AS VARCHAR), 1, 7),
     CASE WHEN m.transtype = 14                THEN 'NC'
-         WHEN m.transtype IN (13, 15, 16)     THEN 'VENTA'
+         WHEN m.transtype = 13                THEN 'FACTURA'
+         WHEN m.transtype IN (15, 16)         THEN 'VENTA'
          WHEN m.transtype = 60                THEN 'SALIDA'
          ELSE 'OTRO' END
 HAVING SUM(COALESCE(m.outqty, 0) - COALESCE(m.inqty, 0)) <> 0;
@@ -370,10 +380,15 @@ SELECT
     l.whscode                                            AS bodega,
     SUBSTR(CAST(h.docdate AS VARCHAR), 1, 7)             AS mes,
     CAST(SUM(l.quantity) AS DECIMAL(18, 2))              AS cantidad_of
-FROM pesco_sbo_pescousd.oige h
-INNER JOIN pesco_sbo_pescousd.ige1 l
+FROM (SELECT DISTINCT docentry, docdate, canceled FROM pesco_sbo_pescousd.oige) h
+INNER JOIN (
+    -- Sin lineas repetidas del Datalake (ver consulta 8): una fila por (docentry, linenum)
+    SELECT x.*, ROW_NUMBER() OVER (PARTITION BY x.docentry, x.linenum ORDER BY x.linenum) AS rn
+    FROM pesco_sbo_pescousd.ige1 x
+    WHERE x.basetype = 202
+) l
     ON l.docentry = h.docentry
-WHERE l.basetype = 202
+WHERE l.rn = 1
   AND h.canceled = 'N'
   AND SUBSTR(CAST(h.docdate AS VARCHAR), 1, 10) >= CAST(DATE_ADD('month', -24, DATE_TRUNC('month', CURRENT_DATE)) AS VARCHAR)
   AND SUBSTR(CAST(h.docdate AS VARCHAR), 1, 10) <  CAST(DATE_TRUNC('month', CURRENT_DATE) AS VARCHAR)

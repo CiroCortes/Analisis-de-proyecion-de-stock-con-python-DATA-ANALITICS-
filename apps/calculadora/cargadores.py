@@ -86,6 +86,8 @@ def cargar_consumo_mensual(data_dir=None):
         if origen == 'NC':
             nc_oinm[(sku, bodega, mes)] += _clean_num(cols[4])
             continue
+        if origen == 'FACTURA':        # consulta 8 separada (SPEC-25): sigue siendo venta
+            origen = ConsumoMensual.VENTA
         origen = origen if origen in (ConsumoMensual.VENTA, ConsumoMensual.OF) else ConsumoMensual.SALIDA
         acumulado[(sku, bodega, mes, origen)] += _clean_num(cols[4])
 
