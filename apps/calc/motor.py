@@ -30,6 +30,12 @@ class EntradaArticulo:
     es_critico: bool = False
     minimo_nuevo: float = 0
     bloqueado: bool = False
+    # Marcas de gestion (SPEC-31 §1): excluido del calculo o planificado por gerencia
+    excluido: bool = False
+    motivo_exclusion: str = ''
+    plan_gerencia: bool = False
+    plan_unidades: float = 0
+    plan_hasta: datetime.date = None                    # ultimo mes del plan (None = sin vencimiento)
     fecha_creacion: datetime.date = None
     fecha_ultimo_movimiento: datetime.date = None
     consumo_meses: list = field(default_factory=list)   # red, meses cerrados, antiguo -> reciente
@@ -104,9 +110,22 @@ def calcular_articulo(e):
 
     letra = clasif.letra
     minimo_nuevo = max(e.minimo_nuevo or 0, e.minimo_declarado or 0)
-    if e.bloqueado:
+    if e.excluido:
+        politica = pol.politica_minimo(pol.SIN_COMPRA, 0, p)
+        avisos.append(f'Excluido del calculo: {e.motivo_exclusion or "sin motivo"}')
+    elif e.bloqueado:
         politica = pol.politica_minimo(pol.SIN_COMPRA, 0, p)
         avisos.append('Articulo bloqueado en SAP: excluido del sugerido')
+    elif e.plan_gerencia:
+        vigente = e.plan_hasta is None or e.plan_hasta >= e.hoy.replace(day=1)
+        if not vigente:
+            politica = pol.politica_minimo(pol.SIN_COMPRA, 0, p)
+            avisos.append('Plan de gerencia vencido: actualizar')
+        elif not e.plan_unidades or e.plan_unidades <= 0:
+            politica = pol.politica_minimo(pol.SIN_COMPRA, 0, p)
+            avisos.append('Plan de gerencia sin unidades')
+        else:
+            politica = pol.politica_minimo(pol.GERENCIA, e.plan_unidades, p)
     elif nuevo and letra != 'P' and (letra != 'O' or minimo_nuevo):
         # Nuevo no usa historia (SPEC-09). Un nuevo casi siempre es O: si tiene minimo manual
         # se respeta; sin minimo sigue como O (no se compra por proyeccion, revision 28-oct)

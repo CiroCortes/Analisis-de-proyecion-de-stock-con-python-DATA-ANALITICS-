@@ -216,7 +216,10 @@ WHERE gr.canceled = 'N'
 -- 8. CONSUMO MENSUAL POR ARTICULO Y BODEGA (24 meses cerrados)      [IMPRESCINDIBLE]
 -- ARCHIVO: Consumo Mensual.txt
 -- LA MAS IMPORTANTE: sin ella el consumo se reconstruye (provisional) desde PC y OF.
--- Es la mas pesada (24 meses de OINM): probar primero con LIMIT 5.
+-- Es la mas pesada (24 meses de OIVL): probar primero con LIMIT 5.
+-- FUENTE OIVL (2-nov): la OINM del Datalake esta incompleta (31206011, ago-26: le faltan la NC 9783,
+-- el traslado 35049 y salidas del 1 al 18; OIVL las trae todas y sin filas repetidas). OIVL es el
+-- registro de inventario de B1 desde la 9.x; la bodega es loccode y la llave es transseq.
 -- TransType (validar contra el informe de auditoria de stock de B1):
 --   15 Entrega de venta · 13 Factura que mueve stock · 14 Nota de credito ·
 --   16 Devolucion de venta · 60 Salida de mercancia (incluye emisiones a OF).
@@ -229,7 +232,7 @@ WHERE gr.canceled = 'N'
 -- ============================================================================
 SELECT
     m.itemcode                                           AS codigo_sku,
-    m.warehouse                                          AS bodega,
+    m.loccode                                            AS bodega,
     SUBSTR(CAST(m.docdate AS VARCHAR), 1, 7)             AS mes,
     CASE WHEN m.transtype = 14                THEN 'NC'
          WHEN m.transtype = 13                THEN 'FACTURA'
@@ -238,10 +241,10 @@ SELECT
          ELSE 'OTRO' END                                 AS origen,
     CAST(SUM(COALESCE(m.outqty, 0) - COALESCE(m.inqty, 0)) AS DECIMAL(18, 2)) AS cantidad_neta
 FROM (
-    -- El Datalake repite movimientos (29-oct: nov-25 trae 39.226 filas para 14.660 transnum).
-    -- En SAP transnum es la llave de OINM: se cuenta cada movimiento una sola vez.
-    SELECT o.*, ROW_NUMBER() OVER (PARTITION BY o.transnum ORDER BY o.transnum) AS rn
-    FROM pesco_sbo_pescousd.oinm o
+    -- El Datalake puede repetir movimientos (29-oct, OINM): transseq es la llave de OIVL y se
+    -- cuenta cada movimiento una sola vez.
+    SELECT o.*, ROW_NUMBER() OVER (PARTITION BY o.transseq ORDER BY o.transseq) AS rn
+    FROM pesco_sbo_pescousd.oivl o
     WHERE o.transtype IN (13, 14, 15, 16, 60)
 ) m
 INNER JOIN pesco_sbo_pescousd.oitm t
@@ -252,7 +255,7 @@ WHERE m.rn = 1
   AND SUBSTR(CAST(m.docdate AS VARCHAR), 1, 10) <  CAST(DATE_TRUNC('month', CURRENT_DATE) AS VARCHAR)
 GROUP BY
     m.itemcode,
-    m.warehouse,
+    m.loccode,
     SUBSTR(CAST(m.docdate AS VARCHAR), 1, 7),
     CASE WHEN m.transtype = 14                THEN 'NC'
          WHEN m.transtype = 13                THEN 'FACTURA'
@@ -418,6 +421,10 @@ FROM pesco_sbo_pescousd.owhs w;
 -- no donde se registro la NC (a veces 013-NC, que esta excluida).
 -- tipo_origen: 13 = factura, 15 = entrega, -1 = sin documento base.
 -- sin_movimiento_stock = 'Y': NC solo financiera (no devolvio unidades a bodega).
+-- 2-nov (SPEC-25): columnas 11-13 = la GUIA DE DESPACHO de la factura, que es la que movio el stock
+-- (venta = guia; la factura se emite despues sobre la guia). La NC se resta en la bodega y el mes
+-- de la guia. Cubre factura sobre guia (inv1.basetype = 15), factura de reserva con guia posterior
+-- (dln1.basetype = 13) y NC directa sobre una guia. dln1 deduplicada (el Datalake repite filas).
 -- ============================================================================
 SELECT
     nc.docnum                                            AS nc_numero,
@@ -429,7 +436,10 @@ SELECT
     COALESCE(fl.whscode, el.whscode)                     AS bodega_origen,
     SUBSTR(CAST(COALESCE(f.docdate, e.docdate) AS VARCHAR), 1, 10) AS fecha_origen,
     COALESCE(f.docnum, e.docnum)                         AS numero_origen,
-    l.noinvtrymv                                         AS sin_movimiento_stock
+    l.noinvtrymv                                         AS sin_movimiento_stock,
+    gc.docnum                                            AS numero_guia,
+    g.whscode                                            AS bodega_guia,
+    SUBSTR(CAST(gc.docdate AS VARCHAR), 1, 10)           AS fecha_guia
 FROM pesco_sbo_pescousd.orin nc
 INNER JOIN pesco_sbo_pescousd.rin1 l
     ON nc.docentry = l.docentry
@@ -443,6 +453,31 @@ LEFT JOIN pesco_sbo_pescousd.dln1 el
     ON CAST(l.basetype AS VARCHAR) = '15' AND el.docentry = l.baseentry AND el.linenum = l.baseline
 LEFT JOIN pesco_sbo_pescousd.odln e
     ON e.docentry = el.docentry
+-- Guia de una factura de reserva: la primera guia emitida sobre esa linea de factura
+LEFT JOIN (
+    SELECT baseentry, baseline, MIN(docentry) AS docentry, MIN_BY(linenum, docentry) AS linenum
+    FROM pesco_sbo_pescousd.dln1
+    WHERE CAST(basetype AS VARCHAR) = '13'
+    GROUP BY baseentry, baseline
+) gr
+    ON gr.baseentry = fl.docentry AND gr.baseline = fl.linenum
+-- Guia: la base de la factura (factura sobre guia), la guia de una factura de reserva o la base de la NC.
+-- Una fila por (docentry, linenum): el Datalake repite lineas.
+LEFT JOIN (
+    SELECT docentry, linenum, MIN(whscode) AS whscode
+    FROM pesco_sbo_pescousd.dln1
+    GROUP BY docentry, linenum
+) g
+    ON g.docentry = COALESCE(CASE WHEN CAST(fl.basetype AS VARCHAR) = '15' THEN fl.baseentry END, gr.docentry,
+                             CASE WHEN CAST(l.basetype AS VARCHAR) = '15' THEN l.baseentry END)
+   AND g.linenum  = COALESCE(CASE WHEN CAST(fl.basetype AS VARCHAR) = '15' THEN fl.baseline END, gr.linenum,
+                             CASE WHEN CAST(l.basetype AS VARCHAR) = '15' THEN l.baseline END)
+LEFT JOIN (
+    SELECT docentry, MIN(docnum) AS docnum, MIN(docdate) AS docdate
+    FROM pesco_sbo_pescousd.odln
+    GROUP BY docentry
+) gc
+    ON gc.docentry = g.docentry
 WHERE nc.canceled = 'N'
   AND t.invntitem = 'Y'
   AND SUBSTR(CAST(nc.docdate AS VARCHAR), 1, 10) >= CAST(DATE_ADD('month', -24, DATE_TRUNC('month', CURRENT_DATE)) AS VARCHAR);
@@ -496,6 +531,59 @@ LEFT JOIN pesco_sbo_pescousd.ousr u
     ON u.userid = w.usersign
 WHERE w.status IN ('P', 'R') AND (w1.plannedqty - w1.issuedqty) > 0
   AND w1.itemcode IS NOT NULL;
+
+
+-- ============================================================================
+-- 17. VENTA NETA EN USD POR ARTICULO, BODEGA Y MES (13 meses)        [OPCIONAL]
+-- ARCHIVO: Ventas Mensuales.txt
+-- ABC por venta (SPEC-31 §4, doc. Cesar §3): precio de venta x cantidad vendida. Facturas menos NC.
+-- linetotal = total de la linea en moneda local de la base (pescousd = USD). Validar con una factura.
+-- La NC resta en la bodega de su factura de origen (no en la 013-IN / 013-NC donde se registra).
+-- Lineas deduplicadas por (docentry, linenum): el Datalake repite filas.
+-- ============================================================================
+SELECT
+    v.itemcode                                           AS codigo_sku,
+    v.bodega                                             AS bodega,
+    SUBSTR(CAST(v.docdate AS VARCHAR), 1, 7)             AS mes,
+    CAST(SUM(v.cantidad) AS DECIMAL(18, 2))              AS cantidad,
+    CAST(SUM(v.monto) AS DECIMAL(18, 2))                 AS venta_usd
+FROM (
+    SELECT l.itemcode, l.whscode AS bodega, f.docdate, l.quantity AS cantidad, l.linetotal AS monto
+    FROM (SELECT DISTINCT docentry, docdate, canceled FROM pesco_sbo_pescousd.oinv) f
+    INNER JOIN (
+        SELECT docentry, linenum, MIN(itemcode) AS itemcode, MIN(whscode) AS whscode,
+               MIN(quantity) AS quantity, MIN(linetotal) AS linetotal
+        FROM pesco_sbo_pescousd.inv1
+        GROUP BY docentry, linenum
+    ) l ON l.docentry = f.docentry
+    WHERE f.canceled = 'N'
+    UNION ALL
+    SELECT l.itemcode, COALESCE(fl.whscode, l.whscode) AS bodega, nc.docdate,
+           -l.quantity AS cantidad, -l.linetotal AS monto
+    FROM (SELECT DISTINCT docentry, docdate, canceled FROM pesco_sbo_pescousd.orin) nc
+    INNER JOIN (
+        SELECT docentry, linenum, MIN(itemcode) AS itemcode, MIN(whscode) AS whscode, MIN(quantity) AS quantity,
+               MIN(linetotal) AS linetotal, MIN(basetype) AS basetype, MIN(baseentry) AS baseentry,
+               MIN(baseline) AS baseline
+        FROM pesco_sbo_pescousd.rin1
+        GROUP BY docentry, linenum
+    ) l ON l.docentry = nc.docentry
+    LEFT JOIN (
+        SELECT docentry, linenum, MIN(whscode) AS whscode
+        FROM pesco_sbo_pescousd.inv1
+        GROUP BY docentry, linenum
+    ) fl ON CAST(l.basetype AS VARCHAR) = '13' AND fl.docentry = l.baseentry AND fl.linenum = l.baseline
+    WHERE nc.canceled = 'N'
+) v
+INNER JOIN pesco_sbo_pescousd.oitm t
+    ON t.itemcode = v.itemcode
+WHERE t.invntitem = 'Y'
+  AND SUBSTR(CAST(v.docdate AS VARCHAR), 1, 10) >= CAST(DATE_ADD('month', -13, DATE_TRUNC('month', CURRENT_DATE)) AS VARCHAR)
+GROUP BY
+    v.itemcode,
+    v.bodega,
+    SUBSTR(CAST(v.docdate AS VARCHAR), 1, 7)
+HAVING SUM(v.monto) <> 0;
 
 
 -- ============================================================================

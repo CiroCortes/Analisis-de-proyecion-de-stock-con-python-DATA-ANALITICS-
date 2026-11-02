@@ -72,6 +72,8 @@
                             <td class="px-2 text-right font-mono {% if r.a_pedir %}font-black text-emerald-700{% endif %}">{% if r.a_pedir is None %}<span class="text-slate-300" title="{% if es_otra %}Bodega fuera de los nodos: la compra se decide por nodo{% else %}Bodega de Santiago: la compra se decide para todo Santiago{% endif %}">—</span>{% else %}{{ r.a_pedir|floatformat:"0g" }}{% endif %}</td>
                             <td class="px-2 text-right font-mono">{{ r.stock|floatformat:"0g" }}</td>
                             <td class="px-2 text-right font-mono">{{ r.recibir|floatformat:"0g" }}</td>
+                            <td class="px-2 text-right font-mono text-slate-500">{{ r.recibir_oc|floatformat:"0g" }}</td>
+                            <td class="px-2 text-right font-mono {% if r.recibir_traslado %}text-amber-700{% else %}text-slate-500{% endif %}">{{ r.recibir_traslado|floatformat:"0g" }}</td>
                             <td class="px-2 text-right font-mono">{{ r.entregar|floatformat:"0g" }}</td>
                             <td class="px-2 text-right font-mono">{{ r.venta12|floatformat:"0g" }}</td>
                             <td class="px-2 text-right font-mono">{{ r.meses }}</td>
@@ -79,7 +81,7 @@
                             <td class="px-2 pr-4 text-right font-mono">{{ r.valor|floatformat:"0g" }}</td>
                         </tr>
                         {% empty %}
-                        <tr><td colspan="11" class="p-8 text-center text-slate-500">No hay artículos con ese filtro.</td></tr>
+                        <tr><td colspan="13" class="p-8 text-center text-slate-500">No hay artículos con ese filtro.</td></tr>
                         {% endfor %}
                         </tbody>
                     </table>
@@ -102,10 +104,10 @@
                     <table class="min-w-full text-xs whitespace-nowrap">
                         <thead class="bg-slate-50 sticky top-0 z-10" style="position: sticky; top: 0;"><tr class="text-[10px] uppercase tracking-wider text-slate-500">
                             <th class="py-2 pl-5 pr-2 text-left">Ubicación</th><th class="px-2 text-right">Demanda media</th><th class="px-2 text-right">A pedir</th>
-                            <th class="px-2 text-right">Stock</th><th class="px-2 text-right">Por recibir</th><th class="px-2 text-right">Por entregar</th>
+                            <th class="px-2 text-right">Stock</th><th class="px-2 text-right">Por llegar</th><th class="px-2 text-right">Por OC</th><th class="px-2 text-right">Por traslado</th><th class="px-2 text-right">Por entregar</th>
                             <th class="px-2 text-right">Consumo 12 m</th><th class="px-2 text-right">Meses c/ consumo</th><th class="px-2 text-right">Tendencia</th><th class="px-2 pr-5 text-right">Stock USD</th>
                         </tr></thead>
-                        <tbody id="ubic-cuerpo"><tr><td colspan="10" class="p-6 text-center text-slate-400">Elige un artículo del listado.</td></tr></tbody>
+                        <tbody id="ubic-cuerpo"><tr><td colspan="12" class="p-6 text-center text-slate-400">Elige un artículo del listado.</td></tr></tbody>
                     </table>
                 </div>
             </div>
@@ -222,6 +224,8 @@
         var td = celda(recibir, 'px-2 text-right font-mono' + (u.sin_oc > 0 ? ' text-amber-700 font-bold' : ''));
         if (u.sin_oc > 0) td.title = 'SAP tiene ' + fmt(u.pedido_sap, 0) + ' u pedidas a esta bodega y hay ' + fmt(u.recibir, 0) + ' u en OC abiertas cargadas';
         tr.appendChild(td);
+        tr.appendChild(celda(fmt(u.recibir, 0), 'px-2 text-right font-mono text-slate-500'));
+        tr.appendChild(celda('', 'px-2'));
         for (var k = 0; k < 4; k++) tr.appendChild(celda('', 'px-2'));
         tr.appendChild(celda(fmt(u.valor, 0), 'px-2 pr-5 text-right font-mono'));
         return tr;
@@ -236,7 +240,7 @@
                 if (u.tipo === 'FUERA' && !hubo_fuera) {
                     hubo_fuera = true;
                     var sep = document.createElement('tr');
-                    sep.innerHTML = '<td colspan="10" class="pt-2 pb-1 pl-5 text-[10px] font-black uppercase tracking-wider text-slate-400">No cuentan en el cálculo</td>';
+                    sep.innerHTML = '<td colspan="12" class="pt-2 pb-1 pl-5 text-[10px] font-black uppercase tracking-wider text-slate-400">No cuentan en el cálculo</td>';
                     cuerpo.appendChild(sep);
                 }
                 cuerpo.appendChild(filaSap(u));
@@ -251,6 +255,8 @@
             tr.appendChild(celda(u.a_pedir === null ? '—' : fmt(u.a_pedir, 0), 'px-2 text-right font-mono' + (u.a_pedir ? ' font-black text-emerald-700' : (u.a_pedir === null ? ' text-slate-300' : ''))));
             tr.appendChild(celda(fmt(u.stock, 0), 'px-2 text-right font-mono'));
             tr.appendChild(celda(fmt(u.recibir, 0), 'px-2 text-right font-mono'));
+            tr.appendChild(celda(fmt(u.recibir_oc, 0), 'px-2 text-right font-mono text-slate-500'));
+            tr.appendChild(celda(fmt(u.recibir_traslado, 0), 'px-2 text-right font-mono' + (u.recibir_traslado ? ' text-amber-700' : ' text-slate-500')));
             tr.appendChild(celda(fmt(u.entregar, 0), 'px-2 text-right font-mono'));
             tr.appendChild(celda(fmt(u.venta12, 0), 'px-2 text-right font-mono'));
             tr.appendChild(celda(u.meses, 'px-2 text-right font-mono'));

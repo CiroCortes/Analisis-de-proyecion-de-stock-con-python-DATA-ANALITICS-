@@ -16,7 +16,7 @@ from apps.calc.prevision import prever
 from apps.calc.red import NODO_SANTIAGO
 from apps.data_ingestion.datalake_ingest import find_data_file
 from apps.data_ingestion.warehouses import (NO_CUENTA, STOCK, TRANSITO, SUCURSAL_CITIES, nodo_red, nombre_nodo,
-                                            tratamiento_por_defecto, zone_for, SANTIAGO)
+                                            prebodega_destino, tratamiento_por_defecto, zone_for, SANTIAGO)
 from apps.inventory.models import InventoryMetric, Warehouse
 from apps.inventory.stock_actual_models import StockActual
 
@@ -119,25 +119,40 @@ def _posicion(sku=None, ubicacion=None):
             bodegas = bodegas.filter(warehouse__code=ubicacion)
         else:
             nodos, bodegas = nodos.filter(warehouse__code=ubicacion), bodegas.none()
+    sc_cuenta = Resolutor().general.sc_cuenta_en_transito
+    prebodega = defaultdict(float)
+    pre_qs = StockActual.objects.filter(bodega__startswith='000', stock_disponible__gt=0)
+    for s, b, q in (pre_qs.filter(codigo=sku) if sku else pre_qs).values_list('codigo', 'bodega', 'stock_disponible'):
+        if prebodega_destino(b):
+            prebodega[(s, prebodega_destino(b))] += float(q or 0)
     compra_red = {}
     for s, comprar, excepcion, sugerida, cant_exc, necesita in ResultadoArticulo.objects.filter(
             **({'product_id': sku} if sku else {})).values_list(
             'product_id', 'comprar', 'excepcion', 'cantidad_sugerida', 'cantidad_excepcion', 'necesita_compra'):
         compra_red[s] = sugerida if (comprar or necesita) else (cant_exc if excepcion else 0)
-    for s, code, fis, tra, com, falt in nodos.values_list('resultado__product_id', 'warehouse__code', 'stock_fisico',
-                                                            'en_transito', 'comprometido', 'faltante'):
-        # Santiago recibe la compra de la red; una sucursal pide su faltante (traslado o espera compra)
-        datos[(s, code)] = {'stock': fis, 'recibir': tra, 'entregar': com,
-                            'a_pedir': compra_red.get(s, 0) if code == NODO_SANTIAGO else falt}
+    for s, code, fis, tra, com, falt, origenes in nodos.values_list(
+            'resultado__product_id', 'warehouse__code', 'stock_fisico', 'en_transito', 'comprometido', 'faltante',
+            'transito_desglose'):
+        # Santiago recibe la compra de la red; una sucursal pide su faltante (traslado o espera compra).
+        # Lo que llega se separa en OC (compra) y traslado de stock (SPEC-31 §2)
+        traslado = (origenes or {}).get('TRASLADO', 0.0)
+        datos[(s, code)] = {'stock': fis, 'recibir': tra, 'recibir_oc': tra - traslado, 'recibir_traslado': traslado,
+                            'entregar': com, 'a_pedir': compra_red.get(s, 0) if code == NODO_SANTIAGO else falt}
     for s, code, fis, oc, sc, ti, pc, of in bodegas.values_list(
             'product_id', 'warehouse__code', 'stock_physical', 'oc_po_qty', 'sc_qty', 'stock_transito_inter',
             'comp_pc_qty', 'comp_of_qty'):
-        datos[(s, code)] = {'stock': fis, 'recibir': oc + sc + ti, 'entregar': pc + of, 'a_pedir': None}
+        # Mismo en camino que el calculo: las SC solo si el parametro lo indica (SPEC-31 §2). El stock de
+        # la pre-bodega que llega a esta bodega es importacion (OC); el resto del transito, traslado
+        traslado = max(0.0, ti - prebodega.get((s, code), 0.0))
+        recibir = oc + ti + (sc if sc_cuenta else 0)
+        datos[(s, code)] = {'stock': fis, 'recibir': recibir, 'recibir_oc': recibir - traslado,
+                            'recibir_traslado': traslado, 'entregar': pc + of, 'a_pedir': None}
     # Santiago sin fila de nodo (todo en cero) pero con compra de la red
     if ubicacion in (None, NODO_SANTIAGO):
         for s, q in compra_red.items():
             if q and (s, NODO_SANTIAGO) not in datos:
-                datos[(s, NODO_SANTIAGO)] = {'stock': 0, 'recibir': 0, 'entregar': 0, 'a_pedir': q}
+                datos[(s, NODO_SANTIAGO)] = {'stock': 0, 'recibir': 0, 'recibir_oc': 0, 'recibir_traslado': 0,
+                                             'entregar': 0, 'a_pedir': q}
     return datos
 
 
@@ -148,12 +163,14 @@ def _fila(sku, ubicacion, historia, pos, params, costo):
     return {
         'codigo': sku, 'ubicacion': ubicacion, 'demanda': round(p.promedio, 2), 'a_pedir': pos['a_pedir'],
         'stock': pos['stock'], 'recibir': pos['recibir'], 'entregar': pos['entregar'],
+        'recibir_oc': pos.get('recibir_oc', pos['recibir']), 'recibir_traslado': pos.get('recibir_traslado', 0),
         'venta12': round(sum(p.historia), 2), 'meses': p.meses_con_demanda, 'costo': costo,
         'valor': round(pos['stock'] * costo, 2), 'prevision': p,
     }
 
 
-ORDENES = {'codigo', 'demanda', 'a_pedir', 'stock', 'recibir', 'entregar', 'venta12', 'meses', 'costo', 'valor'}
+ORDENES = {'codigo', 'demanda', 'a_pedir', 'stock', 'recibir', 'recibir_oc', 'recibir_traslado', 'entregar',
+           'venta12', 'meses', 'costo', 'valor'}
 
 
 def listado(ubicacion, buscar='', solo_a_pedir=False, orden='-meses', hoy=None):

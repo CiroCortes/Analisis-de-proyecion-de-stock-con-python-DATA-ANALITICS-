@@ -18,12 +18,12 @@ PIPELINE = [
 
 
 class ConsultasDatalakeTest(SimpleTestCase):
-    def test_dieciseis_consultas_en_orden(self):
+    def test_diecisiete_consultas_en_orden(self):
         archivos = [a for a, _ in load_queries()]
-        self.assertEqual(len(archivos), 16)
+        self.assertEqual(len(archivos), 17)
         self.assertEqual(archivos[:7], PIPELINE)
         self.assertEqual(archivos[7:9], ['Consumo Mensual.txt', 'Plazos de Entrega OC.txt'])
-        self.assertEqual(archivos[14:], ['Notas de Credito.txt', 'Compromisos Abiertos.txt'])
+        self.assertEqual(archivos[14:], ['Notas de Credito.txt', 'Compromisos Abiertos.txt', 'Ventas Mensuales.txt'])
 
     def test_cada_archivo_lo_lee_la_plataforma(self):
         esperados = set(PIPELINE) | {largo for largo, _ in ARCHIVOS.values()}

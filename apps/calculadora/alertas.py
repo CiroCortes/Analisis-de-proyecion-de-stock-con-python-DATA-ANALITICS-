@@ -4,10 +4,14 @@ Cada corrida evalua las reglas sobre los resultados. Una alerta se identifica po
 `clave` (tipo + articulo, + mes en las mensuales): si la condicion sigue, se mantiene con
 su estado y comentario; si deja de cumplirse queda `vigente=False` (no se borra).
 """
+import datetime
 import statistics
+from collections import defaultdict
 
 from django.db import transaction
 from django.db.models import F, Sum
+
+from apps.data_ingestion.warehouses import nodo_red, nombre_nodo
 
 from .models import (AcuerdoGlobal, Alerta, ConsumoMensual, EventoComercial, HistorialMensual, ResultadoArticulo,
                      ResultadoBodega)
@@ -28,6 +32,8 @@ def _meses(hoy, n):
 def _reglas_articulo(r, p, mes_txt):
     """Alertas de un ResultadoArticulo. Devuelve [(clave, tipo, severidad, mensaje)]."""
     out = []
+    if getattr(r, 'marca', '') == ResultadoArticulo.EXCLUIDO:
+        return out          # excluido del calculo (SPEC-31 §1.1): no hay nada que gestionar
     sku = r.product_id
     meses = r.consumo_meses or []
     ult3 = meses[-3:]
@@ -105,12 +111,25 @@ def generar(corrida, hoy):
     mes_txt = hoy.strftime('%Y-%m')
     nuevas = {}
 
-    def agregar(clave, tipo, sev, msg, sku=None, prov=''):
-        nuevas[clave] = (tipo, sku, sev, msg[:300], prov)
+    def agregar(clave, tipo, sev, msg, sku=None, prov='', nodo=''):
+        nuevas[clave] = (tipo, sku, sev, msg[:300], prov, nodo)
 
+    repone = set()
     for r in ResultadoArticulo.objects.filter(corrida=corrida).select_related('corrida').iterator(chunk_size=2000):
         for clave, tipo, sev, msg in _reglas_articulo(r, p, mes_txt):
             agregar(clave, tipo, sev, msg, r.product_id, r.proveedor_id or '')
+        if r.letra == 'R' and r.marca != ResultadoArticulo.EXCLUIDO:
+            repone.add(r.product_id)
+
+    # Doble envio a una sucursal (SPEC-31 §2): le llega stock por traslado y ademas una OC, y con eso
+    # le sobra. Caso tipico: el traslado cubrio el PC mientras llegaba la compra; al llegar la OC no
+    # hay que volver a enviar (la compra repone Santiago)
+    for sku, nodo, msg in dobles_envios(corrida):
+        agregar(f'DOBLE_ENVIO|{sku}|{nodo}', 'DOBLE_ENVIO', MEDIA, msg, sku, nodo=nodo)
+
+    # Caida de consumo por nodo (SPEC-31 §5): para revisar con el gerente de cada sucursal
+    for sku, nodo, msg in caidas_por_nodo(repone, hoy, p):
+        agregar(f'CAIDA_CONSUMO_NODO|{sku}|{nodo}|{mes_txt}', 'CAIDA_CONSUMO_NODO', MEDIA, msg, sku, nodo=nodo)
 
     # Cambio de letra (mensual)
     mes = hoy.replace(day=1)
@@ -150,6 +169,59 @@ def generar(corrida, hoy):
     return conteo
 
 
+ORIGENES_OC = ('IMPORTACION', 'NACIONAL', 'SIN_OC')
+
+
+def doble_envio(desglose, disponible_futuro):
+    """(oc, traslado, sobra) si a un nodo le llega stock por traslado y por OC y le sobra al menos lo
+    de la parte menor; None si no. `disponible_futuro` ya descuenta los compromisos del nodo."""
+    desglose = desglose or {}
+    traslado = desglose.get('TRASLADO', 0.0)
+    oc = sum(desglose.get(k, 0.0) for k in ORIGENES_OC)
+    if traslado > 0 and oc > 0 and disponible_futuro >= min(oc, traslado):
+        return oc, traslado, disponible_futuro
+    return None
+
+
+def dobles_envios(corrida):
+    out = []
+    for b in ResultadoBodega.objects.filter(resultado__corrida=corrida).exclude(warehouse__code='013').exclude(
+            resultado__marca=ResultadoArticulo.EXCLUIDO).select_related('warehouse', 'resultado'):
+        caso = doble_envio(b.transito_desglose, b.disponible_futuro)
+        if caso:
+            oc, traslado, sobra = caso
+            out.append((b.resultado.product_id, b.warehouse.code,
+                        f'{nombre_nodo(b.warehouse.code)}: llegan {traslado:,.0f} u por traslado y {oc:,.0f} u por OC; '
+                        f'con lo comprometido ({b.comprometido:,.0f}) sobran {sobra:,.0f} u. Si el traslado ya cubrio '
+                        'el pedido, al llegar la OC no reenviar: la compra repone Santiago'))
+    return out
+
+
+def caidas_por_nodo(skus, hoy, p):
+    """[(sku, nodo, mensaje)]: articulos R con consumo regular en un nodo (>= umbral R meses de 12)
+    y sin consumo en ese nodo en los ultimos `alerta_caida_meses_nodo` meses cerrados."""
+    if not skus:
+        return []
+    total = hoy.year * 12 + hoy.month - 1
+    meses = [datetime.date((total - i) // 12, (total - i) % 12 + 1, 1) for i in range(12, 0, -1)]
+    indice = {m: i for i, m in enumerate(meses)}
+    serie = defaultdict(lambda: [0.0] * 12)
+    for sku, bodega, mes, q in ConsumoMensual.objects.filter(mes__gte=meses[0], mes__lte=meses[-1]).values_list(
+            'product_id', 'bodega', 'mes', 'cantidad'):
+        nodo = nodo_red(bodega)
+        if sku in skus and nodo and mes in indice:
+            serie[(sku, nodo)][indice[mes]] += q
+    n = p.alerta_caida_meses_nodo
+    out = []
+    for (sku, nodo), v in serie.items():
+        v = [max(0.0, x) for x in v]
+        con = sum(1 for x in v if x > 0)
+        if con >= p.umbral_r and not any(v[-n:]):
+            out.append((sku, nodo, f'{nombre_nodo(nodo)}: {n} meses sin consumo; antes {sum(v):,.0f} u en '
+                                   f'{con} de 12 meses. Revisar con la sucursal a que se debe'))
+    return out
+
+
 def _consumo_periodo(ev):
     return ConsumoMensual.objects.filter(product_id=ev.product_id, mes__gte=ev.mes_inicio.replace(day=1),
                                          mes__lte=ev.mes_fin.replace(day=1)).aggregate(s=Sum('cantidad'))['s'] or 0
@@ -159,14 +231,14 @@ def _consumo_periodo(ev):
 def _sincronizar(nuevas):
     existentes = {a.clave: a for a in Alerta.objects.filter(clave__in=list(nuevas))}
     crear, actualizar = [], []
-    for clave, (tipo, sku, sev, msg, prov) in nuevas.items():
+    for clave, (tipo, sku, sev, msg, prov, nodo) in nuevas.items():
         a = existentes.get(clave)
         if a:
-            a.mensaje, a.severidad, a.vigente = msg, sev, True
+            a.mensaje, a.severidad, a.vigente, a.nodo = msg, sev, True, nodo
             actualizar.append(a)
         else:
             crear.append(Alerta(clave=clave, tipo=tipo, product_id=sku, severidad=sev, mensaje=msg,
-                                proveedor_codigo=prov))
+                                proveedor_codigo=prov, nodo=nodo))
     Alerta.objects.bulk_create(crear, batch_size=2000)
-    Alerta.objects.bulk_update(actualizar, ['mensaje', 'severidad', 'vigente'], batch_size=2000)
+    Alerta.objects.bulk_update(actualizar, ['mensaje', 'severidad', 'vigente', 'nodo'], batch_size=2000)
     Alerta.objects.filter(vigente=True).exclude(clave__in=list(nuevas)).update(vigente=False)

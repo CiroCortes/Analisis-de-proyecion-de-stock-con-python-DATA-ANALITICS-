@@ -102,3 +102,8 @@ def nivel_servicio(abc, es_critico, segmento, params):
     if es_critico or segmento == PANOL:
         nivel = max(nivel, params.nivel_servicio_critico)
     return nivel
+
+
+def es_candidato_gerencia(costo_unitario, meses_con_consumo_12m, params):
+    """Equipo caro de baja rotacion que conviene planificar en la reunion de gerencia (SPEC-31 §1.3)."""
+    return (costo_unitario or 0) >= params.umbral_costo_equipo_usd > 0 and meses_con_consumo_12m <= params.meses_max_equipo

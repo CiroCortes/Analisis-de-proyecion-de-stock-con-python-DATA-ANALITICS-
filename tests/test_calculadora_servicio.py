@@ -53,7 +53,7 @@ class CargadoresTest(TestCase):
         _txt(self.dir, 'Consumo OF Mensual.txt', ['codigo_sku', 'bodega', 'mes', 'cantidad_of'], [
             ['A1', '013-PP', '2026-09', '4'],
         ])
-        self.assertEqual(cargadores.cargar_consumo_mensual(self.dir), 'OINM')
+        self.assertEqual(cargadores.cargar_consumo_mensual(self.dir), 'OIVL')
         filas = dict(ConsumoMensual.objects.values_list('origen', 'cantidad'))
         self.assertEqual(filas, {'VENTA': 5, 'SALIDA': 3, 'OF': 4})
 

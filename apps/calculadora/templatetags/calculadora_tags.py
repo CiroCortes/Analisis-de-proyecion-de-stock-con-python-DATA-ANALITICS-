@@ -23,3 +23,17 @@ def ayuda(clave):
         '<a href="{}#{}" class="inline-flex items-center text-slate-300 hover:text-pesco-cyan align-middle ml-0.5" '
         'title="{}: {}" aria-label="Qué significa {}"><i class="fa-regular fa-circle-question text-[11px]"></i></a>',
         reverse('calculadora:guia'), clave, nombre, definicion, nombre)
+
+
+@register.filter
+def get_item(diccionario, clave):
+    """Valor de un dict por clave en una plantilla (None si no esta)."""
+    return diccionario.get(clave) if diccionario else None
+
+
+@register.filter
+def origenes_transito(desglose):
+    """[(etiqueta, unidades)] del en camino por origen (SPEC-31 §2), en orden fijo y sin ceros."""
+    from apps.calculadora.servicio import ORIGENES_TRANSITO
+    desglose = desglose or {}
+    return [(etiqueta, desglose[clave]) for clave, etiqueta in ORIGENES_TRANSITO if desglose.get(clave)]

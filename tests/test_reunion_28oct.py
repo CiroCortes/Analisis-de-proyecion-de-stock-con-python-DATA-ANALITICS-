@@ -10,11 +10,11 @@ from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 
-from apps.calculadora.cargadores import aplicar_notas_credito, cargar_compromisos_detalle
-from apps.calculadora.models import (CompromisoAbierto, CompromisoDetalle, ConsumoMensual, Corrida, ParametroValor,
-                                     ResultadoArticulo)
+from apps.calculadora.cargadores import aplicar_notas_credito, cargar_compromisos_detalle, cargar_consumo_mensual
+from apps.calculadora.models import (CargaDatos, CompromisoAbierto, CompromisoDetalle, ConsumoMensual, Corrida,
+                                     ParametroValor, ResultadoArticulo)
 from apps.calculadora.servicio import _restar_meses, ejecutar_corrida, meses_cerrados
-from apps.data_ingestion.warehouses import prebodega_destino, purchase_bodega
+from apps.data_ingestion.warehouses import es_nc_comercial, prebodega_destino, purchase_bodega
 from apps.inventory.models import Category, InventoryMetric, ProductSKU, Warehouse
 
 HOY = timezone.localdate()
@@ -95,6 +95,56 @@ class NotasCreditoTest(TestCase):
         acumulado = defaultdict(float, {('NC1', '002', self.ago, ConsumoMensual.VENTA): 320.0})
         self.assertEqual(self._aplicar(acumulado, {}), 0)
         self.assertEqual(dict(acumulado), {('NC1', '002', self.ago, ConsumoMensual.VENTA): 320.0})
+
+    def test_nc_se_resta_donde_esta_la_guia(self):
+        # SPEC-25 §3.2: guia de Calama en agosto, factura emitida en septiembre desde la 013; NC fisica
+        # en la 013-IN en octubre. La venta esta en la guia: ahi se resta, no en la factura.
+        V, octubre = ConsumoMensual.VENTA, datetime.date(2026, 10, 1)
+        _txt(self.dir, 'Notas de Credito.txt', CABECERA_NC, [
+            ['20', 'NC1', '013-IN', '2026-10-05', 12, 13, '013', '2026-09-02', '98,001', 'N',
+             '55,123', '002', '2026-08-30'],
+        ])
+        acumulado = defaultdict(float, {('NC1', '002', self.ago, V): 50.0, ('NC1', '013', self.sep, V): 40.0})
+        self.assertEqual(self._aplicar(acumulado, {('NC1', '013-IN', octubre): -12.0}), 12)
+        self.assertEqual(acumulado[('NC1', '002', self.ago, V)], 38)
+        self.assertEqual(acumulado[('NC1', '013', self.sep, V)], 40)
+
+    def test_sin_guia_en_la_linea_usa_la_factura(self):
+        # Archivo nuevo (13 columnas) con la guia vacia: se usa la factura como antes
+        V = ConsumoMensual.VENTA
+        _txt(self.dir, 'Notas de Credito.txt', CABECERA_NC, [
+            ['21', 'NC1', '013-IN', '2026-09-04', 5, 13, '002', '2026-08-27', '97,220', 'N', '', '', ''],
+        ])
+        acumulado = defaultdict(float, {('NC1', '002', self.ago, V): 20.0})
+        self.assertEqual(self._aplicar(acumulado, {('NC1', '013-IN', self.sep): -5.0}), 5)
+        self.assertEqual(acumulado[('NC1', '002', self.ago, V)], 15)
+
+
+class CobranzasFueraDelConsumoTest(TestCase):
+    """SPEC-25 §3.1: la NC comercial y su refactura en la 013-NC no cuentan; la venta de la guia queda."""
+
+    @classmethod
+    def setUpTestData(cls):
+        ProductSKU.objects.create(code='NC1', description='Con NC')
+
+    def test_013_nc_no_cuenta_y_la_venta_queda_en_la_sucursal(self):
+        directorio = tempfile.mkdtemp()
+        _txt(directorio, 'Consumo Mensual.txt', '|codigo_sku|bodega|mes|origen|cantidad_neta|\n|-|-|-|-|-|\n', [
+            ['NC1', '002', '2026-08', 'VENTA', 10],          # guia de Calama
+            ['NC1', '013-NC', '2026-09', 'NC', -10],         # factura rechazada: NC en Cobranzas
+            ['NC1', '013-NC', '2026-09', 'FACTURA', 10],     # refactura desde la 013-NC
+            ['NC1', '013-NC_E', '2026-09', 'VENTA', 2],
+            ['NC1', '013-IN', '2026-09', 'NC', -1],          # devolucion fisica sin documento ligado
+        ])
+        _txt(directorio, 'Notas de Credito.txt', CABECERA_NC, [
+            ['30', 'NC1', '013-NC', '2026-09-03', 10, 13, '002', '2026-08-31', '99,000', 'N', '1', '002', '2026-08-30'],
+        ])
+        self.assertEqual(cargar_consumo_mensual(directorio), 'OIVL')
+        filas = {(b, m.strftime('%Y-%m')): q for b, m, q in ConsumoMensual.objects.values_list('bodega', 'mes', 'cantidad')}
+        self.assertEqual(filas, {('002', '2026-08'): 10, ('013-IN', '2026-09'): -1})
+        self.assertIn('12 u', CargaDatos.objects.filter(tabla='consumo_mensual').first().nota)
+        self.assertTrue(es_nc_comercial('013-NC_E'))
+        self.assertFalse(es_nc_comercial('013-IN'))
 
 
 class CompromisosRecientesTest(TestCase):

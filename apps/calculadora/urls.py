@@ -2,6 +2,7 @@ from django.urls import path
 
 from . import views_fusion as fu
 from . import views_gestion as g
+from . import views_marcas as mk
 from . import views_planificacion as v
 
 app_name = 'calculadora'
@@ -45,4 +46,8 @@ urlpatterns = [
     path('analizar/', fu.analizar, name='analizar'),
     path('analizar/excel/', fu.analizar_excel, name='analizar_excel'),
     path('analizar/<str:code>/datos/', fu.analizar_detalle, name='analizar_detalle'),
+
+    # Marcas de gestion y ABC por venta (SPEC-31)
+    path('marcas/', mk.marcas_view, name='marcas'),
+    path('abc-venta/', mk.abc_venta, name='abc_venta'),
 ]

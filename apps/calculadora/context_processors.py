@@ -10,6 +10,8 @@ SUBNAV = [
     ('compromisos', 'Compromisos', 'fa-hourglass-half', ('compromisos',)),
     ('alertas', 'Alertas', 'fa-bell', ('alertas',)),
     ('segmentacion', 'Segmentación', 'fa-table-cells', ('segmentacion',)),
+    ('abc_venta', 'ABC venta', 'fa-sack-dollar', ('abc_venta',)),
+    ('marcas', 'Marcas', 'fa-tags', ('marcas',)),
     ('indicadores', 'Indicadores', 'fa-chart-column', ('indicadores',)),
     ('eventos', 'Eventos', 'fa-bullhorn', ('eventos',)),
     ('parametros', 'Parámetros', 'fa-sliders', ('parametros',)),

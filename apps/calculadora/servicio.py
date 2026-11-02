@@ -23,7 +23,8 @@ from apps.calc.proyeccion import dia_llegada_oc
 from apps.calc.red import NODO_SANTIAGO, Bodega
 from apps.calc.simulacion import Escenario, simular
 from apps.data_ingestion.datalake_ingest import find_data_file
-from apps.data_ingestion.warehouses import SANTIAGO, STOCK, TRANSITO, nodo_red, tratamiento_por_defecto
+from apps.data_ingestion.warehouses import (SANTIAGO, STOCK, TRANSITO, nodo_red, prebodega_destino,
+                                            tratamiento_por_defecto)
 from apps.inventory.group_types import PANOL as TIPO_PANOL
 from apps.inventory.models import InventoryMetric, ProductSKU, StockProjection, Warehouse
 from apps.inventory.stock_actual_models import StockActual
@@ -31,7 +32,8 @@ from apps.inventory.stock_actual_models import StockActual
 from . import alertas, publicacion
 from .models import (ArticuloConfig, CargaDatos, CompromisoAbierto, ConsumoMensual, Corrida, Equivalencia,
                      EscenarioActual, EventoComercial, HistorialMensual, LineaSolicitud, OCAbierta, ParametroCompra,
-                     PlazoOC, Proveedor, ResultadoArticulo, ResultadoBodega, SolicitudCompra, TrasladoSugerido)
+                     PlazoOC, Proveedor, ResultadoArticulo, ResultadoBodega, SolicitudCompra, TrasladoSugerido,
+                     VentaMensual)
 from .parametros import Resolutor
 
 # El motor anterior guarda su punto de pedido en 013-PP (escenario actual de los KPIs)
@@ -83,6 +85,12 @@ def _aplicar_ajustes(bodegas, stock_013, aj_stock, aj_transito):
             bodegas[i] = replace(b, stock_fisico=max(0.0, b.stock_fisico + ds),
                                  en_transito=max(0.0, b.en_transito + dt))
     return bodegas, max(0.0, stock_013), transito_neto
+
+
+def transito_metrica(m, params):
+    """En camino de una bodega (SPEC-31 §2): OC + traslados en camino, y las SC abiertas solo si el
+    parametro `sc_cuenta_en_transito` lo indica (Slim4 y Abastecimiento no las cuentan)."""
+    return m.oc_po_qty + m.stock_transito_inter + (m.sc_qty if params.sc_cuenta_en_transito else 0)
 
 
 def _en_rango(mes, inicio, fin):
@@ -153,6 +161,15 @@ class Datos:
             self.stock_013[sku] += float(q or 0)
         # Tratamiento manual de bodegas fuera de la red (SPEC-27)
         self.ajuste_stock, self.ajuste_transito = ajustes_por_tratamiento(producto)
+        # Stock en pre-bodegas por bodega destino: importacion ya embarcada (desglose, SPEC-31 §2)
+        self.stock_prebodega = defaultdict(lambda: defaultdict(float))
+        pre_qs = StockActual.objects.filter(bodega__startswith='000', stock_disponible__gt=0)
+        if producto:
+            pre_qs = pre_qs.filter(codigo=producto.code)
+        for sku, bodega, q in pre_qs.values_list('codigo', 'bodega', 'stock_disponible'):
+            destino = prebodega_destino(bodega)
+            if destino:
+                self.stock_prebodega[sku][destino] += float(q or 0)
 
         # Compromisos con fecha (proyeccion) y fecha mas cercana por bodega (reparto). Los
         # emitidos antes del corte son "antiguos" (SPEC-23): se guardan aparte por bodega para
@@ -192,6 +209,12 @@ class Datos:
         self.plazos = defaultdict(list)
         for sku, dias in filtro(PlazoOC.objects.filter(fecha_entrada__gte=desde)).values_list('product_id', 'dias_entrega'):
             self.plazos[sku].append(dias)
+
+        # Venta neta USD de los meses del calculo (consulta 17, SPEC-31 §4) para el ABC por venta
+        self.venta = defaultdict(float)
+        desde_venta = self.meses[0] if self.meses else hoy
+        for sku, monto in filtro(VentaMensual.objects.filter(mes__gte=desde_venta)).values_list('product_id', 'monto_usd'):
+            self.venta[equiv.get(sku, sku)] += monto
 
         self.param_compra = {p.product_id: p for p in filtro(ParametroCompra.objects)}
         self.config = {c.product_id: c for c in filtro(ArticuloConfig.objects)}
@@ -293,7 +316,7 @@ def _entrada(datos, p, abc, solo_recientes=None):
         es_santiago = m.warehouse.zone == SANTIAGO
         bodegas.append(Bodega(
             codigo=code, es_santiago=es_santiago,
-            stock_fisico=m.stock_physical, en_transito=m.oc_po_qty + m.sc_qty + m.stock_transito_inter,
+            stock_fisico=m.stock_physical, en_transito=transito_metrica(m, params),
             comprometido=max(0.0, m.comp_pc_qty + m.comp_of_qty
                              - (datos.antiguos.get((p.code, code), 0.0) if solo_recientes else 0.0)),
             fecha_compromiso=fechas_comp.get((p.code, code)),
@@ -330,6 +353,10 @@ def _entrada(datos, p, abc, solo_recientes=None):
         es_estrategico=bool(cfg and cfg.es_estrategico), minimo_declarado=cfg.minimo_declarado if cfg else 0,
         es_critico=bool(cfg and cfg.es_critico), minimo_nuevo=cfg.minimo_nuevo if cfg else 0,
         bloqueado=bool(pc and pc.bloqueado),
+        excluido=bool(cfg and cfg.excluir_calculo),
+        motivo_exclusion=cfg.motivo_exclusion_texto if cfg and cfg.excluir_calculo else '',
+        plan_gerencia=bool(cfg and cfg.plan_gerencia), plan_unidades=cfg.plan_unidades if cfg else 0,
+        plan_hasta=cfg.plan_hasta if cfg else None,
         fecha_creacion=p.fec_creacion_sap, fecha_ultimo_movimiento=datos.ultimo_mov.get(p.code),
         consumo_meses=consumo_meses, meses_evento=meses_evento, ajuste_comercial=ajuste,
         dias_oc=datos.plazos.get(p.code, []), lead_time_maestro=lead_maestro,
@@ -383,7 +410,10 @@ def ejecutar_corrida(usuario=None, hoy=None, guardar=True, extra_general=None):
 
         # ABC sobre toda la poblacion: valor de consumo anual = cantidad x costo
         anualizar = 12.0 / len(datos.meses)
-        valor_anual = {p.code: sum(datos.consumo.get(p.code, ())) * anualizar * float(p.unit_cost_usd or 0)
+        # Los excluidos del calculo (SPEC-31 §1.1) no entran a la poblacion: no desplazan a los demas
+        excluidos = {c for c, cfg in datos.config.items() if cfg.excluir_calculo}
+        valor_anual = {p.code: 0.0 if p.code in excluidos else
+                       sum(datos.consumo.get(p.code, ())) * anualizar * float(p.unit_cost_usd or 0)
                        for p in datos.productos}
         abc = clases_abc(valor_anual, resolutor.general)
 
@@ -405,7 +435,7 @@ def ejecutar_corrida(usuario=None, hoy=None, guardar=True, extra_general=None):
             if (q := otra_base.get(p.code)) is not None), 2)
         if not guardar:
             return resumen
-        _guardar(corrida, datos, calculados, valor_anual, otra_base)
+        _guardar(corrida, datos, calculados, valor_anual, otra_base, abc_venta(datos, resolutor.general, excluidos))
         resumen['alertas'] = alertas.generar(corrida, hoy)
         resumen['publicacion'] = publicacion.publicar(corrida)
         resumen['publicado'] = True
@@ -436,6 +466,77 @@ def recalcular_red(usuario=None, recargar=False):
     if recargar:
         cargar_todo()
     return ejecutar_corrida(usuario=usuario)
+
+
+def abc_venta(datos, params, excluidos=()):
+    """ABC por venta neta USD de la red (SPEC-31 §4). Vacio si no hay ventas cargadas."""
+    ventas = {p.code: datos.venta.get(p.code, 0.0) for p in datos.productos if p.code not in excluidos}
+    if not any(v > 0 for v in ventas.values()):
+        return {}
+    return clases_abc(ventas, params)
+
+
+def marca_de(cfg):
+    """Marca de gestion del articulo para el resultado (SPEC-31 §1)."""
+    if cfg and cfg.excluir_calculo:
+        return ResultadoArticulo.EXCLUIDO
+    if cfg and cfg.plan_gerencia:
+        return ResultadoArticulo.GERENCIA
+    return ''
+
+
+# Origen del en camino (SPEC-31 §2). La compra usa el total; el desglose dice si viaja por importacion
+# (OC a pre-bodega o a proveedor extranjero, y stock ya embarcado en una pre-bodega), compra nacional,
+# transferencia de stock (bodegas T...), pedido de SAP sin linea de OC (OnOrder: OC internas o
+# fabricacion), solicitudes aprobadas en la plataforma, SC (si cuentan) o ajuste de tratamiento.
+IMPORTACION, NACIONAL, TRASLADO, SIN_OC, SOLICITADO, SC, AJUSTE = (
+    'IMPORTACION', 'NACIONAL', 'TRASLADO', 'SIN_OC', 'SOLICITADO', 'SC', 'AJUSTE')
+ORIGENES_TRANSITO = [(IMPORTACION, 'Importación'), (NACIONAL, 'Compra nacional'), (TRASLADO, 'Traslado'),
+                     (SIN_OC, 'Pedido SAP sin OC'), (SOLICITADO, 'Solicitud aprobada'), (SC, 'SC'),
+                     (AJUSTE, 'Ajuste de bodega')]
+
+
+def _es_importacion(oc, proveedores):
+    prov = proveedores.get(oc.proveedor_codigo)
+    return (oc.bodega_sap or '').startswith('000') or bool(prov and prov.es_importado)
+
+
+def transito_por_nodo(datos, sku):
+    """nodo -> {origen: unidades} del en camino del articulo. Suma lo mismo que el en camino de cada
+    bodega del calculo (transito_metrica, solicitudes y ajustes de SPEC-27)."""
+    general = datos.resolutor.general
+    nodos = defaultdict(lambda: defaultdict(float))
+    lineas = defaultdict(lambda: [0.0, 0.0])            # bodega -> [importacion, nacional]
+    for o in datos.oc.get(sku, []):
+        lineas[o.bodega][0 if _es_importacion(o, datos.proveedores) else 1] += o.cantidad_pendiente
+    pre = datos.stock_prebodega.get(sku, {})
+    for m in datos.metricas.get(sku, []):
+        code = m.warehouse.code
+        d = nodos[nodo_red(code)]
+        imp, nac = lineas.get(code, (0.0, 0.0))
+        en_lineas = imp + nac
+        if en_lineas > 0:
+            parte = min(1.0, m.oc_po_qty / en_lineas)
+            d[IMPORTACION] += imp * parte
+            d[NACIONAL] += nac * parte
+        d[SIN_OC] += max(0.0, m.oc_po_qty - en_lineas)
+        embarcado = min(m.stock_transito_inter, pre.get(code, 0.0))
+        d[IMPORTACION] += embarcado
+        d[TRASLADO] += m.stock_transito_inter - embarcado
+        if general.sc_cuenta_en_transito:
+            d[SC] += m.sc_qty
+    nodos[NODO_SANTIAGO][SOLICITADO] += datos.solicitado.get(sku, 0)
+    for nodo, q in datos.ajuste_transito.get(sku, {}).items():
+        nodos[nodo][AJUSTE] += q
+    return {n: {k: round(v, 2) for k, v in d.items() if abs(v) > 0.005} for n, d in nodos.items()}
+
+
+def _sumar_origenes(por_nodo):
+    total = defaultdict(float)
+    for d in por_nodo.values():
+        for k, v in d.items():
+            total[k] += v
+    return {k: round(v, 2) for k, v in total.items() if abs(v) > 0.005}
 
 
 def calcular_detalle(codigo, hoy=None):
@@ -505,13 +606,19 @@ def _resumen(calculados):
 
 
 @transaction.atomic
-def _guardar(corrida, datos, calculados, valor_anual, otra_base=None):
+def _guardar(corrida, datos, calculados, valor_anual, otra_base=None, abc_v=None):
     hoy = datos.hoy
+    abc_v = abc_v or {}
     ResultadoArticulo.objects.all().delete()   # cascada: bodegas y traslados
-    objetos = []
+    objetos, transito_nodos = [], {}
     for p, e, r, prov, proxima in calculados:
         c, pl, po, co, ex = r.consumo, r.plazo, r.politica, r.compra, r.excepcion
+        transito_nodos[p.code] = transito_por_nodo(datos, p.code)
         objetos.append(ResultadoArticulo(
+            marca=marca_de(datos.config.get(p.code)), promedio_con_demanda=c.promedio_con_demanda,
+            transito_desglose=_sumar_origenes(transito_nodos[p.code]),
+            sc_abierta=sum(m.sc_qty for m in datos.metricas.get(p.code, [])),
+            venta_12m_usd=datos.venta.get(p.code, 0.0), abc_venta=abc_v.get(p.code, ''),
             corrida=corrida, product=p, proveedor_id=prov or None,
             letra=r.letra, subclase=r.clasificacion.subclase, motivo_clasificacion=r.clasificacion.motivo[:150],
             abc=e.abc, xyz=r.xyz, segmento=e.segmento, es_nuevo=r.es_nuevo, es_inmovilizado=r.es_inmovilizado,
@@ -559,7 +666,7 @@ def _guardar(corrida, datos, calculados, valor_anual, otra_base=None):
                 continue
             consumo_dia = b.consumo_diario
             bodegas_obj.append(ResultadoBodega(
-                consumo_diario=consumo_dia,
+                consumo_diario=consumo_dia, transito_desglose=transito_nodos[p.code].get(a.codigo, {}),
                 cobertura_dias=a.disponible_futuro / consumo_dia if consumo_dia > 0 else None,
                 protegido=a.protegido, retenido_en=[[o, q] for o, q in a.retenido_en],
                 componentes=[[c, q] for c, q in b.componentes],

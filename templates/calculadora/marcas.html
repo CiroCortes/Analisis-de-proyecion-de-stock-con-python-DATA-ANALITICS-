@@ -1,0 +1,165 @@
+{% extends 'base.html' %}
+{% load calculadora_tags %}
+
+{% block title %}Marcas de artículos | Calculadora Pesco{% endblock %}
+
+{% block content %}
+<div class="w-full space-y-6">
+    {% include 'calculadora/_subnav.html' %}
+
+    <div class="bg-white p-6 sm:p-7 rounded-3xl shadow-sm border border-slate-200 border-l-8 border-l-pesco-cyan">
+        <span class="text-xs font-bold text-pesco-cyan uppercase tracking-wider">Calculadora de compras · SPEC-31</span>
+        <h1 class="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight mt-1">Marcas de artículos</h1>
+        <p class="text-sm text-slate-500 mt-1 max-w-3xl">Abastecimiento ajusta aquí el sistema sin tocar código. <b>Equipos de gerencia</b>: equipos caros de baja rotación que se compran según el plan acordado en la reunión de gerencia, no por proyección. <b>Excluir del cálculo</b>: códigos auxiliares, insumos que no se planifican o artículos en liquidación; se siguen viendo, pero no se compran ni generan alertas. Los cambios se aplican en el próximo cálculo.</p>
+        {% if not puede_editar %}<p class="text-xs font-bold text-slate-500 mt-2"><i class="fa-solid fa-lock mr-1"></i> Solo lectura: solo el Administrador de Abastecimiento cambia las marcas.</p>{% endif %}
+    </div>
+
+    <div class="flex flex-wrap gap-2">
+        {% for c, t in tabs %}
+        <a href="?tab={{ c }}" class="px-4 py-2 rounded-full text-xs font-bold border {% if tab == c %}bg-pesco-cyan text-white border-pesco-cyan{% else %}bg-white text-slate-600 border-slate-200 hover:border-pesco-cyan{% endif %}">
+            {{ t }} <span class="font-mono">{% if c == 'gerencia' %}{{ n_gerencia }}{% else %}{{ n_excluidos }}{% endif %}</span>
+        </a>
+        {% endfor %}
+    </div>
+
+    {% if tab == 'gerencia' %}
+    <div class="bg-white rounded-3xl shadow-sm border border-slate-200 p-5 text-xs text-slate-600">
+        Candidatos: costo unitario de al menos <b>USD {{ params.umbral_costo_equipo_usd|floatformat:"0g" }}</b> y consumo en <b>{{ params.meses_max_equipo }}</b> meses o menos de los últimos 12 (se cambia en Parámetros), más los ya marcados.
+        Candidatos sin marcar con compra sugerida por la herramienta: <b class="font-mono">USD {{ valor_candidatos|floatformat:"0g" }}</b>.
+        Al marcar, la compra pasa a ser <b>unidades del plan − disponible</b> (stock + en camino − comprometido): con la OC emitida, el sugerido vuelve a 0.
+    </div>
+    <div class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+        <div class="overflow-x-auto">
+        <table class="min-w-full text-xs">
+            <thead><tr class="text-[10px] uppercase tracking-wider text-slate-400 bg-slate-50 border-b border-slate-200">
+                <th class="text-left py-3 px-4">Artículo</th><th class="text-right px-3">Costo USD</th><th class="text-center px-3">Letra</th>
+                <th class="text-right px-3">Consumo 12 m</th><th class="text-right px-3">Meses c/ consumo</th>
+                <th class="text-right px-3">Stock</th><th class="text-right px-3">En camino</th><th class="text-right px-3">Comprometido</th>
+                <th class="text-right px-3">Sugerido USD</th><th class="text-left px-3 min-w-[330px]">Plan de gerencia</th>
+            </tr></thead>
+            <tbody>
+            {% for f in filas %}
+            <tr class="border-b border-slate-50 align-top {% if f.marcado %}bg-indigo-50/50{% endif %}">
+                <td class="py-3 px-4"><a href="{% url 'calculadora:articulo' f.r.product_id %}" class="font-mono font-bold text-pesco-cyan hover:underline">{{ f.r.product_id }}</a>
+                    <div class="text-slate-700 max-w-xs">{{ f.r.product.description }}</div></td>
+                <td class="px-3 py-3 text-right font-mono">{{ f.r.costo_unitario|floatformat:"0g" }}</td>
+                <td class="px-3 py-3 text-center font-bold">{{ f.r.letra }}</td>
+                <td class="px-3 py-3 text-right font-mono">{{ f.consumo12|floatformat:"-1" }}</td>
+                <td class="px-3 py-3 text-right font-mono">{{ f.r.meses_con_consumo_12m }}</td>
+                <td class="px-3 py-3 text-right font-mono">{{ f.r.stock_fisico|floatformat:"0g" }}</td>
+                <td class="px-3 py-3 text-right font-mono">{{ f.r.en_transito|floatformat:"0g" }}</td>
+                <td class="px-3 py-3 text-right font-mono">{{ f.r.comprometido|floatformat:"0g" }}</td>
+                <td class="px-3 py-3 text-right font-mono font-bold {% if f.r.valor_sugerido %}text-slate-900{% else %}text-slate-400{% endif %}">{{ f.r.valor_sugerido|floatformat:"0g" }}</td>
+                <td class="px-3 py-3">
+                    {% if puede_editar %}
+                    <form method="post" class="flex flex-wrap gap-1 items-center">
+                        {% csrf_token %}
+                        <input type="hidden" name="accion" value="plan"><input type="hidden" name="codigo" value="{{ f.r.product_id }}">
+                        <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                        <label class="flex items-center gap-1 font-bold"><input type="checkbox" name="plan_gerencia" {% if f.marcado %}checked{% endif %} class="rounded"> Gerencia</label>
+                        <input name="plan_unidades" value="{{ f.cfg.plan_unidades|default:0|floatformat:'-2' }}" class="w-16 border border-slate-200 rounded-lg px-2 py-1 font-mono text-right" title="Unidades a cubrir en el período del plan">
+                        <input name="plan_hasta" type="month" value="{{ f.cfg.plan_hasta|date:'Y-m' }}" class="border border-slate-200 rounded-lg px-2 py-1" title="Último mes del plan (vacío = sin vencimiento)">
+                        <button class="bg-slate-800 hover:bg-slate-900 text-white rounded-lg px-3 py-1 text-[10px] font-bold uppercase">Guardar</button>
+                    </form>
+                    {% elif f.marcado %}{{ f.cfg.plan_unidades|floatformat:"-2" }} u{% if f.cfg.plan_hasta %} hasta {{ f.cfg.plan_hasta|date:"m-Y" }}{% endif %}
+                    {% else %}<span class="text-slate-400">Sin plan</span>{% endif %}
+                </td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="10" class="text-center py-10 text-slate-500">No hay equipos con esos criterios.</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        </div>
+    </div>
+
+    {% else %}
+    <form method="get" class="bg-white p-5 rounded-3xl shadow-sm border border-slate-200 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 items-end">
+        <input type="hidden" name="tab" value="excluir">
+        <div class="lg:col-span-2">
+            <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Buscar</label>
+            <input name="search" value="{{ f.search }}" placeholder="Código o descripción (ej. 4999990, ENTREGA DE)" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm">
+        </div>
+        <div>
+            <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Segmento</label>
+            <select name="segmento" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm">
+                <option value="">Todos</option>
+                <option value="PANOL" {% if f.segmento == 'PANOL' %}selected{% endif %}>Pañol</option>
+                <option value="REPUESTOS" {% if f.segmento == 'REPUESTOS' %}selected{% endif %}>Repuestos</option>
+            </select>
+        </div>
+        <div>
+            <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Grupo SAP · Ver</label>
+            <div class="flex gap-2">
+                <input name="grupo" value="{{ f.grupo }}" placeholder="Grupo" class="w-20 border border-slate-200 rounded-xl px-3 py-2 text-sm font-mono">
+                <select name="ver" class="flex-1 border border-slate-200 rounded-xl px-3 py-2 text-sm">
+                    <option value="">Todos</option>
+                    <option value="excluidos" {% if f.ver == 'excluidos' %}selected{% endif %}>Solo excluidos</option>
+                </select>
+            </div>
+        </div>
+        <div class="flex gap-2">
+            <button class="bg-pesco-cyan text-white text-xs font-bold px-5 py-2.5 rounded-full uppercase tracking-wider">Filtrar</button>
+            <a href="?tab=excluir" class="text-xs font-bold text-slate-500 px-3 py-2.5">Limpiar</a>
+        </div>
+    </form>
+
+    <form method="post" class="space-y-3">
+        {% csrf_token %}
+        <input type="hidden" name="next" value="{{ request.get_full_path }}">
+        {% if puede_editar %}
+        <div class="bg-white p-4 rounded-3xl shadow-sm border border-slate-200 flex flex-wrap gap-3 items-center text-xs">
+            <span class="font-bold text-slate-700">Con los seleccionados:</span>
+            <select name="motivo_exclusion" class="border border-slate-200 rounded-xl px-3 py-2">
+                <option value="">Motivo…</option>
+                {% for c, t in motivos %}<option value="{{ c }}">{{ t }}</option>{% endfor %}
+            </select>
+            <input name="nota" placeholder="Nota (obligatoria con Otro)" maxlength="255" class="border border-slate-200 rounded-xl px-3 py-2 w-64">
+            <button name="accion" value="excluir" class="bg-slate-800 hover:bg-slate-900 text-white rounded-full px-4 py-2 font-bold uppercase text-[10px]"><i class="fa-solid fa-ban"></i> Excluir del cálculo</button>
+            <button name="accion" value="incluir" class="bg-white border border-slate-300 hover:border-pesco-cyan text-slate-700 rounded-full px-4 py-2 font-bold uppercase text-[10px]">Volver al cálculo</button>
+            <label class="ml-auto flex items-center gap-1 text-slate-500"><input type="checkbox" onclick="document.querySelectorAll('.sel-codigo').forEach(c => c.checked = this.checked)" class="rounded"> Seleccionar página ({{ page_obj|length }})</label>
+        </div>
+        {% endif %}
+        <div class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+            <div class="px-4 py-2 text-[11px] text-slate-500 border-b border-slate-100">{{ total_filtro }} artículos, ordenados por valor sugerido</div>
+            <div class="overflow-x-auto">
+            <table class="min-w-full text-xs">
+                <thead><tr class="text-[10px] uppercase tracking-wider text-slate-400 bg-slate-50 border-b border-slate-200">
+                    <th class="py-3 px-3"></th><th class="text-left py-3 px-3">Artículo</th><th class="text-left px-3">Segmento · grupo</th>
+                    <th class="text-center px-3">Letra</th><th class="text-right px-3">Consumo prom./mes</th><th class="text-right px-3">Stock</th>
+                    <th class="text-right px-3">Sugerido USD</th><th class="text-left px-3">Marca</th>
+                </tr></thead>
+                <tbody>
+                {% for r in page_obj %}
+                {% with cfg=configs|get_item:r.product_id %}
+                <tr class="border-b border-slate-50 {% if cfg.excluir_calculo %}bg-slate-50 text-slate-500{% endif %}">
+                    <td class="px-3 py-2">{% if puede_editar %}<input type="checkbox" name="codigos" value="{{ r.product_id }}" class="sel-codigo rounded">{% endif %}</td>
+                    <td class="px-3 py-2"><a href="{% url 'calculadora:articulo' r.product_id %}" class="font-mono font-bold text-pesco-cyan hover:underline">{{ r.product_id }}</a>
+                        <div class="max-w-sm">{{ r.product.description }}</div></td>
+                    <td class="px-3 py-2">{% if r.segmento == 'PANOL' %}Pañol{% else %}Repuestos{% endif %} · <span class="font-mono">{{ r.product.sap_group_code }}</span></td>
+                    <td class="px-3 py-2 text-center font-bold">{{ r.letra }}</td>
+                    <td class="px-3 py-2 text-right font-mono">{{ r.consumo_promedio_mes|floatformat:"-1" }}</td>
+                    <td class="px-3 py-2 text-right font-mono">{{ r.stock_fisico|floatformat:"0g" }}</td>
+                    <td class="px-3 py-2 text-right font-mono font-bold">{{ r.valor_sugerido|floatformat:"0g" }}</td>
+                    <td class="px-3 py-2">{% if cfg.excluir_calculo %}<span class="px-2 py-0.5 rounded-full bg-slate-800 text-white text-[10px] font-bold">Excluido · {{ cfg.motivo_exclusion_texto }}</span>{% elif cfg.plan_gerencia %}<span class="px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800 text-[10px] font-bold">Plan gerencia</span>{% endif %}</td>
+                </tr>
+                {% endwith %}
+                {% empty %}
+                <tr><td colspan="8" class="text-center py-10 text-slate-500">No hay artículos con ese filtro.</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+            </div>
+        </div>
+    </form>
+
+    {% if page_obj.paginator.num_pages > 1 %}
+    <div class="flex justify-center gap-2 text-xs font-bold">
+        {% if page_obj.has_previous %}<a class="px-3 py-2 bg-white border rounded-xl" href="?{{ query_sin_pagina }}&page={{ page_obj.previous_page_number }}">← Anterior</a>{% endif %}
+        <span class="px-3 py-2">Página {{ page_obj.number }} de {{ page_obj.paginator.num_pages }}</span>
+        {% if page_obj.has_next %}<a class="px-3 py-2 bg-white border rounded-xl" href="?{{ query_sin_pagina }}&page={{ page_obj.next_page_number }}">Siguiente →</a>{% endif %}
+    </div>
+    {% endif %}
+    {% endif %}
+</div>
+{% endblock %}

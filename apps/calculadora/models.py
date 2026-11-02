@@ -50,6 +50,18 @@ class ConsumoMensual(models.Model):
         indexes = [models.Index(fields=['product', 'mes'])]
 
 
+class VentaMensual(models.Model):
+    """Venta neta en USD por articulo, bodega y mes (consulta 17): facturas menos NC (SPEC-31 §4)."""
+    product = models.ForeignKey(ProductSKU, on_delete=models.CASCADE, related_name='ventas_mensuales')
+    bodega = models.CharField(max_length=20, db_index=True)
+    mes = models.DateField(db_index=True, help_text='Primer dia del mes')
+    monto_usd = models.FloatField(default=0)
+    cantidad = models.FloatField(default=0)
+
+    class Meta:
+        unique_together = ('product', 'bodega', 'mes')
+
+
 class PlazoOC(models.Model):
     """Una recepcion de una OC: dias de entrega reales (consulta 9)."""
     nro_oc = models.CharField(max_length=30)
@@ -160,8 +172,21 @@ class ArticuloConfig(models.Model):
     proveedor = models.ForeignKey(Proveedor, null=True, blank=True, on_delete=models.SET_NULL,
                                   verbose_name='Proveedor (si difiere del preferido de SAP)')
     nota = models.CharField(max_length=255, blank=True, default='')
+    # Marcas de gestion (SPEC-31 §1)
+    AUXILIAR, LIQUIDACION, NO_PROCESAR, OTRO = 'AUXILIAR', 'LIQUIDACION', 'NO_PROCESAR', 'OTRO'
+    MOTIVOS_EXCLUSION = [(AUXILIAR, 'Código auxiliar de entrega'), (LIQUIDACION, 'En liquidación, no reponer'),
+                         (NO_PROCESAR, 'Insumo que no se planifica'), (OTRO, 'Otro (ver nota)')]
+    excluir_calculo = models.BooleanField(default=False, db_index=True, verbose_name='Excluir del cálculo')
+    motivo_exclusion = models.CharField(max_length=12, blank=True, default='', choices=MOTIVOS_EXCLUSION)
+    plan_gerencia = models.BooleanField(default=False, db_index=True, verbose_name='Planificado por gerencia')
+    plan_unidades = models.FloatField(default=0, verbose_name='Unidades del plan de gerencia')
+    plan_hasta = models.DateField(null=True, blank=True, verbose_name='Último mes del plan')
     actualizado_por = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL)
     actualizado_en = models.DateTimeField(auto_now=True)
+
+    @property
+    def motivo_exclusion_texto(self):
+        return dict(self.MOTIVOS_EXCLUSION).get(self.motivo_exclusion, self.motivo_exclusion)
 
 
 class Equivalencia(models.Model):
@@ -336,6 +361,17 @@ class ResultadoArticulo(models.Model):
     comprometido_antiguo = models.FloatField(default=0)
     cantidad_otra_base = models.IntegerField(null=True, blank=True)
 
+    # SPEC-31: marca de gestion ('' / EXCLUIDO / GERENCIA), en camino desglosado, promedio con
+    # demanda y ABC por venta
+    EXCLUIDO, GERENCIA = 'EXCLUIDO', 'GERENCIA'
+    marca = models.CharField(max_length=10, blank=True, default='', db_index=True)
+    promedio_con_demanda = models.FloatField(default=0)
+    # En camino por origen (SPEC-31 §2): IMPORTACION, NACIONAL, TRASLADO, SIN_OC, SOLICITADO, SC, AJUSTE
+    transito_desglose = models.JSONField(default=dict)
+    sc_abierta = models.FloatField(default=0, help_text='SC abiertas en SAP (informativo si no cuentan)')
+    venta_12m_usd = models.FloatField(default=0)
+    abc_venta = models.CharField(max_length=1, blank=True, default='', db_index=True)
+
     class Meta:
         indexes = [models.Index(fields=['letra', 'urgencia']), models.Index(fields=['proveedor', 'comprar'])]
 
@@ -372,6 +408,7 @@ class ResultadoBodega(models.Model):
     protegido = models.FloatField(default=0)
     retenido_en = models.JSONField(default=list)
     componentes = models.JSONField(default=list)
+    transito_desglose = models.JSONField(default=dict)    # en camino del nodo por origen (SPEC-31 §2)
 
 
 class TrasladoSugerido(models.Model):
@@ -499,10 +536,14 @@ class Alerta(models.Model):
         ('DATOS', 'Datos'),
         ('TRASLADO_SUCURSALES', 'Traslado entre sucursales'),
         ('PICO', 'Pico de consumo recortado'),
+        ('CAIDA_CONSUMO_NODO', 'Caida de consumo en una bodega'),
+        ('DOBLE_ENVIO', 'Llega por traslado y por OC'),
     ]
     tipo = models.CharField(max_length=20, choices=TIPOS, db_index=True)
     product = models.ForeignKey(ProductSKU, null=True, blank=True, on_delete=models.CASCADE, related_name='alertas')
     proveedor_codigo = models.CharField(max_length=30, blank=True, default='')
+    nodo = models.CharField(max_length=20, blank=True, default='', db_index=True,
+                            help_text='Nodo de la red si la alerta es de una bodega (SPEC-31 §5)')
     severidad = models.CharField(max_length=10, default='MEDIA')   # ALTA / MEDIA / BAJA
     mensaje = models.CharField(max_length=300)
     clave = models.CharField(max_length=150, unique=True, help_text='Evita duplicar la misma alerta entre corridas')

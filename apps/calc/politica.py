@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from .redondeo import al_multiplo, redondear_mas
 
 GENERAL, INTERMITENTE, NUEVO, A_PEDIDO, SIN_COMPRA = 'GENERAL', 'INTERMITENTE', 'NUEVO', 'A_PEDIDO', 'SIN_COMPRA'
+GERENCIA = 'GERENCIA'     # equipo planificado por gerencia (SPEC-31 §1.2)
 URGENTE, MEDIO, NORMAL = 'URGENTE', 'MEDIO', 'NORMAL'
 
 
@@ -64,7 +65,8 @@ def politica_intermitente(meses_con_consumo_12m, mayor_consumo_mes, consumo_prom
 
 
 def politica_minimo(metodo, minimo, params):
-    """Nuevo (minimo manual), P (lo comprometido, se resuelve en la compra) u O (cero)."""
+    """Nuevo (minimo manual), P (lo comprometido, se resuelve en la compra), O (cero) o
+    gerencia (las unidades del plan)."""
     m = redondear_mas(minimo or 0)
     return Politica(metodo, 0.0, 0.0, 0.0, 0.0, 0, params.meses_revision, m, m)
 
@@ -113,6 +115,14 @@ def evaluar_compra(politica, disponible, consumo_promedio, consumo_diario, costo
         cantidad = al_multiplo(max(falta, min_compra or 0), multiplo) if falta > 0 else 0
         return Compra(disponible, 0.0, cantidad > 0, cantidad > 0, falta, cantidad, cantidad * costo,
                       URGENTE if disponible < 0 else NORMAL, cobertura, 0.0)
+
+    if politica.metodo == GERENCIA:
+        # Plan de gerencia (SPEC-31 §1.2): cubrir las unidades del plan con lo disponible. Es una
+        # decision tomada: no espera el calendario del proveedor.
+        falta = max(0.0, politica.stock_maximo - disponible)
+        cantidad = al_multiplo(max(falta, min_compra or 0), multiplo) if falta > 0 else 0
+        return Compra(disponible, float(politica.stock_maximo), cantidad > 0, cantidad > 0, falta, cantidad,
+                      cantidad * costo, URGENTE if disponible < 0 else NORMAL, cobertura, valor_max)
 
     # Consumo cero no compra (§9), salvo un E o Nuevo con minimo declarado
     sin_consumo = consumo_promedio <= 0 and politica.stock_seguridad <= 0 and politica.metodo != NUEVO

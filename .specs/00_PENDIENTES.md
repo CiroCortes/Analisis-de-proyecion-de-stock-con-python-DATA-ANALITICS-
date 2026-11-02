@@ -1,4 +1,14 @@
-# PENDIENTES (actualizado 28-oct-2026, tarde)
+# PENDIENTES (actualizado 2-nov-2026)
+
+## 2-nov-2026 (Datalake OIVL y SPEC-31)
+
+| # | Hallazgo | Acción |
+|---|---|---|
+| 29 | La `oinm` del Datalake pierde movimientos (ago-26 −59 %, dic-25 −55 %, may-26 −38 %; caso 31206011: NC 9783 e IM 35049 ausentes). `oivl` está completa y sin duplicados | **Hecho**: consulta 8 sobre `oivl`. +203 mil u en 12 meses; brecha de NC 2.712 → 9 u. Reportado al dueño del Datalake |
+| 30 | Requerimientos de César (doc. y reunión 2-nov) | **Hecho (SPEC-31)**: pantalla Marcas (excluir del cálculo con motivo; equipos de gerencia con plan), SC fuera del tránsito, en camino desglosado, promedio con demanda, alerta de caída por bodega, ABC por venta |
+| 31 | Consulta 17 (Ventas Mensuales.txt) | **Pendiente**: exportar; validar que `linetotal` está en USD contra una factura |
+| 32 | 30 códigos 4999990xxx (USD 841 mil del sugerido) y 10 equipos caros con compra (USD 671 mil) | **Pendiente (Abastecimiento)**: marcarlos en Marcas |
+
 
 ## Próximo paso (datos)
 
@@ -49,7 +59,7 @@ quiebre real USD 717 mil vs brecha contra objetivo USD 3,94 M.
 
 | # | Hallazgo | Acción |
 |---|---|---|
-| 16 | Las NC se restan en la 013-NC/013-IN (Santiago), no en la bodega de la factura: infla la demanda de la sucursal | SPEC-22: reubicar al origen. Consulta 8 re-exportada el 29-oct; la regla se corrige en la SPEC-25 (ver #22) |
+| 16 | Las NC se restan en la 013-NC/013-IN (Santiago), no en la bodega de la factura: infla la demanda de la sucursal | SPEC-22 + SPEC-25 (2-nov): la NC se resta en la bodega y el mes de la guía (consulta 15 con columnas de guía; re-exportar) |
 | 17 | En 1.014 de 2.032 celdas con NC, OINM no registra movimiento (390 mil u; una NC de 360.000 u sobre factura sin movimiento) | Solo se reubica lo que OINM registró. Confirmar con contabilidad si son facturas de reserva |
 | 18 | El corte de 180 días de la consulta 5 dejaba fuera OC antiguas pendientes (pre-bodegas: SAP 12.630 u, cargadas ~3.700) | Corregido: consulta 5 sin corte. Tránsito de los nodos: 119 mil → 143 mil u |
 | 19 | PC/OF abiertos desde 2023. En el alcance: 6% de las u de PC y 8% de las de OF tienen más de 3 meses; el volumen grande es RETAIL y servicios | SPEC-23: cálculo híbrido (compra −3,6% con solo recientes) + informe de antigüedad para Contraloría |
@@ -60,7 +70,7 @@ quiebre real USD 717 mil vs brecha contra objetivo USD 3,94 M.
 | # | Hallazgo | Acción |
 |---|---|---|
 | 21 | La tabla `oinm` del Datalake repite movimientos (nov-25: 39.226 filas para 14.660 `transnum`) y le faltan otros (ago-26 del 70100011; feb-25 y jul-25 casi vacíos). Cambia entre exportaciones diarias | **Corregido el duplicado**: consultas 8 y 13 cuentan cada movimiento una vez (compra 3,36 → 2,21 M USD). **Faltantes pendientes**: IT o Service Layer |
-| 22 | 013-NC y 013-NC_E son de Cobranzas (facturas rechazadas): NC y refactura sin repuesto físico. 013-IN = devoluciones físicas. 0EX = exportación (venta real) | SPEC-25 (pendiente): excluir 013-NC/NC_E del consumo y compensar NC con refacturas en las demás bodegas. Consulta 8 ya separa `FACTURA` |
+| 22 | 013-NC y 013-NC_E son de Cobranzas (facturas rechazadas): NC y refactura sin repuesto físico. 013-IN = devoluciones físicas. 0EX = exportación (venta real) | SPEC-25 (2-nov): 013-NC/NC_E fuera del consumo (NC y refactura). 6.435 u de 12 m vuelven de Santiago a sucursales. La compensación en otras bodegas no aplica (la factura no mueve stock) |
 | 23 | Promedio + 3 desvest casi no recorta picos (el pico infla la desvest): 262 de 462 picos sin tocar | **Hecho (SPEC-26)**: tope = menor entre la regla del documento y 4 × mediana; alerta PICO. Compra 2,21 → 2,04 M USD |
 | 24 | Bodegas con stock marcadas "EXCLUIDA" que sí contaban (pre-bodegas, 013) y otras sin motivo visible; el catálogo no tenía las T… | **Hecho (SPEC-27)**: tratamiento visible y editable (stock / en camino / no cuenta) con auditoría; catálogo 51 → 131 bodegas. **Pendiente: decidir la 013-IN** |
 | 25 | La 013-NC tiene ~USD 1,63 M (USD 33 mil en el alcance) que debería estar en cero tras cada refactura | Lista en la bitácora local para Cobranzas y Contraloría |

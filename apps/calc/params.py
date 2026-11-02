@@ -69,10 +69,18 @@ class Params:
     solo_compromisos_recientes: bool = False
     meses_compromisos_recientes: int = 3
 
+    # Transito (SPEC-31 §2): Slim4 y Abastecimiento no cuentan las SC abiertas como transito
+    sc_cuenta_en_transito: bool = False
+
+    # Equipos planificados por gerencia (SPEC-31 §1.3): candidatos de la pantalla Marcas
+    umbral_costo_equipo_usd: float = 5000
+    meses_max_equipo: int = 6
+
     # Alertas
     alerta_bajo_ss_dias: int = 15
     alerta_contrato_vence_dias: int = 60
     alerta_sobrestock_meses: float = 3
+    alerta_caida_meses_nodo: int = 4
 
     @property
     def meses_revision(self):
@@ -123,6 +131,10 @@ CATALOGO = {
     'alerta_bajo_ss_dias': ('Alerta bajo SS proyectado (dias)', (GENERAL,), 1, 90),
     'alerta_contrato_vence_dias': ('Alerta contrato por vencer (dias)', (GENERAL,), 1, 365),
     'alerta_sobrestock_meses': ('Sobrestock: meses sobre el maximo', (GENERAL,), 0, 24),
+    'alerta_caida_meses_nodo': ('Caida por bodega: meses seguidos sin consumo en el nodo', (GENERAL,), 2, 12),
+    'sc_cuenta_en_transito': ('Las solicitudes de compra (SC) cuentan como en camino', (GENERAL,), 0, 1),
+    'umbral_costo_equipo_usd': ('Equipo de gerencia: costo unitario minimo (USD)', (GENERAL,), 0, 1000000),
+    'meses_max_equipo': ('Equipo de gerencia: maximo de meses con consumo de 12', (GENERAL,), 0, 12),
 }
 
 DEFAULTS = Params()

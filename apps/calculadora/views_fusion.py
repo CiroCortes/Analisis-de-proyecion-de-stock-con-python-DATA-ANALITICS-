@@ -278,7 +278,7 @@ TABLAS = {
     'oc_abiertas': 'OC abiertas', 'compromisos': 'Pedidos y OF abiertos', 'acuerdos': 'Acuerdos globales',
     'proveedores': 'Proveedores', 'bodegas': 'Bodegas',
 }
-SEMAFORO = {'TXT': ('verde', 'Dato real'), 'OINM': ('verde', 'Dato real'),
+SEMAFORO = {'TXT': ('verde', 'Dato real'), 'OINM': ('verde', 'Dato real'), 'OIVL': ('verde', 'Dato real'),
             'RESPALDO': ('amarillo', 'Provisional'), 'PC_OF': ('amarillo', 'Provisional'),
             'SIN_ARCHIVO': ('rojo', 'Falta el archivo')}
 
@@ -340,7 +340,8 @@ def analizar(request):
         'es_otra': analisis.es_otra_bodega(f['ubicacion']),
         'trat_otra': _tratamiento_texto(f['ubicacion']) if analisis.es_otra_bodega(f['ubicacion']) else '',
         'columnas': [('codigo', 'Código'), ('demanda', 'Demanda media'), ('a_pedir', 'A pedir'),
-                     ('stock', 'Stock'), ('recibir', 'Por recibir'), ('entregar', 'Por entregar'),
+                     ('stock', 'Stock'), ('recibir', 'Por llegar'), ('recibir_oc', 'Llega por OC'),
+                     ('recibir_traslado', 'Llega por traslado'), ('entregar', 'Por entregar'),
                      ('venta12', 'Consumo 12 m'), ('meses', 'Meses c/ consumo'), ('costo', 'Costo USD'),
                      ('valor', 'Stock USD')],
     })
@@ -367,7 +368,8 @@ def analizar_excel(request):
     filas = [{
         'Ubicacion': r['ubicacion'], 'Articulo': r['codigo'], 'Descripcion': r['descripcion'],
         'Demanda media mes': r['demanda'], 'A pedir': r['a_pedir'] if r['a_pedir'] is not None else '',
-        'Stock': r['stock'], 'Por recibir': r['recibir'], 'Por entregar': r['entregar'],
+        'Stock': r['stock'], 'Por llegar': r['recibir'], 'Llega por OC': r['recibir_oc'],
+        'Llega por traslado': r['recibir_traslado'], 'Por entregar': r['entregar'],
         'Consumo 12 meses': r['venta12'], 'Meses con consumo': r['meses'],
         'Tendencia u/mes': round(r['prevision'].tendencia, 3),
         'Prevision proximos 12 meses': round(sum(r['prevision'].valores), 2),

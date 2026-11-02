@@ -18,6 +18,7 @@ from django.views.decorators.http import require_POST
 
 from apps.calc import calendario
 from apps.calc.params import CATALOGO, DEFAULTS, GENERAL, tipo_de, validar
+from apps.data_ingestion.warehouses import nodos_red
 from apps.inventory.models import ProductSKU, Warehouse
 
 from . import parametros as par
@@ -354,7 +355,7 @@ def compromisos_excel(request):
 
 @login_required
 def alertas(request):
-    f = {k: request.GET.get(k, '').strip() for k in ('tipo', 'estado', 'severidad', 'search', 'vigente')}
+    f = {k: request.GET.get(k, '').strip() for k in ('tipo', 'estado', 'severidad', 'search', 'vigente', 'nodo')}
     if 'vigente' not in request.GET:
         f['vigente'] = '1'
     base = Alerta.objects.select_related('product')
@@ -368,6 +369,8 @@ def alertas(request):
         base = base.exclude(estado=Alerta.RESUELTA)
     if f['severidad']:
         base = base.filter(severidad=f['severidad'])
+    if f['nodo']:
+        base = base.filter(nodo=f['nodo'])     # alertas de una bodega (SPEC-31 §5)
     if f['search']:
         base = base.filter(Q(product__code__icontains=f['search']) | Q(product__description__icontains=f['search'])
                            | Q(mensaje__icontains=f['search']) | Q(proveedor_codigo__icontains=f['search']))
@@ -386,7 +389,7 @@ def alertas(request):
     return render(request, 'calculadora/alertas.html', {
         'page_obj': page_obj, 'f': f, 'conteo': conteo, 'total': base.count(),
         'tipos': Alerta.TIPOS, 'estados': Alerta._meta.get_field('estado').choices,
-        'severidades': ('ALTA', 'MEDIA', 'BAJA'),
+        'severidades': ('ALTA', 'MEDIA', 'BAJA'), 'nodos': nodos_red(),
         'query_sin_pagina': params.urlencode(),
     })
 

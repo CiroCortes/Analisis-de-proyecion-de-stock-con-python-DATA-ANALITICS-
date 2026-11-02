@@ -17,6 +17,7 @@ class Consumo:
     mayor_consumo_mes: float
     mediana_con_consumo: float = 0.0   # mediana de los meses con consumo (SPEC-26)
     tope_por_mediana: bool = False     # el tope vino de k x mediana y no de promedio + 3 desvest
+    promedio_con_demanda: float = 0.0  # consumo de 12 meses / meses con consumo (SPEC-31 §3, informativo)
 
 
 def _desvest(valores):
@@ -90,4 +91,5 @@ def calcular_consumo(meses, params, meses_evento=()):
         mayor_consumo_mes=mayor,
         mediana_con_consumo=mediana,
         tope_por_mediana=por_mediana,
+        promedio_con_demanda=sum(usados[-12:]) / con_consumo if con_consumo else 0.0,
     )

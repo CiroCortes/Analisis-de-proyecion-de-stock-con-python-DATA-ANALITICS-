@@ -62,6 +62,12 @@ def is_physical(code):
     return not kind_for(code)
 
 
+def es_nc_comercial(code):
+    """013-NC / 013-NC_E: bodegas de Cobranzas (facturas rechazadas). Sus NC y refacturas no
+    mueven repuestos fisicos y no cuentan como consumo (SPEC-25 §3.1)."""
+    return kind_for(code) == 'NO_CONFORME'
+
+
 def transit_destination(code):
     """Bodega destino de una bodega de transito T<origen>-<destino>; None si no aplica."""
     m = _TRANSITO_RE.match((code or '').upper())

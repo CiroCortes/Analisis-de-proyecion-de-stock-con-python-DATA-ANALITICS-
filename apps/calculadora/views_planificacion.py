@@ -16,7 +16,7 @@ from apps.calc.red import NODO_SANTIAGO
 from apps.data_ingestion.warehouses import SANTIAGO, SUCURSAL_CITIES, nodo_red, zone_for
 from apps.inventory.models import ProductSKU
 
-from . import cargadores, servicio, solicitudes
+from . import cargadores, marcas, servicio, solicitudes
 from .excel import respuesta_excel
 from .models import (Alerta, ArticuloConfig, CargaDatos, CompromisoAbierto, ConsumoMensual, Corrida, EventoComercial,
                      HistorialMensual, OCAbierta, PlazoOC, Proveedor, ResultadoArticulo, TrasladoSugerido)
@@ -584,6 +584,7 @@ def articulo(request, code):
         'alertas': Alerta.objects.filter(product=producto, vigente=True),
         'eventos': EventoComercial.objects.filter(product=producto),
         'puede_editar': puede_editar(request.user),
+        'motivos_exclusion': ArticuloConfig.MOTIVOS_EXCLUSION,
         'solo_recientes': e.params.solo_compromisos_recientes,
         'corte_recientes': servicio._restar_meses(e.hoy, e.params.meses_compromisos_recientes),
         'meses_consumo': list(zip([_mes(m) for m in servicio.meses_cerrados(e.hoy, len(r.consumo.meses))],
@@ -621,6 +622,10 @@ def articulo_config(request, code):
         cfg.minimo_nuevo = _float(post.get('minimo_nuevo'))
         cfg.proveedor = proveedor
         cfg.nota = post.get('nota', '')[:255]
+        # Marcas de gestion (SPEC-31 §1)
+        marcas.aplicar_exclusion(cfg, post.get('excluir_calculo') == 'on', post.get('motivo_exclusion', ''))
+        marcas.aplicar_plan(cfg, post.get('plan_gerencia') == 'on', marcas.unidades_desde_texto(post.get('plan_unidades')),
+                            marcas.mes_desde_texto(post.get('plan_hasta')))
         cfg.actualizado_por = request.user
         cfg.save()
     except ValueError as exc:

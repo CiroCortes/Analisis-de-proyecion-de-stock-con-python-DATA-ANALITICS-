@@ -1,0 +1,72 @@
+{% extends 'base.html' %}
+
+{% block title %}ABC por venta | Calculadora Pesco{% endblock %}
+
+{% block content %}
+<div class="w-full space-y-6">
+    {% include 'calculadora/_subnav.html' %}
+
+    <div class="bg-white p-6 sm:p-7 rounded-3xl shadow-sm border border-slate-200 border-l-8 border-l-pesco-cyan">
+        <span class="text-xs font-bold text-pesco-cyan uppercase tracking-wider">Calculadora de compras · SPEC-31 §4</span>
+        <h1 class="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight mt-1">ABC por venta · {{ nodo_nombre }}</h1>
+        <p class="text-sm text-slate-500 mt-1 max-w-3xl">Los productos que más aportan a la facturación: <b>precio de venta × cantidad vendida</b> (facturas menos notas de crédito) de los últimos 12 meses cerrados. A = primer {{ params.corte_abc_a|floatformat:"-2" }} de la venta acumulada, B = siguiente {{ params.corte_abc_b|floatformat:"-2" }}, C = el resto. Es una clasificación adicional: el nivel de servicio lo sigue definiendo el ABC de inventario (consumo × costo).</p>
+        {% if ultima_carga %}<p class="text-[11px] text-slate-400 mt-2">Consulta 17 cargada el {{ ultima_carga.cargado_en|date:"d-m-Y H:i" }} ({{ ultima_carga.filas }} filas){% if ultima_carga.nota %} · {{ ultima_carga.nota }}{% endif %}</p>{% endif %}
+    </div>
+
+    <form method="get" class="flex flex-wrap gap-3 items-center">
+        <select name="nodo" class="border border-slate-200 rounded-xl px-3 py-2 text-sm bg-white">
+            <option value="">Toda la red</option>
+            {% for c, n in nodos %}<option value="{{ c }}" {% if nodo == c %}selected{% endif %}>{{ n }}</option>{% endfor %}
+        </select>
+        <button class="bg-pesco-cyan text-white text-xs font-bold px-5 py-2.5 rounded-full uppercase tracking-wider">Ver</button>
+    </form>
+
+    {% if sin_datos %}
+    <div class="bg-amber-50 border border-amber-200 rounded-3xl p-5 text-sm text-amber-900">
+        <i class="fa-solid fa-circle-info"></i> No hay ventas cargadas. Exporta la <b>consulta 17</b> (<span class="font-mono">Ventas Mensuales.txt</span>) de <span class="font-mono">data/consultas_datalake.sql</span>, déjala en <span class="font-mono">data/</span> y recalcula.
+    </div>
+    {% else %}
+    <div class="grid grid-cols-1 sm:grid-cols-4 gap-4">
+        <div class="bg-white rounded-3xl border border-slate-200 p-5"><div class="text-[10px] font-bold text-slate-400 uppercase">Venta 12 meses</div><div class="text-2xl font-black font-mono">USD {{ total|floatformat:"0g" }}</div></div>
+        {% for c, n, v in resumen %}
+        <div class="bg-white rounded-3xl border border-slate-200 p-5"><div class="text-[10px] font-bold text-slate-400 uppercase">Clase {{ c }}</div><div class="text-2xl font-black font-mono">{{ n }} <span class="text-sm text-slate-500">art.</span></div><div class="text-xs text-slate-500 font-mono">USD {{ v|floatformat:"0g" }}</div></div>
+        {% endfor %}
+    </div>
+
+    <div class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+        <div class="overflow-x-auto">
+        <table class="min-w-full text-xs">
+            <thead><tr class="text-[10px] uppercase tracking-wider text-slate-400 bg-slate-50 border-b border-slate-200">
+                <th class="text-left py-3 px-4">Artículo</th><th class="text-right px-3">Venta 12 m USD</th><th class="text-right px-3">% venta</th>
+                <th class="text-right px-3">% acumulado</th><th class="text-center px-3">ABC venta</th><th class="text-center px-3">ABC inventario</th>
+                <th class="text-center px-3">Letra</th><th class="text-right px-3">Disponible red</th><th class="text-right px-3">Sugerido USD</th>
+            </tr></thead>
+            <tbody>
+            {% for f in page_obj %}
+            <tr class="border-b border-slate-50">
+                <td class="py-2 px-4"><a href="{% url 'calculadora:articulo' f.sku %}" class="font-mono font-bold text-pesco-cyan hover:underline">{{ f.sku }}</a>
+                    <div class="text-slate-700 max-w-sm">{{ f.r.product.description|default:"" }}</div></td>
+                <td class="px-3 text-right font-mono font-bold">{{ f.venta|floatformat:"0g" }}</td>
+                <td class="px-3 text-right font-mono">{% widthratio f.participacion 1 100 %}%</td>
+                <td class="px-3 text-right font-mono">{% widthratio f.acumulado 1 100 %}%</td>
+                <td class="px-3 text-center"><span class="px-2 py-0.5 rounded-full text-[10px] font-black {% if f.clase == 'A' %}bg-emerald-100 text-emerald-800{% elif f.clase == 'B' %}bg-amber-100 text-amber-800{% else %}bg-slate-100 text-slate-600{% endif %}">{{ f.clase }}</span></td>
+                <td class="px-3 text-center font-bold">{{ f.r.abc|default:"—" }}</td>
+                <td class="px-3 text-center font-bold">{{ f.r.letra|default:"—" }}</td>
+                <td class="px-3 text-right font-mono {% if f.r and f.r.disponible_futuro <= 0 %}text-red-600 font-bold{% endif %}">{{ f.r.disponible_futuro|floatformat:"0g"|default:"—" }}</td>
+                <td class="px-3 text-right font-mono">{{ f.r.valor_sugerido|floatformat:"0g"|default:"—" }}</td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        </div>
+    </div>
+    {% if page_obj.paginator.num_pages > 1 %}
+    <div class="flex justify-center gap-2 text-xs font-bold">
+        {% if page_obj.has_previous %}<a class="px-3 py-2 bg-white border rounded-xl" href="?nodo={{ nodo }}&page={{ page_obj.previous_page_number }}">← Anterior</a>{% endif %}
+        <span class="px-3 py-2">Página {{ page_obj.number }} de {{ page_obj.paginator.num_pages }}</span>
+        {% if page_obj.has_next %}<a class="px-3 py-2 bg-white border rounded-xl" href="?nodo={{ nodo }}&page={{ page_obj.next_page_number }}">Siguiente →</a>{% endif %}
+    </div>
+    {% endif %}
+    {% endif %}
+</div>
+{% endblock %}

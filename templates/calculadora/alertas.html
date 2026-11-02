@@ -13,19 +13,19 @@
     </div>
 
     <div class="flex flex-wrap gap-2">
-        <a href="?{% if f.vigente != '1' %}vigente={{ f.vigente }}&{% endif %}estado={{ f.estado }}&severidad={{ f.severidad }}&search={{ f.search|urlencode }}"
+        <a href="?{% if f.vigente != '1' %}vigente={{ f.vigente }}&{% endif %}estado={{ f.estado }}&severidad={{ f.severidad }}&nodo={{ f.nodo }}&search={{ f.search|urlencode }}"
            class="px-3 py-1.5 rounded-full text-xs font-bold border {% if not f.tipo %}bg-pesco-cyan text-white border-pesco-cyan{% else %}bg-white text-slate-600 border-slate-200 hover:border-pesco-cyan{% endif %}">
             Todas <span class="font-mono">{{ total }}</span>
         </a>
         {% for c in conteo %}
-        <a href="?tipo={{ c.tipo }}&vigente={{ f.vigente }}&estado={{ f.estado }}&severidad={{ f.severidad }}&search={{ f.search|urlencode }}"
+        <a href="?tipo={{ c.tipo }}&vigente={{ f.vigente }}&estado={{ f.estado }}&severidad={{ f.severidad }}&nodo={{ f.nodo }}&search={{ f.search|urlencode }}"
            class="px-3 py-1.5 rounded-full text-xs font-bold border {% if f.tipo == c.tipo %}bg-pesco-cyan text-white border-pesco-cyan{% else %}bg-white text-slate-600 border-slate-200 hover:border-pesco-cyan{% endif %}">
             {{ c.etiqueta }} <span class="font-mono">{{ c.n }}</span>
         </a>
         {% endfor %}
     </div>
 
-    <form method="get" class="bg-white p-5 rounded-3xl shadow-sm border border-slate-200 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4 items-end">
+    <form method="get" class="bg-white p-5 rounded-3xl shadow-sm border border-slate-200 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-7 gap-4 items-end">
         <input type="hidden" name="tipo" value="{{ f.tipo }}">
         <div>
             <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Estado</label>
@@ -49,7 +49,14 @@
                 <option value="" {% if f.vigente == '' %}selected{% endif %}>Todas</option>
             </select>
         </div>
-        <div class="lg:col-span-2">
+        <div>
+            <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Bodega</label>
+            <select name="nodo" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm">
+                <option value="">Toda la red</option>
+                {% for c, nombre in nodos %}<option value="{{ c }}" {% if f.nodo == c %}selected{% endif %}>{{ nombre }}</option>{% endfor %}
+            </select>
+        </div>
+        <div>
             <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Buscar</label>
             <input name="search" value="{{ f.search }}" placeholder="Artículo, proveedor o texto" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm">
         </div>
@@ -74,6 +81,7 @@
                     {% if not a.vigente %}<div class="text-[10px] text-slate-400 mt-1">No vigente</div>{% endif %}
                 </td>
                 <td class="px-3 py-3 font-bold text-slate-700 whitespace-nowrap">{{ a.get_tipo_display }}
+                    {% if a.nodo %}<div class="text-[10px] text-pesco-cyan font-bold"><i class="fa-solid fa-location-dot"></i> {% if a.nodo == '013' %}Santiago{% else %}{{ a.nodo }}{% endif %}</div>{% endif %}
                     <div class="text-[10px] text-slate-400 font-normal">{{ a.creada_en|date:"d-m-Y" }}</div></td>
                 <td class="px-3 py-3">
                     {% if a.product_id %}

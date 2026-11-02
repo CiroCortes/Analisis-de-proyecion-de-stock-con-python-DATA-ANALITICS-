@@ -24,6 +24,9 @@
                     {% if e.es_critico %}<span class="px-3 py-1 rounded-full text-xs font-black bg-red-100 text-red-700">Crítico</span>{% endif %}
                     {% if r.es_nuevo %}<span class="px-3 py-1 rounded-full text-xs font-black bg-sky-100 text-sky-700">Nuevo</span>{% endif %}
                     {% if r.es_inmovilizado %}<span class="px-3 py-1 rounded-full text-xs font-black bg-slate-200 text-slate-700">Inmovilizado</span>{% endif %}
+                    {% if config.excluir_calculo %}<span class="px-3 py-1 rounded-full text-xs font-black bg-slate-800 text-white" title="Marca de Abastecimiento: no se compra ni genera alertas"><i class="fa-solid fa-ban"></i> Excluido: {{ config.motivo_exclusion_texto }}</span>{% endif %}
+                    {% if config.plan_gerencia %}<span class="px-3 py-1 rounded-full text-xs font-black bg-indigo-100 text-indigo-800" title="Compra según el plan de gerencia"><i class="fa-solid fa-people-group"></i> Plan gerencia: {{ config.plan_unidades|floatformat:"-2" }} u{% if config.plan_hasta %} hasta {{ config.plan_hasta|date:"m-Y" }}{% endif %}</span>{% endif %}
+                    {% if guardado.abc_venta %}<span class="px-3 py-1 rounded-full text-xs font-black bg-slate-100 text-slate-700" title="ABC por venta neta USD de 12 meses (SPEC-31)">ABC venta {{ guardado.abc_venta }}</span>{% endif %}
                     <span class="px-3 py-1 rounded-full text-xs font-black {% if r.compra.urgencia == 'URGENTE' %}bg-red-100 text-red-700{% elif r.compra.urgencia == 'MEDIO' %}bg-amber-100 text-amber-700{% else %}bg-emerald-100 text-emerald-700{% endif %}">{{ r.compra.urgencia }}</span>
                 </div>
                 <p class="text-xs text-slate-500 mt-2">{{ r.clasificacion.motivo }}</p>
@@ -36,6 +39,14 @@
                     {% if guardado.cantidad_otra_base is not None %}<div class="text-[10px] text-amber-700 mt-1" title="Cálculo híbrido: la otra base de compromisos">{% if solo_recientes %}con todos los compromisos{% else %}solo recientes{% endif %}: <b class="font-mono">{{ guardado.cantidad_otra_base }}</b> u {% ayuda 'compromisos_recientes' %}</div>{% endif %}</div>
                 <div class="rounded-2xl bg-slate-50 border border-slate-200 p-3"><div class="text-[10px] font-bold text-slate-400 uppercase">Cobertura</div><div class="text-xl font-black font-mono">{% if r.compra.cobertura_dias is not None %}{{ r.compra.cobertura_dias|floatformat:0 }} d{% else %}—{% endif %}</div></div>
             </div>
+        </div>
+        <div class="mt-4 flex flex-wrap gap-x-6 gap-y-1 text-xs text-slate-600">
+            <span><b>Promedio mensual</b>: <span class="font-mono font-bold">{{ r.consumo.consumo_promedio_mes|floatformat:2 }}</span> (12 meses) ·
+                <span class="font-mono font-bold">{{ r.consumo.promedio_con_demanda|floatformat:2 }}</span> en los {{ r.consumo.meses_con_consumo_12m }} meses con demanda
+                · mayor mes <span class="font-mono font-bold">{{ r.consumo.mayor_consumo_mes|floatformat:"-2" }}</span></span>
+            {% if guardado %}<span><b>En camino</b>:{% for etiqueta, q in guardado.transito_desglose|origenes_transito %} {{ etiqueta|lower }} <span class="font-mono font-bold">{{ q|floatformat:"0g" }}</span> ·{% endfor %}
+                total <span class="font-mono font-bold">{{ guardado.en_transito|floatformat:"0g" }}</span>
+                {% if guardado.sc_abierta %}<span class="text-slate-400">· SC abiertas {{ guardado.sc_abierta|floatformat:"0g" }} u {% if not e.params.sc_cuenta_en_transito %}(no cuentan){% endif %}</span>{% endif %}</span>{% endif %}
         </div>
         {% if not guardado %}
         <div class="mt-4 bg-amber-50 border border-amber-200 rounded-2xl p-3 text-xs text-amber-900">
@@ -151,13 +162,13 @@
             <div class="overflow-x-auto">
             <table class="min-w-full text-xs">
                 <thead class="bg-slate-50 text-[10px] uppercase text-slate-500"><tr>
-                    <th class="px-4 py-2 text-left">Bodega</th><th class="px-2 text-right">Físico</th><th class="px-2 text-right">Tránsito</th><th class="px-2 text-right">Compr.</th><th class="px-2 text-right">Disponible</th><th class="px-2 text-right">Objetivo</th><th class="px-2 text-right">Faltante</th><th class="px-2 text-right">Protegido {% ayuda 'stock_retenido' %}</th><th class="px-2 text-right">Libre</th><th class="px-3 text-left">Acción</th><th class="px-3 text-left">Desde</th></tr></thead>
+                    <th class="px-4 py-2 text-left">Bodega</th><th class="px-2 text-right">Físico</th><th class="px-2 text-right">Por llegar</th><th class="px-2 text-right">Compr.</th><th class="px-2 text-right">Disponible</th><th class="px-2 text-right">Objetivo</th><th class="px-2 text-right">Faltante</th><th class="px-2 text-right">Protegido {% ayuda 'stock_retenido' %}</th><th class="px-2 text-right">Libre</th><th class="px-3 text-left">Acción</th><th class="px-3 text-left">Desde</th></tr></thead>
                 <tbody class="divide-y divide-slate-100">
                 {% for b in bodegas %}
                 <tr>
                     <td class="px-4 py-2 font-mono font-bold">{{ b.warehouse.code|nodo }}{% if b.warehouse.code != '013' %}<div class="text-[10px] text-slate-400 font-sans font-normal">{{ b.warehouse.zone_label }}</div>{% endif %}</td>
                     <td class="px-2 text-right font-mono">{{ b.stock_fisico|floatformat:"0g" }}</td>
-                    <td class="px-2 text-right font-mono">{{ b.en_transito|floatformat:"0g" }}</td>
+                    <td class="px-2 text-right font-mono">{{ b.en_transito|floatformat:"0g" }}{% for etiqueta, q in b.transito_desglose|origenes_transito %}<div class="text-[9px] text-slate-400 font-sans whitespace-nowrap">{{ etiqueta }} {{ q|floatformat:"0g" }}</div>{% endfor %}</td>
                     <td class="px-2 text-right font-mono">{{ b.comprometido|floatformat:"0g" }}</td>
                     <td class="px-2 text-right font-mono font-bold {% if b.disponible_futuro < 0 %}text-red-600{% endif %}">{{ b.disponible_futuro|floatformat:"0g" }}</td>
                     <td class="px-2 text-right font-mono">{{ b.objetivo|floatformat:"0g" }}</td>
@@ -195,6 +206,20 @@
                 <label class="flex items-center gap-2"><input type="checkbox" name="es_critico" {% if config.es_critico %}checked{% endif %} class="rounded"> <span><b>Crítico</b>: nivel de servicio mínimo 97%</span></label>
                 <div><label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">Mínimo manual si es nuevo</label><input type="text" name="minimo_nuevo" value="{{ config.minimo_nuevo|default:0|floatformat:'-2' }}" class="w-full border border-slate-300 rounded-xl px-3 py-2 font-mono"></div>
                 <div><label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">Proveedor (código, si difiere de SAP)</label><input type="text" name="proveedor" value="{{ config.proveedor_id|default:'' }}" class="w-full border border-slate-300 rounded-xl px-3 py-2 font-mono"></div>
+                <div class="border-t border-slate-100 pt-3 space-y-2">
+                    <label class="flex items-center gap-2"><input type="checkbox" name="excluir_calculo" {% if config.excluir_calculo %}checked{% endif %} class="rounded"> <span><b>Excluir del cálculo</b>: no se compra ni genera alertas</span></label>
+                    <select name="motivo_exclusion" class="w-full border border-slate-300 rounded-xl px-3 py-2">
+                        <option value="">Motivo…</option>
+                        {% for c, t in motivos_exclusion %}<option value="{{ c }}" {% if config.motivo_exclusion == c %}selected{% endif %}>{{ t }}</option>{% endfor %}
+                    </select>
+                </div>
+                <div class="border-t border-slate-100 pt-3 space-y-2">
+                    <label class="flex items-center gap-2"><input type="checkbox" name="plan_gerencia" {% if config.plan_gerencia %}checked{% endif %} class="rounded"> <span><b>Planificado por gerencia</b>: compra = plan − disponible</span></label>
+                    <div class="grid grid-cols-2 gap-2">
+                        <div><label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">Unidades del plan</label><input type="text" name="plan_unidades" value="{{ config.plan_unidades|default:0|floatformat:'-2' }}" class="w-full border border-slate-300 rounded-xl px-3 py-2 font-mono"></div>
+                        <div><label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">Hasta (mes)</label><input type="month" name="plan_hasta" value="{{ config.plan_hasta|date:'Y-m' }}" class="w-full border border-slate-300 rounded-xl px-3 py-2"></div>
+                    </div>
+                </div>
                 <div><label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">Nota</label><input type="text" name="nota" value="{{ config.nota|default:'' }}" maxlength="255" class="w-full border border-slate-300 rounded-xl px-3 py-2"></div>
                 <button class="w-full bg-pesco-cyan hover:bg-pesco-darkcyan text-white font-bold px-5 py-2.5 rounded-full">Guardar marcas</button>
                 {% if config.actualizado_por %}<p class="text-[10px] text-slate-400">Última edición: {{ config.actualizado_por.username }}, {{ config.actualizado_en|date:"d-m-Y H:i" }}</p>{% endif %}
@@ -205,6 +230,8 @@
                 <li>Crítico: <b>{% if config.es_critico %}Sí{% else %}No{% endif %}</b></li>
                 <li>Mínimo nuevo: <b>{{ config.minimo_nuevo|default:0|floatformat:"-2" }}</b></li>
                 <li>Proveedor manual: <b>{{ config.proveedor_id|default:"—" }}</b></li>
+                <li>Excluido del cálculo: <b>{% if config.excluir_calculo %}Sí ({{ config.motivo_exclusion_texto }}){% else %}No{% endif %}</b></li>
+                <li>Plan de gerencia: <b>{% if config.plan_gerencia %}{{ config.plan_unidades|floatformat:"-2" }} u{% if config.plan_hasta %} hasta {{ config.plan_hasta|date:"m-Y" }}{% endif %}{% else %}No{% endif %}</b></li>
             </ul>
             <p class="text-[11px] text-slate-400 mt-3">Solo el administrador de Abastecimiento puede cambiar estas marcas.</p>
             {% endif %}
