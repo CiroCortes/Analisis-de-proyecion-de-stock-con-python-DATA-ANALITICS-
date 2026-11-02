@@ -146,7 +146,23 @@ regular en el nodo (al menos `umbral_r` = 3 de los 12 meses) y sin consumo en es
 - Si se excluyen los 30 códigos 4999990xxx (simulado, no marcado): 4,06 M → 3,22 M (−841 mil). La marca la
   pone Abastecimiento desde la pantalla Marcas.
 - Equipos de gerencia: 145 candidatos, 10 con compra sugerida por USD 671 mil.
-- ABC por venta: pendiente exportar la consulta 17.
+- ABC por venta (consulta 17 cargada el 2-nov, corrida 31): `linetotal` validado en USD (precio de venta /
+  costo: mediana 1,84; p10 1,02; p90 3,04). El archivo trae USD 97 M en 13 meses; en el alcance del cálculo
+  (repuestos y pañol) son USD 6,4 M en 12 meses: A = 230 artículos (USD 5,15 M), B = 504, C = el resto. De los
+  230 A por venta, 179 son A de inventario, 45 B y 6 C; 63 son O y 29 R sin disponible. Por nodo: Santiago
+  USD 4,3 M, Calama 0,75 M, Antofagasta 0,65 M, Los Ángeles 0,39 M, Puerto Montt 0,32 M, Copiapó 0,02 M.
+- Códigos SAP con "/" (2 en el alcance, p. ej. 3120/56-3632): las rutas de la ficha y de Analizar usan
+  `<path:code>` (antes daban error 500 en cualquier pantalla que los enlazara).
+
+## 5b. Alerta de PC/OF abiertos antiguos
+
+Los PC y OF sin regularizar se siguen contando: son datos del sistema y la base de compromisos la decide
+el parámetro de SPEC-23. Pero cada artículo con compromisos emitidos hace más de
+`meses_compromisos_recientes` (3) meses tiene la alerta `COMPROMISO_ANTIGUO`, con las unidades, la cantidad
+de documentos, el más antiguo (tipo, número, meses y responsable) y la compra con todos los compromisos y
+con solo los recientes. Es MEDIA si los antiguos cambian la compra y BAJA si no. El detalle por documento
+para Contraloría sigue en Compromisos (SPEC-23). Corrida 32: 338 alertas (127 MEDIA, USD 290 mil de compra
+que dependen de compromisos antiguos).
 
 ## 6. Ya cubierto (sin cambios)
 

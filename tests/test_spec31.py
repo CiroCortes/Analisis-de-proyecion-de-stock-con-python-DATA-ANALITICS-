@@ -245,3 +245,53 @@ def test_el_traslado_cuenta_en_la_red_para_no_comprar_dos_veces():
     calama = red.Bodega('002', stock_fisico=0, en_transito=400, comprometido=200)
     r = calcular_articulo(_entrada(consumo_meses=[0] * 12, bodegas=[calama]))
     assert r.compra.disponible_futuro == 200 and r.cantidad_a_comprar == 0
+
+
+class AbcVentaAlcanceTest(TestCase):
+    def test_solo_articulos_del_calculo(self):
+        # Un codigo fuera del alcance (con "/", sin resultado) no rompe la pantalla ni entra al ABC
+        ProductSKU.objects.create(code='3120/56-3632', description='fuera')
+        dentro = ProductSKU.objects.create(code='D1', description='dentro')
+        mes = servicio.meses_cerrados(timezone.localdate(), 1)[0]
+        VentaMensual.objects.create(product_id='3120/56-3632', bodega='002', mes=mes, monto_usd=500)
+        VentaMensual.objects.create(product=dentro, bodega='002', mes=mes, monto_usd=100)
+        ResultadoArticulo.objects.create(corrida=servicio.Corrida.objects.create(fecha_calculo=mes), product=dentro,
+                                         letra='R')
+        self.client.force_login(User.objects.create_superuser('a', 'a@a.cl', 'x'))
+        r = self.client.get(reverse('calculadora:abc_venta'))
+        self.assertContains(r, 'D1')
+        self.assertNotContains(r, '3120/56-3632')
+
+
+def test_rutas_aceptan_codigos_con_barra():
+    assert reverse('calculadora:articulo', args=['3120/56-3632']) == '/calculadora/articulo/3120/56-3632/'
+    assert reverse('calculadora:articulo_config', args=['3120/56-3632']) == '/calculadora/articulo/3120/56-3632/config/'
+    from django.urls import resolve
+    assert resolve('/calculadora/articulo/3120/56-3632/').kwargs == {'code': '3120/56-3632'}
+    assert resolve('/calculadora/articulo/3120/56-3632/config/').url_name == 'articulo_config'
+    assert resolve('/calculadora/analizar/3120%2F56-3632/datos/'.replace('%2F', '/')).kwargs == {'code': '3120/56-3632'}
+
+
+class CompromisoAntiguoTest(TestCase):
+    """PC/OF abiertos sin regularizar: se calculan con ellos, pero se alerta (SPEC-31 §6, SPEC-23)."""
+
+    def test_alerta_con_documento_mas_antiguo_y_efecto_en_la_compra(self):
+        from apps.calculadora.models import CompromisoAbierto, CompromisoDetalle
+        cat = Category.objects.create(code='G1', name='G', is_active=True, tipo='REPUESTO')
+        hoy = timezone.localdate()
+        p = ProductSKU.objects.create(code='K1', description='x', category=cat, unit_cost_usd=10,
+                                      fec_creacion_sap=hoy - datetime.timedelta(days=900))
+        wh = Warehouse.objects.create(code='013-PP', name='C')
+        InventoryMetric.objects.create(product=p, warehouse=wh, stock_physical=0, comp_pc_qty=5)
+        viejo = hoy - datetime.timedelta(days=400)
+        CompromisoAbierto.objects.create(product=p, tipo='PC', numero='777', bodega='013-PP', fecha=viejo,
+                                         fecha_emision=viejo, cantidad=5)
+        CompromisoDetalle.objects.create(tipo='PC', numero='777', codigo_sku='K1', bodega='013-PP',
+                                         fecha_emision=viejo, responsable='Vendedor X', cantidad=5)
+        servicio.ejecutar_corrida()
+        a = Alerta.objects.get(tipo='COMPROMISO_ANTIGUO', product=p)
+        self.assertEqual(a.severidad, 'MEDIA')            # sin el PC antiguo no se compraria
+        meses = (hoy.year - viejo.year) * 12 + hoy.month - viejo.month
+        self.assertIn(f'el mas antiguo PC 777, {meses} meses, Vendedor X', a.mensaje)
+        self.assertIn('con solo recientes 0 u', a.mensaje)
+        self.assertEqual(ResultadoArticulo.objects.get(product=p).cantidad_sugerida, 5)   # se sigue planificando

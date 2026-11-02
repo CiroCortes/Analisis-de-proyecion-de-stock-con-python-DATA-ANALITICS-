@@ -128,11 +128,11 @@ def abc_venta(request):
     nodo = nodo if nodo in nodos else ''
     params = Resolutor().general
     excluidos = set(ArticuloConfig.objects.filter(excluir_calculo=True).values_list('product_id', flat=True))
-    ventas = {s: v for s, v in ventas_por_articulo(nodo).items() if s not in excluidos}
+    # Misma poblacion que el ABC de la corrida: articulos del calculo (alcance) no excluidos
+    resultados = {r.product_id: r for r in ResultadoArticulo.objects.select_related('product')}
+    ventas = {s: v for s, v in ventas_por_articulo(nodo).items() if s in resultados and s not in excluidos}
     clases = clases_abc(ventas, params) if ventas else {}
     total = sum(v for v in ventas.values() if v > 0)
-    resultados = {r.product_id: r for r in ResultadoArticulo.objects.filter(product_id__in=list(ventas))
-                  .select_related('product')}
     filas, acumulado, resumen = [], 0.0, {c: [0, 0.0] for c in 'ABC'}
     for sku, venta in sorted(ventas.items(), key=lambda kv: -kv[1]):
         if venta <= 0:

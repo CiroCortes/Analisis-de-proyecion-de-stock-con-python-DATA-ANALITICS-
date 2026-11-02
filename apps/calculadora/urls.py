@@ -13,8 +13,9 @@ urlpatterns = [
     path('correr/', v.correr, name='correr'),
     path('grilla/', v.grilla, name='grilla'),
     path('grilla/excel/', v.grilla_excel, name='grilla_excel'),
-    path('articulo/<str:code>/', v.articulo, name='articulo'),
-    path('articulo/<str:code>/config/', v.articulo_config, name='articulo_config'),
+    # path: hay codigos SAP con "/" (3120/56-3632). La ruta de config va primero para que no la capture
+    path('articulo/<path:code>/config/', v.articulo_config, name='articulo_config'),
+    path('articulo/<path:code>/', v.articulo, name='articulo'),
     path('indicadores/', v.indicadores, name='indicadores'),
 
     # Gestion (SPEC-18 §4.2): solicitudes, traslados, alertas, eventos, parametros, proveedores
@@ -45,7 +46,7 @@ urlpatterns = [
     path('guia/', fu.guia, name='guia'),
     path('analizar/', fu.analizar, name='analizar'),
     path('analizar/excel/', fu.analizar_excel, name='analizar_excel'),
-    path('analizar/<str:code>/datos/', fu.analizar_detalle, name='analizar_detalle'),
+    path('analizar/<path:code>/datos/', fu.analizar_detalle, name='analizar_detalle'),
 
     # Marcas de gestion y ABC por venta (SPEC-31)
     path('marcas/', mk.marcas_view, name='marcas'),

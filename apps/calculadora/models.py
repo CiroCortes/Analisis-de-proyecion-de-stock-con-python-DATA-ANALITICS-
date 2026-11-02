@@ -538,6 +538,7 @@ class Alerta(models.Model):
         ('PICO', 'Pico de consumo recortado'),
         ('CAIDA_CONSUMO_NODO', 'Caida de consumo en una bodega'),
         ('DOBLE_ENVIO', 'Llega por traslado y por OC'),
+        ('COMPROMISO_ANTIGUO', 'PC/OF abierto antiguo'),
     ]
     tipo = models.CharField(max_length=20, choices=TIPOS, db_index=True)
     product = models.ForeignKey(ProductSKU, null=True, blank=True, on_delete=models.CASCADE, related_name='alertas')

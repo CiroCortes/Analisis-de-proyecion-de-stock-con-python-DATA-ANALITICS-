@@ -13,7 +13,7 @@ from django.db.models import F, Sum
 
 from apps.data_ingestion.warehouses import nodo_red, nombre_nodo
 
-from .models import (AcuerdoGlobal, Alerta, ConsumoMensual, EventoComercial, HistorialMensual, ResultadoArticulo,
+from .models import (AcuerdoGlobal, Alerta, CompromisoDetalle, ConsumoMensual, EventoComercial, HistorialMensual, ResultadoArticulo,
                      ResultadoBodega)
 
 ALTA, MEDIA, BAJA = 'ALTA', 'MEDIA', 'BAJA'
@@ -121,6 +121,11 @@ def generar(corrida, hoy):
         if r.letra == 'R' and r.marca != ResultadoArticulo.EXCLUIDO:
             repone.add(r.product_id)
 
+    # PC/OF abiertos antiguos sin regularizar (SPEC-31 §6, SPEC-23): el calculo los cuenta porque son
+    # datos del sistema, pero se avisa para que Contraloria y el responsable los cierren o confirmen
+    for sku, sev, msg in compromisos_antiguos(corrida, hoy, p):
+        agregar(f'COMPROMISO_ANTIGUO|{sku}', 'COMPROMISO_ANTIGUO', sev, msg, sku)
+
     # Doble envio a una sucursal (SPEC-31 §2): le llega stock por traslado y ademas una OC, y con eso
     # le sobra. Caso tipico: el traslado cubrio el PC mientras llegaba la compra; al llegar la OC no
     # hay que volver a enviar (la compra repone Santiago)
@@ -170,6 +175,32 @@ def generar(corrida, hoy):
 
 
 ORIGENES_OC = ('IMPORTACION', 'NACIONAL', 'SIN_OC')
+
+
+def compromisos_antiguos(corrida, hoy, p):
+    """[(sku, severidad, mensaje)] de articulos con PC/OF emitidos hace mas de `meses_compromisos_recientes`
+    meses. MEDIA si cambian la compra sugerida (comparada con la base de solo recientes), BAJA si no."""
+    from .servicio import _restar_meses
+    corte = _restar_meses(hoy, p.meses_compromisos_recientes)
+    docs = defaultdict(list)
+    for sku, tipo, numero, emision, responsable in CompromisoDetalle.objects.filter(fecha_emision__lt=corte).values_list(
+            'codigo_sku', 'tipo', 'numero', 'fecha_emision', 'responsable'):
+        docs[sku].append((emision, tipo, numero, responsable))
+    out = []
+    for r in ResultadoArticulo.objects.filter(corrida=corrida, comprometido_antiguo__gt=0).exclude(
+            marca=ResultadoArticulo.EXCLUIDO):
+        lista = sorted(set(docs.get(r.product_id, [])))
+        texto = f'{r.comprometido_antiguo:,.0f} u en PC/OF abiertos hace mas de {p.meses_compromisos_recientes} meses'
+        if lista:
+            emision, tipo, numero, responsable = lista[0]
+            meses = (hoy.year - emision.year) * 12 + hoy.month - emision.month
+            texto += (f' ({len({(t, n) for _, t, n, _ in lista})} documento(s); el mas antiguo {tipo} {numero}, '
+                      f'{meses} meses{", " + responsable if responsable else ""})')
+        cambia = r.cantidad_otra_base is not None and r.cantidad_otra_base != r.cantidad_a_comprar
+        if cambia:
+            texto += f'. Compra con todos {r.cantidad_a_comprar} u, con solo recientes {r.cantidad_otra_base} u'
+        out.append((r.product_id, MEDIA if cambia else BAJA, texto + '. Regularizar con el responsable (Contraloria)'))
+    return out
 
 
 def doble_envio(desglose, disponible_futuro):
