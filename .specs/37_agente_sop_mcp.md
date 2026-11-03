@@ -98,7 +98,15 @@ fecha de los datos.
 | `buscar_reglas(tema)` | Busca en los `.specs/` y en el glosario (§5) y devuelve el párrafo con su spec |
 | `glosario(termino)` | Definición corta y en qué spec se acordó |
 
-### 4.4 SAP en vivo (fase 3)
+### 4.4 Consulta libre (solo lectura)
+
+`consulta_libre(sql)`: un `SELECT` sobre las tablas de la Calculadora (no las de usuarios ni sesiones), con
+conexión de solo lectura, tiempo máximo y tope de filas, y registrado en la auditoría. Es lo que permite
+investigar preguntas que ninguna herramienta previó, como "¿cuántas importaciones prometen llegar en menos
+de la mitad de su plazo?" (35471214, 3-nov). Sin ella el agente solo responde lo que cubren las herramientas
+fijas. Cuando una consulta libre se repite, pasa a ser un detector de §4.2.
+
+### 4.5 SAP en vivo (fase 3)
 
 `documento_sap(tipo, numero)`: lee una OC, FR, OF o PC desde el Service Layer (solo GET, con los límites
 del SPEC-30), para confirmar el estado al minuto. Ejemplo: comprobar que la OC 2505141 está cerrada y que
@@ -149,6 +157,7 @@ Preguntas con respuesta conocida del 3-nov. El agente debe dar los mismos hechos
 | ¿Hay que comprar butacas 32010492? | No: 83 u en fabricación (OF 2609227 y 2610193) |
 | ¿Qué pasa con 20401255? | OC 2505141 (may-25, 250 u) con 6 entradas parciales; 73 u en FR 59761/60238, vencidas desde ene-26; PC 2609370 de 120 u; aun contando lo que viene, faltan 49 |
 | ¿Por qué 4201130215 compraba 8 u? | OC 2402156 de 294 días inflaba el SS; con el tope, la compra es 0 |
+| ¿Hay un error con 35471214? | No en el cálculo: PC 2610552 de 6 u cubierto por OC 2610879 → FR 75825 (6 u a 000), disponible 0. La fecha comprometida (30-10, 2 días) es irreal para 70 días de plazo; viene de la SC. Hay 264 líneas de importación así |
 
 Metas antes de abrirlo a usuarios: 100 % de los hechos de los casos dorados, ningún número sin fuente, y
 "no lo sé" cuando el dato no está.
