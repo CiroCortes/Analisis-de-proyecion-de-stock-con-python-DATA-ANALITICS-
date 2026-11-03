@@ -10,7 +10,8 @@ from collections import defaultdict
 
 from django.db import transaction
 
-from apps.data_ingestion.datalake_ingest import _clean_num, find_data_file, iter_txt_rows, parse_date
+from apps.data_ingestion.datalake_ingest import (_clean_num, corte_of_vigente, find_data_file, iter_txt_rows,
+                                                 linea_cuenta, parse_date)
 from apps.data_ingestion.warehouses import commitment_bodega, es_nc_comercial, nodo_red, prebodega_destino, purchase_bodega
 from apps.inventory.models import ProductionOrderMovement, ProductSKU, SalesOrderMovement, Warehouse
 from apps.inventory.stock_actual_models import StockActual
@@ -224,13 +225,16 @@ def cargar_plazos_oc(data_dir=None):
 def cargar_oc_abiertas(data_dir=None):
     """Lineas de OC con pendiente (consulta 5 actual), con fecha para la proyeccion.
     Tambien registra los proveedores que aparecen. Columnas 10 y 11 (SPEC-35, opcionales):
-    tipo de documento (OC o FR, factura de reserva de una importacion) y su numero."""
+    tipo de documento (OC; FR, factura de reserva de una importacion; OF, lo que produce una orden de
+    fabricacion, SPEC-36) y su numero. Una OF emitida antes del corte de meses_of_vigente se guarda
+    con cuenta=False: no entra al calculo, solo se informa (alerta OF_ANTIGUA)."""
     ruta = archivo('oc_abiertas', data_dir)
     if not os.path.exists(ruta):
         _registrar('oc_abiertas', '', 0, fuente='SIN_ARCHIVO')
         return 0
     skus = _skus()
     filas, proveedores = [], {}
+    corte_of = corte_of_vigente()
     for cols in iter_txt_rows(ruta, 9):
         sku = cols[2]
         pendiente = _clean_num(cols[8])
@@ -238,14 +242,14 @@ def cargar_oc_abiertas(data_dir=None):
             proveedores[cols[3]] = cols[4][:200]
         if sku not in skus or pendiente <= 0:
             continue
-        tipo = cols[9] if len(cols) > 9 and cols[9] in (OCAbierta.OC, OCAbierta.FR) else OCAbierta.OC
+        tipo = cols[9] if len(cols) > 9 and cols[9] in (OCAbierta.OC, OCAbierta.FR, OCAbierta.OF) else OCAbierta.OC
         nro_oc = cols[0].replace(',', '')
         filas.append(OCAbierta(
             nro_oc=nro_oc, tipo_documento=tipo,
             nro_documento=(cols[10].replace(',', '') if len(cols) > 10 else '') or nro_oc,
             product_id=sku, bodega=purchase_bodega(cols[1]), bodega_sap=cols[1][:20],
             proveedor_codigo=cols[3], fecha_oc=parse_date(cols[5]), fecha_comprometida=parse_date(cols[6]),
-            cantidad_pendiente=pendiente,
+            cantidad_pendiente=pendiente, cuenta=linea_cuenta(cols, corte_of),
         ))
     with transaction.atomic():
         OCAbierta.objects.all().delete()

@@ -152,6 +152,7 @@ AND t1.itemcode IS NOT NULL;
 --   b) Importaciones: la OC se copia a una factura de reserva de acreedores (opch.isins = 'Y'), lo
 --      que cierra su linea, y la entrada de mercancias se hace desde la factura. Lo pendiente es lo
 --      facturado menos lo ya recibido. nro_oc_sap es la OC (PO) de origen; nro_documento, la factura.
+--   c) Fabricacion: lo que producen las OF abiertas (SPEC-36), tipo_documento = 'OF'.
 -- Las columnas 10 y 11 son nuevas; los cargadores leen las 9 primeras por posicion.
 -- ============================================================================
 SELECT
@@ -209,7 +210,27 @@ LEFT JOIN (
 WHERE fr.isins = 'Y'
   AND fr.canceled = 'N'
   AND fl.linestatus = 'O'
-  AND fl.quantity - COALESCE(rec.recibido, 0) > 0;
+  AND fl.quantity - COALESCE(rec.recibido, 0) > 0
+UNION ALL
+-- c) SPEC-36: lo que producen las OF abiertas (el producto de la OF, no sus componentes). SAP lo suma
+--    en "Pedido" (OnOrder). La plataforma cuenta solo las OF de los ultimos meses_of_vigente meses;
+--    las mas antiguas son OF sin cerrar y se informan (alerta OF_ANTIGUA).
+SELECT
+    w.docnum                                             AS nro_oc_sap,
+    COALESCE(NULLIF(w.warehouse, ''), '013-PP')          AS bodega_destino,
+    w.itemcode                                           AS codigo_sku,
+    ''                                                   AS codigo_proveedor,
+    'FABRICACION PROPIA'                                 AS nombre_proveedor,
+    SUBSTR(CAST(w.postdate AS VARCHAR), 1, 10)           AS fecha_emision_oc,
+    SUBSTR(CAST(COALESCE(w.duedate, w.postdate) AS VARCHAR), 1, 10) AS fecha_llegada_estimada,
+    CAST(w.plannedqty AS DECIMAL(18, 2))                 AS cantidad_comprada,
+    CAST(w.plannedqty - w.cmpltqty AS DECIMAL(18, 2))    AS cantidad_en_transito_pendiente,
+    'OF'                                                 AS tipo_documento,
+    w.docnum                                             AS nro_documento
+FROM pesco_sbo_pescousd.owor w
+WHERE w.status IN ('P', 'R')
+  AND w.plannedqty - w.cmpltqty > 0
+  AND w.itemcode IS NOT NULL;
 
 
 -- ============================================================================

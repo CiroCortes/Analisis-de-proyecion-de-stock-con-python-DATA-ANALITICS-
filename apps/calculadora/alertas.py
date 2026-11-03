@@ -13,7 +13,7 @@ from django.db.models import F, Sum
 
 from apps.data_ingestion.warehouses import nodo_red, nombre_nodo
 
-from .models import (AcuerdoGlobal, PlazoOC, Alerta, CompromisoDetalle, ConsumoMensual, EventoComercial, HistorialMensual, ResultadoArticulo,
+from .models import (AcuerdoGlobal, OCAbierta, PlazoOC, Alerta, CompromisoDetalle, ConsumoMensual, EventoComercial, HistorialMensual, ResultadoArticulo,
                      ResultadoBodega)
 
 ALTA, MEDIA, BAJA = 'ALTA', 'MEDIA', 'BAJA'
@@ -126,6 +126,11 @@ def generar(corrida, hoy):
     for sku, sev, msg in compromisos_antiguos(corrida, hoy, p):
         agregar(f'COMPROMISO_ANTIGUO|{sku}', 'COMPROMISO_ANTIGUO', sev, msg, sku)
 
+    # OF abiertas antiguas (SPEC-36): SAP las muestra como "Pedido" del producto, pero una OF de hace anos
+    # sin terminar no es stock por llegar. El calculo no las cuenta; Produccion debe cerrarlas o anularlas
+    for sku, sev, msg in ofs_antiguas(corrida, hoy, p):
+        agregar(f'OF_ANTIGUA|{sku}', 'OF_ANTIGUA', sev, msg, sku)
+
     # Plazo de entrega atipico (SPEC-33): una OC muy sobre la mediana del articulo no es el plazo del
     # proveedor (OC que quedo abierta, recepcion tardia). Se recorta en el calculo y se avisa para que
     # Compras corrija el proceso: el dato de SAP es real, el proceso no
@@ -236,6 +241,34 @@ def compromisos_antiguos(corrida, hoy, p):
         if cambia:
             texto += f'. Compra con todos {r.cantidad_a_comprar} u, con solo recientes {r.cantidad_otra_base} u'
         out.append((r.product_id, MEDIA if cambia else BAJA, texto + '. Regularizar con el responsable (Contraloria)'))
+    return out
+
+
+def ofs_antiguas(corrida, hoy, p):
+    """[(sku, severidad, mensaje)] de articulos que son el producto de OF abiertas emitidas hace mas de
+    `meses_of_vigente` meses (SPEC-36). MEDIA si el articulo necesita compra (quien decide debe saber que
+    SAP lo muestra por llegar), BAJA si no."""
+    docs = defaultdict(list)
+    for sku, numero, emision, q in OCAbierta.objects.filter(tipo_documento=OCAbierta.OF, cuenta=False).values_list(
+            'product_id', 'nro_oc', 'fecha_oc', 'cantidad_pendiente'):
+        docs[sku].append((emision or hoy, numero, q))
+    if not docs:
+        return []
+    res = {r.product_id: r for r in ResultadoArticulo.objects.filter(corrida=corrida, product_id__in=docs).exclude(
+        marca=ResultadoArticulo.EXCLUIDO).only('product_id', 'necesita_compra', 'costo_unitario')}
+    out = []
+    for sku, lista in docs.items():
+        r = res.get(sku)
+        if r is None:
+            continue
+        lista.sort()
+        emision, numero, _ = lista[0]
+        unidades = sum(q for _, _, q in lista)
+        meses = (hoy.year - emision.year) * 12 + hoy.month - emision.month
+        texto = (f'{unidades:,.0f} u en {len(lista)} OF abierta(s) de mas de {p.meses_of_vigente} meses '
+                 f'(la mas antigua OF {numero}, {meses} meses; USD {unidades * (r.costo_unitario or 0):,.0f}). '
+                 'SAP las muestra por llegar; el calculo no las cuenta. Cerrar o anular con Produccion')
+        out.append((sku, MEDIA if r.necesita_compra else BAJA, texto))
     return out
 
 

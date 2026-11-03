@@ -191,7 +191,7 @@ class Datos:
         self.con_antiguos = {sku for sku, _ in self.antiguos}
 
         self.oc = defaultdict(list)
-        for o in filtro(OCAbierta.objects):
+        for o in filtro(OCAbierta.objects.filter(cuenta=True)):   # OF antiguas no cuentan (SPEC-36)
             self.oc[o.product_id].append(o)
 
         # Solicitudes de la plataforma aprobadas que SAP todavia no refleja: se suman al
@@ -353,7 +353,8 @@ def _entrada(datos, p, abc, solo_recientes=None):
     llegadas, atrasada = [], False
     for o in datos.oc.get(p.code, []):
         dias = (o.fecha_comprometida - hoy).days if o.fecha_comprometida else 0
-        atrasada = atrasada or (o.fecha_comprometida is not None and o.fecha_comprometida < hoy)
+        atrasada = atrasada or (o.tipo_documento != OCAbierta.OF and o.fecha_comprometida is not None
+                                and o.fecha_comprometida < hoy)
         llegadas.append((dia_llegada_oc(dias, params.dias_recepcion), o.cantidad_pendiente))
     transito_inter = max(0.0, sum(m.stock_transito_inter for m in datos.metricas.get(p.code, [])) + transito_ajuste)
     if transito_inter:
@@ -504,11 +505,12 @@ def marca_de(cfg):
 
 # Origen del en camino (SPEC-31 §2). La compra usa el total; el desglose dice si viaja por importacion
 # (OC a pre-bodega o a proveedor extranjero, y stock ya embarcado en una pre-bodega), compra nacional,
-# transferencia de stock (bodegas T...), pedido de SAP sin linea de OC (OnOrder: OC internas o
-# fabricacion), solicitudes aprobadas en la plataforma, SC (si cuentan) o ajuste de tratamiento.
-IMPORTACION, NACIONAL, TRASLADO, SIN_OC, SOLICITADO, SC, AJUSTE = (
-    'IMPORTACION', 'NACIONAL', 'TRASLADO', 'SIN_OC', 'SOLICITADO', 'SC', 'AJUSTE')
-ORIGENES_TRANSITO = [(IMPORTACION, 'Importación'), (NACIONAL, 'Compra nacional'), (TRASLADO, 'Traslado'),
+# lo que producen las OF vigentes (SPEC-36), transferencia de stock (bodegas T...), pedido de SAP sin
+# linea cargada, solicitudes aprobadas en la plataforma, SC (si cuentan) o ajuste de tratamiento.
+IMPORTACION, NACIONAL, FABRICACION, TRASLADO, SIN_OC, SOLICITADO, SC, AJUSTE = (
+    'IMPORTACION', 'NACIONAL', 'FABRICACION', 'TRASLADO', 'SIN_OC', 'SOLICITADO', 'SC', 'AJUSTE')
+ORIGENES_TRANSITO = [(IMPORTACION, 'Importación'), (NACIONAL, 'Compra nacional'),
+                     (FABRICACION, 'Fabricación (OF)'), (TRASLADO, 'Traslado'),
                      (SIN_OC, 'Pedido SAP sin OC'), (SOLICITADO, 'Solicitud aprobada'), (SC, 'SC'),
                      (AJUSTE, 'Ajuste de bodega')]
 
@@ -523,19 +525,21 @@ def transito_por_nodo(datos, sku):
     bodega del calculo (transito_metrica, solicitudes y ajustes de SPEC-27)."""
     general = datos.resolutor.general
     nodos = defaultdict(lambda: defaultdict(float))
-    lineas = defaultdict(lambda: [0.0, 0.0])            # bodega -> [importacion, nacional]
+    lineas = defaultdict(lambda: [0.0, 0.0, 0.0])       # bodega -> [importacion, nacional, fabricacion]
     for o in datos.oc.get(sku, []):
-        lineas[o.bodega][0 if _es_importacion(o, datos.proveedores) else 1] += o.cantidad_pendiente
+        i = 2 if o.tipo_documento == OCAbierta.OF else (0 if _es_importacion(o, datos.proveedores) else 1)
+        lineas[o.bodega][i] += o.cantidad_pendiente
     pre = datos.stock_prebodega.get(sku, {})
     for m in datos.metricas.get(sku, []):
         code = m.warehouse.code
         d = nodos[nodo_red(code)]
-        imp, nac = lineas.get(code, (0.0, 0.0))
-        en_lineas = imp + nac
+        imp, nac, fab = lineas.get(code, (0.0, 0.0, 0.0))
+        en_lineas = imp + nac + fab
         if en_lineas > 0:
             parte = min(1.0, m.oc_po_qty / en_lineas)
             d[IMPORTACION] += imp * parte
             d[NACIONAL] += nac * parte
+            d[FABRICACION] += fab * parte
         d[SIN_OC] += max(0.0, m.oc_po_qty - en_lineas)
         embarcado = min(m.stock_transito_inter, pre.get(code, 0.0))
         d[IMPORTACION] += embarcado

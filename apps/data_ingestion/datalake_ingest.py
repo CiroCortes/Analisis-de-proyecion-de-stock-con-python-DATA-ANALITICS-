@@ -470,10 +470,27 @@ def ingest_datalake_pedidos(file_path):
     return comp_pc_by_sku_wh
 
 
-def ingest_datalake_ocs(file_path):
+def corte_of_vigente(hoy=None):
+    """Fecha desde la que una OF abierta cuenta como en camino (SPEC-36, meses_of_vigente)."""
+    from apps.calculadora.parametros import Resolutor
+    from apps.calculadora.servicio import _restar_meses
+    hoy = hoy or datetime.date.today()
+    return _restar_meses(hoy, Resolutor().general.meses_of_vigente)
+
+
+def linea_cuenta(cols, corte_of):
+    """Una linea de la consulta 5 cuenta como en camino salvo que sea una OF emitida antes del corte
+    (OF sin cerrar, SPEC-36). OC y facturas de reserva siempre cuentan."""
+    if len(cols) > 9 and cols[9] == 'OF':
+        emision = parse_date(cols[5])
+        return emision is None or emision >= corte_of
+    return True
+
+
+def ingest_datalake_ocs(file_path, corte_of=None):
     """
-    Ingesta Órdenes de Compra en Tránsito (OC).
-    Totaliza las unidades en camino a cada bodega.
+    Ingesta Órdenes de Compra en Tránsito (OC): OC, facturas de reserva (SPEC-35) y lo que producen las
+    OF vigentes (SPEC-36). Totaliza las unidades en camino a cada bodega.
     """
     print(f"\n[DATALAKE] 5/5 Instando Órdenes de Compra en Tránsito (OC): {file_path}", flush=True)
     if not os.path.exists(file_path):
@@ -482,6 +499,7 @@ def ingest_datalake_ocs(file_path):
 
     all_skus = set(ProductSKU.objects.values_list('code', flat=True))
     oc_transito_by_sku_wh = defaultdict(int)
+    corte_of = corte_of or corte_of_vigente()
 
     with open(file_path, 'r', encoding='utf-8', errors='replace') as fp:
         fp.readline()
@@ -500,7 +518,7 @@ def ingest_datalake_ocs(file_path):
             sku = cols[2]
             cant_transito = _clean_num(cols[8])
 
-            if sku in all_skus and cant_transito > 0:
+            if sku in all_skus and cant_transito > 0 and linea_cuenta(cols, corte_of):
                 oc_transito_by_sku_wh[(sku, wh_code)] += int(round(cant_transito))
 
     print(f"  [OK] OC en Tránsito mapeadas: {len(oc_transito_by_sku_wh)} combinaciones SKU-Bodega.", flush=True)

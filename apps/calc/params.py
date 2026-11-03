@@ -71,6 +71,9 @@ class Params:
     # ultimos N meses; los antiguos se informan aparte. La corrida calcula ambas bases.
     solo_compromisos_recientes: bool = False
     meses_compromisos_recientes: int = 3
+    # Fabricacion (SPEC-36): lo que produce una OF abierta cuenta como en camino solo si la OF se emitio
+    # en los ultimos N meses; una mas antigua es una OF sin cerrar (alerta OF_ANTIGUA)
+    meses_of_vigente: int = 6
 
     # Transito (SPEC-31 §2): Slim4 y Abastecimiento no cuentan las SC abiertas como transito
     sc_cuenta_en_transito: bool = False
@@ -135,6 +138,7 @@ CATALOGO = {
     'dias_reserva_traslado': ('Reserva de consumo propio antes de trasladar (dias)', (GENERAL,), 0, 180),
     'solo_compromisos_recientes': ('Calcular solo con compromisos recientes (PC/OF)', (GENERAL,), 0, 1),
     'meses_compromisos_recientes': ('Antiguedad maxima de un compromiso reciente (meses)', (GENERAL,), 1, 24),
+    'meses_of_vigente': ('Fabricacion: antiguedad maxima de una OF que cuenta como en camino (meses)', (GENERAL,), 1, 36),
     'alerta_bajo_ss_dias': ('Alerta bajo SS proyectado (dias)', (GENERAL,), 1, 90),
     'alerta_contrato_vence_dias': ('Alerta contrato por vencer (dias)', (GENERAL,), 1, 365),
     'alerta_sobrestock_meses': ('Sobrestock: meses sobre el maximo', (GENERAL,), 0, 24),

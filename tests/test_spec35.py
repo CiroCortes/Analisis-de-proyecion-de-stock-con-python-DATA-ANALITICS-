@@ -28,7 +28,7 @@ class ConsultasTest(SimpleTestCase):
         self.assertNotIn("'%PE'", sql)                   # PE = proveedor extranjero, no interno
         self.assertIn("fr.isins = 'Y'", sql)              # facturas de reserva de acreedores
         self.assertIn('gl.basetype = 18', sql)            # lo ya recibido desde la factura
-        self.assertEqual(len(re.findall(r'\bAS tipo_documento\b', sql)), 2)
+        self.assertEqual(len(re.findall(r'\bAS tipo_documento\b', sql)), 3)   # OC, FR y OF (SPEC-36)
 
     def test_consulta_9_mide_el_plazo_de_las_importaciones(self):
         sql = _consulta('Plazos de Entrega OC.txt')
