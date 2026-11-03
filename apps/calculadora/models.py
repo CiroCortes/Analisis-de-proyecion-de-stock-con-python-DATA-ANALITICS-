@@ -552,6 +552,7 @@ class Alerta(models.Model):
         ('COMPROMISO_ANTIGUO', 'PC/OF abierto antiguo'),
         ('PLAZO_ATIPICO', 'Plazo de OC atipico'),
         ('OF_ANTIGUA', 'OF abierta antigua (fabricacion)'),
+        ('FECHA_IRREAL', 'Fecha comprometida irreal'),
     ]
     tipo = models.CharField(max_length=20, choices=TIPOS, db_index=True)
     product = models.ForeignKey(ProductSKU, null=True, blank=True, on_delete=models.CASCADE, related_name='alertas')

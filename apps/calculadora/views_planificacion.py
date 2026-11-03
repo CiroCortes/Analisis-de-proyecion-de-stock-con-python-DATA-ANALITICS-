@@ -554,6 +554,21 @@ def _dias(n):
     return datetime.timedelta(days=int(n or 0))
 
 
+def _oc_con_fecha_estimada(producto, e):
+    """Lineas en camino del articulo con la fecha que usa el calculo: si la comprometida es imposible para
+    el plazo (heredada de la SC, pendiente #42) se muestra la estimada (OC + plazo de entrega)."""
+    from apps.calc.plazo import calcular_plazo
+    from apps.calc.proyeccion import fecha_llegada_oc
+    plazo = calcular_plazo(e.dias_oc, e.lead_time_maestro, e.params).dias_entrega_promedio
+    lineas = list(OCAbierta.objects.filter(product=producto).order_by('fecha_comprometida'))
+    for o in lineas:
+        o.fecha_estimada, o.fecha_irreal = o.fecha_comprometida, False
+        if o.tipo_documento != OCAbierta.OF:
+            o.fecha_estimada, o.fecha_irreal = fecha_llegada_oc(o.fecha_oc, o.fecha_comprometida, plazo,
+                                                                e.params.factor_fecha_irreal)
+    return lineas
+
+
 @login_required
 def articulo(request, code):
     producto = get_object_or_404(ProductSKU.objects.select_related('category'), code=code)
@@ -576,7 +591,7 @@ def articulo(request, code):
             for f in decision['filas']]}),
         'bodegas': guardado.bodegas.select_related('warehouse').order_by('warehouse__code') if guardado else [],
         'traslados': guardado.traslados.select_related('origen', 'destino') if guardado else [],
-        'oc_abiertas': OCAbierta.objects.filter(product=producto).order_by('fecha_comprometida'),
+        'oc_abiertas': _oc_con_fecha_estimada(producto, e),
         'compromisos': CompromisoAbierto.objects.filter(product=producto).order_by('fecha')[:100],
         'plazos': PlazoOC.objects.filter(product=producto).order_by('-fecha_entrada')[:30],
         'historial': HistorialMensual.objects.filter(product=producto).order_by('-mes')[:24],

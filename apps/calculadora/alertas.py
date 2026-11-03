@@ -17,6 +17,7 @@ from .models import (AcuerdoGlobal, OCAbierta, PlazoOC, Alerta, CompromisoDetall
                      ResultadoBodega)
 
 ALTA, MEDIA, BAJA = 'ALTA', 'MEDIA', 'BAJA'
+DIAS_MIN_FECHA_IRREAL = 15
 
 
 def _prom(v):
@@ -130,6 +131,11 @@ def generar(corrida, hoy):
     # sin terminar no es stock por llegar. El calculo no las cuenta; Produccion debe cerrarlas o anularlas
     for sku, sev, msg in ofs_antiguas(corrida, hoy, p):
         agregar(f'OF_ANTIGUA|{sku}', 'OF_ANTIGUA', sev, msg, sku)
+
+    # Fecha comprometida irreal (pendiente #42): la OC promete llegar mucho antes de lo que permite el plazo
+    # (la fecha viene de la SC). El calculo usa OC + plazo; se avisa a Compras para corregirla en SAP
+    for sku, sev, msg, prov in fechas_irreales(corrida, hoy, p):
+        agregar(f'FECHA_IRREAL|{sku}', 'FECHA_IRREAL', sev, msg, sku, prov)
 
     # Plazo de entrega atipico (SPEC-33): una OC muy sobre la mediana del articulo no es el plazo del
     # proveedor (OC que quedo abierta, recepcion tardia). Se recorta en el calculo y se avisa para que
@@ -269,6 +275,39 @@ def ofs_antiguas(corrida, hoy, p):
                  f'(la mas antigua OF {numero}, {meses} meses; USD {unidades * (r.costo_unitario or 0):,.0f}). '
                  'SAP las muestra por llegar; el calculo no las cuenta. Cerrar o anular con Produccion')
         out.append((sku, MEDIA if r.necesita_compra else BAJA, texto))
+    return out
+
+
+def fechas_irreales(corrida, hoy, p):
+    """[(sku, severidad, mensaje, proveedor)] de articulos con lineas de OC o FR cuya fecha comprometida es
+    menor que `factor_fecha_irreal` x el plazo de entrega del articulo (pendiente #42). MEDIA si el articulo
+    necesita compra, BAJA si no."""
+    from apps.calc.proyeccion import fecha_llegada_oc
+    if not p.factor_fecha_irreal:
+        return []
+    res = {r[0]: r[1:] for r in ResultadoArticulo.objects.filter(corrida=corrida).exclude(
+        marca=ResultadoArticulo.EXCLUIDO).values_list('product_id', 'dias_entrega_promedio', 'necesita_compra')}
+    lineas = defaultdict(list)
+    for o in OCAbierta.objects.filter(cuenta=True, tipo_documento__in=(OCAbierta.OC, OCAbierta.FR),
+                                      fecha_oc__isnull=False, fecha_comprometida__isnull=False):
+        r = res.get(o.product_id)
+        if r is None:
+            continue
+        estimada, irreal = fecha_llegada_oc(o.fecha_oc, o.fecha_comprometida, r[0], p.factor_fecha_irreal)
+        # Solo se avisa si la fecha se corre 15 dias o mas: en compras nacionales de pocos dias no aporta
+        if irreal and (estimada - o.fecha_comprometida).days >= DIAS_MIN_FECHA_IRREAL:
+            lineas[o.product_id].append((o, estimada))
+    out = []
+    for sku, lista in lineas.items():
+        o, estimada = lista[0]
+        doc = f'FR {o.nro_documento} (OC {o.nro_oc})' if o.tipo_documento == OCAbierta.FR else f'OC {o.nro_oc}'
+        texto = (f'{doc}: entrega comprometida {o.fecha_comprometida:%d-%m-%Y} '
+                 f'({(o.fecha_comprometida - o.fecha_oc).days} dias desde la OC) para un plazo de '
+                 f'{res[sku][0]:.0f} dias; el calculo estima {estimada:%d-%m-%Y}')
+        if len(lista) > 1:
+            texto += f' (y {len(lista) - 1} linea(s) mas)'
+        out.append((sku, MEDIA if res[sku][1] else BAJA,
+                    texto + '. Corregir la fecha en SAP: suele venir de la SC', o.proveedor_codigo))
     return out
 
 

@@ -2,6 +2,7 @@
 
 Los dias se cuentan desde hoy: dia 1 = manana. La capa Django convierte fechas en dias.
 """
+import datetime
 import math
 from dataclasses import dataclass
 
@@ -13,6 +14,18 @@ class Excepcion:
     dia_llegada_posible: int         # proxima compra normal + entrega + recepcion
     excepcion: bool                  # quiebre antes de que pueda llegar la compra normal
     dias_quiebre_inevitable: int     # dias de quiebre aunque se compre hoy
+
+
+def fecha_llegada_oc(fecha_oc, fecha_comprometida, plazo_entrega_dias, factor_irreal):
+    """(fecha estimada de llegada, es_irreal) de una linea de OC o FR (pendiente #42).
+    La fecha comprometida se hereda de la SC y a veces es imposible (35471214: 2 dias para una
+    importacion de 70). Si promete llegar en menos de factor_irreal x el plazo de entrega del articulo,
+    se estima fecha de la OC + plazo de entrega. factor_irreal = 0 desactiva la regla."""
+    if fecha_comprometida is None:
+        return None, False
+    if factor_irreal > 0 and fecha_oc and plazo_entrega_dias > 0 and             (fecha_comprometida - fecha_oc).days < factor_irreal * plazo_entrega_dias:
+        return fecha_oc + datetime.timedelta(days=int(math.ceil(plazo_entrega_dias))), True
+    return fecha_comprometida, False
 
 
 def dia_llegada_oc(dias_hasta_fecha_comprometida, dias_recepcion):

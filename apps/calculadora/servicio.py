@@ -19,7 +19,7 @@ from apps.calc import calendario
 from apps.calc.clasificacion import PANOL, REPUESTOS, clases_abc
 from apps.calc.motor import EntradaArticulo, calcular_articulo
 from apps.calc.plazo import calcular_plazo
-from apps.calc.proyeccion import dia_llegada_oc
+from apps.calc.proyeccion import dia_llegada_oc, fecha_llegada_oc
 from apps.calc.red import NODO_SANTIAGO, Bodega
 from apps.calc.simulacion import Escenario, simular
 from apps.data_ingestion.datalake_ingest import find_data_file
@@ -350,17 +350,21 @@ def _entrada(datos, p, abc, solo_recientes=None):
                               en_transito=solicitado + transito_013, consumo_diario=consumo_stgo))
 
     lead_maestro = pc.lead_time_maestro if pc and pc.lead_time_maestro else p.lead_time_days
+    plazo = calcular_plazo(datos.plazos.get(p.code), lead_maestro, params)
     llegadas, atrasada = [], False
     for o in datos.oc.get(p.code, []):
-        dias = (o.fecha_comprometida - hoy).days if o.fecha_comprometida else 0
-        atrasada = atrasada or (o.tipo_documento != OCAbierta.OF and o.fecha_comprometida is not None
-                                and o.fecha_comprometida < hoy)
+        # Fecha comprometida imposible para el plazo (heredada de la SC): se estima OC + plazo (pend. #42)
+        fecha = o.fecha_comprometida
+        if o.tipo_documento != OCAbierta.OF:
+            fecha, _ = fecha_llegada_oc(o.fecha_oc, o.fecha_comprometida, plazo.dias_entrega_promedio,
+                                        params.factor_fecha_irreal)
+        dias = (fecha - hoy).days if fecha else 0
+        atrasada = atrasada or (o.tipo_documento != OCAbierta.OF and fecha is not None and fecha < hoy)
         llegadas.append((dia_llegada_oc(dias, params.dias_recepcion), o.cantidad_pendiente))
     transito_inter = max(0.0, sum(m.stock_transito_inter for m in datos.metricas.get(p.code, [])) + transito_ajuste)
     if transito_inter:
         llegadas.append((int(math.ceil(params.dias_recepcion)), transito_inter))
     if solicitado:
-        plazo = calcular_plazo(datos.plazos.get(p.code), lead_maestro, params)
         llegadas.append((int(math.ceil(plazo.plazo_total_dias)), solicitado))
 
     consumo_meses = datos.consumo.get(p.code) or [0.0] * len(datos.meses)

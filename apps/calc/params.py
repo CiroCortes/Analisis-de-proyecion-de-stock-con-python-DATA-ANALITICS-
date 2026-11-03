@@ -74,6 +74,9 @@ class Params:
     # Fabricacion (SPEC-36): lo que produce una OF abierta cuenta como en camino solo si la OF se emitio
     # en los ultimos N meses; una mas antigua es una OF sin cerrar (alerta OF_ANTIGUA)
     meses_of_vigente: int = 6
+    # Fecha comprometida irreal (pendiente #42): si una OC/FR promete llegar en menos de esta fraccion del
+    # plazo de entrega del articulo, se estima fecha OC + plazo y no se marca atrasada (0 = desactivado)
+    factor_fecha_irreal: float = 0.5
 
     # Transito (SPEC-31 §2): Slim4 y Abastecimiento no cuentan las SC abiertas como transito
     sc_cuenta_en_transito: bool = False
@@ -139,6 +142,7 @@ CATALOGO = {
     'solo_compromisos_recientes': ('Calcular solo con compromisos recientes (PC/OF)', (GENERAL,), 0, 1),
     'meses_compromisos_recientes': ('Antiguedad maxima de un compromiso reciente (meses)', (GENERAL,), 1, 24),
     'meses_of_vigente': ('Fabricacion: antiguedad maxima de una OF que cuenta como en camino (meses)', (GENERAL,), 1, 36),
+    'factor_fecha_irreal': ('Fecha comprometida irreal: fraccion minima del plazo de entrega (0 = desactivado)', (GENERAL,), 0, 1),
     'alerta_bajo_ss_dias': ('Alerta bajo SS proyectado (dias)', (GENERAL,), 1, 90),
     'alerta_contrato_vence_dias': ('Alerta contrato por vencer (dias)', (GENERAL,), 1, 365),
     'alerta_sobrestock_meses': ('Sobrestock: meses sobre el maximo', (GENERAL,), 0, 24),
