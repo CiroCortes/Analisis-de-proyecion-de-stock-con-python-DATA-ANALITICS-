@@ -4,11 +4,14 @@ from pathlib import Path
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-SECRET_KEY = 'django-insecure-pesco-sop-proyectado-stock-key-prod-dev'
+# Produccion (ver README, "Frontend y produccion"): fijar DJANGO_SECRET_KEY, DJANGO_DEBUG=0 y
+# DJANGO_ALLOWED_HOSTS. Sin variables queda como en desarrollo.
+SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'django-insecure-pesco-sop-proyectado-stock-key-prod-dev')
 
-DEBUG = True
+DEBUG = os.environ.get('DJANGO_DEBUG', '1').strip().lower() not in ('0', 'false', 'no')
 
-ALLOWED_HOSTS = ['*']
+ALLOWED_HOSTS = [h.strip() for h in os.environ.get('DJANGO_ALLOWED_HOSTS', '*').split(',') if h.strip()]
+CSRF_TRUSTED_ORIGINS = [o.strip() for o in os.environ.get('DJANGO_CSRF_TRUSTED_ORIGINS', '').split(',') if o.strip()]
 
 # Application definition
 INSTALLED_APPS = [

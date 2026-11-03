@@ -25,8 +25,10 @@ stock_proyectado_pesco/
 │   │   ├── top_quiebres_categoria.png
 │   │   └── matriz_riesgo_stock.png
 │   └── Reporte_Ejecutivo_Inventario_Pesco.pdf  # Informe PDF generado
-├── powerbi/
-│   └── GUIA_POWER_BI_MEDIDAS_DAX.md# Guía de conexión y catálogo de medidas DAX
+├── static/
+│   ├── css/tailwind.css            # Tailwind compilado (se versiona)
+│   └── vendor/                     # FontAwesome y Chart.js locales (se versionan)
+├── tailwind/                       # Fuente de Tailwind y script de librerías (ver "Frontend y producción")
 ├── requirements.txt                # Dependencias de Python necesarias
 ├── MANUAL_TUTORIAL_DATA_SCIENCE.md # Manual técnico y ayuda memoria
 └── README.md                       # Este archivo
@@ -78,7 +80,68 @@ python src/generate_pdf.py
 2. Haz clic en **Obtener Datos** $\rightarrow$ **Texto/CSV**.
 3. Selecciona el archivo enriquecido: `data/processed/stock_proyectado.csv`.
 4. Asegura la codificación `65001: Unicode (UTF-8)`.
-5. Revisa la guía de medidas DAX en [powerbi/GUIA_POWER_BI_MEDIDAS_DAX.md](powerbi/GUIA_POWER_BI_MEDIDAS_DAX.md) para construir tus tarjetas y tableros.
+
+---
+
+## 🖥️ Frontend y producción (para quien despliega)
+
+La red de Pesco bloquea o no resuelve CDN externos (`cdn.tailwindcss.com` dejó de responder el 28-oct-2026).
+Por eso **el sitio no carga nada desde internet**: todo el CSS, los íconos y los gráficos se sirven desde
+`static/`, con versiones fijas. No hace falta Node ni acceso a internet para correr el sistema.
+
+| Recurso | Archivo servido | Cómo se genera |
+|---|---|---|
+| Tailwind CSS 3.4.17 (colores Pesco) | `static/css/tailwind.css` | Compilado desde `tailwind/input.css` y `tailwind/tailwind.config.js` |
+| FontAwesome 6.5.1 (CSS y fuentes) | `static/vendor/fontawesome/` | `tailwind/download_vendor.ps1` |
+| Chart.js 4.4.0 | `static/vendor/chartjs/chart.umd.min.js` | `tailwind/download_vendor.ps1` |
+| Estilos propios | `static/css/custom.css` | A mano |
+
+Todos estos archivos **se versionan en git**: el despliegue usa lo que está en el repositorio.
+
+### Regla para desarrolladores: recompilar Tailwind
+
+Tailwind solo incluye en `tailwind.css` las clases que encuentra en las plantillas (`templates/**/*.html`)
+y en el código Python. **Si se usa una clase nueva y no se recompila, la clase no existe y no hay ningún
+error: simplemente no se aplica.** Después de tocar estilos, desde la raíz del proyecto (requiere Node e
+internet, solo en el equipo de desarrollo):
+
+    npx -y tailwindcss@3.4.17 -c tailwind/tailwind.config.js -i tailwind/input.css -o static/css/tailwind.css --minify
+
+y subir el `tailwind.css` resultante junto con el cambio. Para actualizar FontAwesome o Chart.js, cambiar la
+versión en `tailwind/download_vendor.ps1`, correrlo y subir `static/vendor/`. Nunca volver a enlazar un CDN.
+
+No usar el formateo automático de HTML del editor en las plantillas: no entiende la sintaxis de Django,
+parte las etiquetas `{{ ... }}` en varias líneas y quita espacios en `{% if a == b %}`, y la página se rompe.
+
+### Despliegue en producción (AWS)
+
+1. **Variables de entorno** (leídas en `core/settings.py`; sin ellas el sistema queda en modo desarrollo):
+
+   | Variable | Producción | Por defecto |
+   |---|---|---|
+   | `DJANGO_DEBUG` | `0` | `1` |
+   | `DJANGO_SECRET_KEY` | clave larga y aleatoria, fuera del repositorio | clave de desarrollo |
+   | `DJANGO_ALLOWED_HOSTS` | dominio(s) del servidor, separados por coma | `*` |
+   | `DJANGO_CSRF_TRUSTED_ORIGINS` | `https://<dominio>` si hay HTTPS o un balanceador delante | vacío |
+
+2. **Archivos estáticos.** Con `DJANGO_DEBUG=0`, Django **deja de servir** `/static/`; si nadie lo sirve, el
+   sitio queda sin estilos, sin íconos y sin gráficos. En cada despliegue:
+
+       python manage.py collectstatic --noinput
+
+   Eso copia todo a `staticfiles/` (`STATIC_ROOT`). Luego, una de dos:
+   - el servidor web (nginx, IIS o Apache) publica `staticfiles/` en la URL `/static/`; o
+   - se agrega [WhiteNoise](https://whitenoise.readthedocs.io/) (`pip install whitenoise` y
+     `whitenoise.middleware.WhiteNoiseMiddleware` después de `SecurityMiddleware`), y Django sirve los
+     estáticos sin configurar el servidor web.
+
+3. **Base de datos y migraciones:** `python manage.py migrate` en cada despliegue. Hoy la base es
+   **SQLite** (`db.sqlite3`, ~180 MB): en el servidor debe estar en un disco persistente (no en el
+   contenedor ni en una instancia efímera), con respaldo, y con un solo proceso escribiendo a la vez. Si se
+   necesitan varios procesos o instancias, pasar a PostgreSQL (RDS) cambiando `DATABASES` en `core/settings.py`.
+
+4. **Comprobación rápida:** con `DJANGO_DEBUG=0`, abrir el sitio con las herramientas del navegador
+   (pestaña Red): ninguna petición debe ir a un dominio externo y ningún archivo de `/static/` debe dar 404.
 
 ---
 
