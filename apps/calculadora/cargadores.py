@@ -11,7 +11,7 @@ from collections import defaultdict
 from django.db import transaction
 
 from apps.data_ingestion.datalake_ingest import _clean_num, find_data_file, iter_txt_rows, parse_date
-from apps.data_ingestion.warehouses import commitment_bodega, es_nc_comercial, nodo_red, purchase_bodega
+from apps.data_ingestion.warehouses import commitment_bodega, es_nc_comercial, nodo_red, prebodega_destino, purchase_bodega
 from apps.inventory.models import ProductionOrderMovement, ProductSKU, SalesOrderMovement, Warehouse
 from apps.inventory.stock_actual_models import StockActual
 
@@ -196,10 +196,17 @@ def cargar_plazos_oc(data_dir=None):
         return 0
     skus = _skus()
     primera = {}
+    en_pre_bodega = 0
     for cols in iter_txt_rows(ruta, 9):
         nro_oc, sku, prov = cols[0].replace(',', ''), cols[1], cols[2]
         f_oc, f_in = parse_date(cols[4]), parse_date(cols[7])
         if sku not in skus or not f_oc or not f_in:
+            continue
+        # SPEC-35 §3: la entrada a una pre-bodega (000-xxx) marca el embarque, no la llegada. Medir ahi
+        # acorta el plazo de las importaciones (HIAB: 16 dias desde Finlandia); sin la llegada a destino,
+        # rige el lead time del maestro
+        if prebodega_destino(cols[3]):
+            en_pre_bodega += 1
             continue
         clave = (nro_oc, sku)
         if clave not in primera or f_in < primera[clave][2]:
@@ -210,13 +217,14 @@ def cargar_plazos_oc(data_dir=None):
     with transaction.atomic():
         PlazoOC.objects.all().delete()
         PlazoOC.objects.bulk_create(filas, batch_size=5000)
-    _registrar('plazos_oc', ruta, len(filas))
+    _registrar('plazos_oc', ruta, len(filas), nota=(f'{en_pre_bodega} entradas a pre-bodega (embarque) sin usar' if en_pre_bodega else ''))
     return len(filas)
 
 
 def cargar_oc_abiertas(data_dir=None):
     """Lineas de OC con pendiente (consulta 5 actual), con fecha para la proyeccion.
-    Tambien registra los proveedores que aparecen."""
+    Tambien registra los proveedores que aparecen. Columnas 10 y 11 (SPEC-35, opcionales):
+    tipo de documento (OC o FR, factura de reserva de una importacion) y su numero."""
     ruta = archivo('oc_abiertas', data_dir)
     if not os.path.exists(ruta):
         _registrar('oc_abiertas', '', 0, fuente='SIN_ARCHIVO')
@@ -230,8 +238,12 @@ def cargar_oc_abiertas(data_dir=None):
             proveedores[cols[3]] = cols[4][:200]
         if sku not in skus or pendiente <= 0:
             continue
+        tipo = cols[9] if len(cols) > 9 and cols[9] in (OCAbierta.OC, OCAbierta.FR) else OCAbierta.OC
+        nro_oc = cols[0].replace(',', '')
         filas.append(OCAbierta(
-            nro_oc=cols[0].replace(',', ''), product_id=sku, bodega=purchase_bodega(cols[1]), bodega_sap=cols[1][:20],
+            nro_oc=nro_oc, tipo_documento=tipo,
+            nro_documento=(cols[10].replace(',', '') if len(cols) > 10 else '') or nro_oc,
+            product_id=sku, bodega=purchase_bodega(cols[1]), bodega_sap=cols[1][:20],
             proveedor_codigo=cols[3], fecha_oc=parse_date(cols[5]), fecha_comprometida=parse_date(cols[6]),
             cantidad_pendiente=pendiente,
         ))

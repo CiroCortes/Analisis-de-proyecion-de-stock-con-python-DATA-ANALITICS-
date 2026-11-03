@@ -76,8 +76,14 @@ class PlazoOC(models.Model):
 
 
 class OCAbierta(models.Model):
-    """Linea de OC con cantidad pendiente: transito con fecha para la proyeccion diaria."""
+    """Linea de OC con cantidad pendiente: transito con fecha para la proyeccion diaria.
+    Las importaciones llegan como factura de reserva (FR) de la OC: nro_oc es la OC de origen y
+    nro_documento la factura (SPEC-35)."""
+    OC, FR = 'OC', 'FR'
     nro_oc = models.CharField(max_length=30)
+    tipo_documento = models.CharField(max_length=2, default=OC, choices=[(OC, 'Orden de compra'),
+                                                                         (FR, 'Factura de reserva (importación)')])
+    nro_documento = models.CharField(max_length=30, blank=True, default='')
     product = models.ForeignKey(ProductSKU, on_delete=models.CASCADE, related_name='oc_abiertas')
     bodega = models.CharField(max_length=20)            # bodega que recibe en el calculo (purchase_bodega)
     bodega_sap = models.CharField(max_length=20, blank=True, default='')   # la de la OC en SAP (SPEC-29)

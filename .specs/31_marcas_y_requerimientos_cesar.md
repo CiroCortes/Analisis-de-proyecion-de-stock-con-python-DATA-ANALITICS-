@@ -79,7 +79,7 @@ El cálculo sigue usando el total (acuerdo del 2-nov), y el desglose suma exacta
 | Importación | OC posteada en una pre-bodega (000-xxx) o a un proveedor extranjero (país ≠ CL), y stock ya embarcado en una pre-bodega |
 | Compra nacional | OC a proveedor chileno en una bodega de la red |
 | Traslado | Transferencia de stock en camino (bodegas T…). Las ST nunca cuentan |
-| Pedido SAP sin OC | `OnOrder` de SAP sin línea de OC cargada: OC a proveedores internos (excluidos de la consulta 5) o fabricación |
+| Pedido SAP sin OC | `OnOrder` de SAP sin línea de OC cargada: fabricación o desfase entre exportaciones. ~~OC a proveedores internos~~: corregido en SPEC-35, eran importaciones (sufijo `PE` = proveedor extranjero) y facturas de reserva |
 | Solicitud aprobada | Solicitudes de la plataforma que SAP aún no refleja |
 | SC | Solo si `sc_cuenta_en_transito` |
 | Ajuste de bodega | Tratamiento manual de una bodega (SPEC-27) |

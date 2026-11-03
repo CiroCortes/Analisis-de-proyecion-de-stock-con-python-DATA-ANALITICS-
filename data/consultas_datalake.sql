@@ -144,27 +144,72 @@ AND t1.itemcode IS NOT NULL;
 -- ============================================================================
 -- 5. ORDENES DE COMPRA (OC) EN TRANSITO                             [IMPRESCINDIBLE]
 -- ARCHIVO: Órdenes de Compra en Tránsito (OC).txt
--- Todas las lineas de OC abiertas (lo que viene en camino). Reunion 28-oct: se quito el corte de
+-- Todo lo comprado que aun no entra (lo que viene en camino). Reunion 28-oct: se quito el corte de
 -- 180 dias; las OC antiguas a pre-bodegas (000-xxx) quedaban fuera. La antiguedad la informa la plataforma.
--- Se excluyen proveedores internos terminados en PE.
+-- SPEC-35 (3-nov): el sufijo PE del proveedor es "proveedor extranjero", no interno. Se quito el filtro
+-- que dejaba fuera todas las importaciones. Dos partes:
+--   a) Lineas de OC (pedido de compra) abiertas.
+--   b) Importaciones: la OC se copia a una factura de reserva de acreedores (opch.isins = 'Y'), lo
+--      que cierra su linea, y la entrada de mercancias se hace desde la factura. Lo pendiente es lo
+--      facturado menos lo ya recibido. nro_oc_sap es la OC (PO) de origen; nro_documento, la factura.
+-- Las columnas 10 y 11 son nuevas; los cargadores leen las 9 primeras por posicion.
 -- ============================================================================
 SELECT
     oc.docnum                                            AS nro_oc_sap,
-    COALESCE(oc_l.whscode, '013-PP')                     AS bodega_destino,
+    COALESCE(NULLIF(oc_l.whscode, ''), '013-PP')         AS bodega_destino,
     oc_l.itemcode                                        AS codigo_sku,
     oc.cardcode                                          AS codigo_proveedor,
     oc.cardname                                          AS nombre_proveedor,
     SUBSTR(CAST(oc.docdate AS VARCHAR), 1, 10)           AS fecha_emision_oc,
     SUBSTR(CAST(COALESCE(oc_l.shipdate, oc.docduedate) AS VARCHAR), 1, 10) AS fecha_llegada_estimada,
     CAST(oc_l.quantity AS DECIMAL(18, 2))                AS cantidad_comprada,
-    CAST(oc_l.openqty AS DECIMAL(18, 2))                 AS cantidad_en_transito_pendiente
+    CAST(oc_l.openqty AS DECIMAL(18, 2))                 AS cantidad_en_transito_pendiente,
+    'OC'                                                 AS tipo_documento,
+    oc.docnum                                            AS nro_documento
 FROM pesco_sbo_pescousd.opor oc
 INNER JOIN pesco_sbo_pescousd.por1 oc_l
     ON oc.docentry = oc_l.docentry
 WHERE oc.docstatus = 'O'
+  AND oc.canceled = 'N'
   AND oc_l.linestatus = 'O'
   AND oc_l.openqty > 0
-  AND (oc.cardcode IS NULL OR oc.cardcode NOT LIKE '%PE');
+UNION ALL
+SELECT
+    COALESCE(po.docnum, fr.docnum)                       AS nro_oc_sap,
+    COALESCE(NULLIF(fl.whscode, ''), '013-PP')           AS bodega_destino,
+    fl.itemcode                                          AS codigo_sku,
+    fr.cardcode                                          AS codigo_proveedor,
+    fr.cardname                                          AS nombre_proveedor,
+    SUBSTR(CAST(COALESCE(po.docdate, fr.docdate) AS VARCHAR), 1, 10) AS fecha_emision_oc,
+    SUBSTR(CAST(COALESCE(fl.shipdate, pl.shipdate, po.docduedate, fr.docdate) AS VARCHAR), 1, 10) AS fecha_llegada_estimada,
+    CAST(fl.quantity AS DECIMAL(18, 2))                  AS cantidad_comprada,
+    CAST(fl.quantity - COALESCE(rec.recibido, 0) AS DECIMAL(18, 2)) AS cantidad_en_transito_pendiente,
+    'FR'                                                 AS tipo_documento,
+    fr.docnum                                            AS nro_documento
+FROM pesco_sbo_pescousd.opch fr
+INNER JOIN pesco_sbo_pescousd.pch1 fl
+    ON fl.docentry = fr.docentry
+LEFT JOIN pesco_sbo_pescousd.por1 pl
+    ON fl.basetype = 22
+   AND pl.docentry = fl.baseentry
+   AND pl.linenum  = fl.baseline
+LEFT JOIN pesco_sbo_pescousd.opor po
+    ON po.docentry = pl.docentry
+LEFT JOIN (
+    SELECT gl.baseentry, gl.baseline, SUM(gl.quantity) AS recibido
+    FROM pesco_sbo_pescousd.pdn1 gl
+    INNER JOIN pesco_sbo_pescousd.opdn gr
+        ON gr.docentry = gl.docentry
+    WHERE gl.basetype = 18
+      AND gr.canceled = 'N'
+    GROUP BY gl.baseentry, gl.baseline
+) rec
+    ON rec.baseentry = fl.docentry
+   AND rec.baseline  = fl.linenum
+WHERE fr.isins = 'Y'
+  AND fr.canceled = 'N'
+  AND fl.linestatus = 'O'
+  AND fl.quantity - COALESCE(rec.recibido, 0) > 0;
 
 
 -- ============================================================================
@@ -268,9 +313,13 @@ HAVING SUM(COALESCE(m.outqty, 0) - COALESCE(m.inqty, 0)) <> 0;
 -- ============================================================================
 -- 9. PLAZOS REALES DE ENTREGA POR OC RECIBIDA (24 meses)            [IMPRESCINDIBLE]
 -- ARCHIVO: Plazos de Entrega OC.txt
--- Una fila por recepcion ligada a su OC (pdn1.basetype = 22). La plataforma calcula el plazo
+-- Una fila por recepcion ligada a su OC. La plataforma calcula el plazo
 -- promedio y su variacion por articulo; con menos de 3 OC usa el lead time del maestro.
 -- Recepciones parciales: la plataforma usa la PRIMERA entrada de cada linea de OC.
+-- SPEC-35: dos caminos. a) Entrada desde la OC (pdn1.basetype = 22, compra nacional).
+-- b) Importacion: entrada desde la factura de reserva (basetype = 18), que viene de la OC; el plazo
+--    se mide desde la fecha de la OC. Antes solo existia a): de 6.653 entradas de importacion
+--    llegaban 52 al calculo y el resto usaba el lead time del maestro.
 -- ============================================================================
 SELECT
     o.docnum                                             AS nro_oc,
@@ -291,6 +340,36 @@ INNER JOIN pesco_sbo_pescousd.pdn1 gl
 INNER JOIN pesco_sbo_pescousd.por1 l
     ON l.docentry = gl.baseentry
    AND l.linenum  = gl.baseline
+INNER JOIN pesco_sbo_pescousd.opor o
+    ON o.docentry = l.docentry
+WHERE gr.canceled = 'N'
+  AND o.canceled  = 'N'
+  AND l.quantity > 0
+  AND SUBSTR(CAST(gr.docdate AS VARCHAR), 1, 10) >= CAST(DATE_ADD('month', -24, CURRENT_DATE) AS VARCHAR)
+UNION ALL
+SELECT
+    o.docnum                                             AS nro_oc,
+    l.itemcode                                           AS codigo_sku,
+    o.cardcode                                           AS codigo_proveedor,
+    COALESCE(NULLIF(l.whscode, ''), '013-PP')            AS bodega_oc,
+    SUBSTR(CAST(o.docdate AS VARCHAR), 1, 10)            AS fecha_oc,
+    SUBSTR(CAST(COALESCE(l.shipdate, o.docduedate) AS VARCHAR), 1, 10) AS fecha_comprometida,
+    gr.docnum                                            AS nro_entrada,
+    SUBSTR(CAST(gr.docdate AS VARCHAR), 1, 10)           AS fecha_entrada,
+    DATE_DIFF('day', CAST(o.docdate AS DATE), CAST(gr.docdate AS DATE)) AS dias_entrega,
+    CAST(l.quantity AS DECIMAL(18, 2))                   AS cantidad_oc,
+    CAST(gl.quantity AS DECIMAL(18, 2))                  AS cantidad_recibida
+FROM pesco_sbo_pescousd.opdn gr
+INNER JOIN pesco_sbo_pescousd.pdn1 gl
+    ON gl.docentry = gr.docentry
+   AND gl.basetype = 18
+INNER JOIN pesco_sbo_pescousd.pch1 fl
+    ON fl.docentry = gl.baseentry
+   AND fl.linenum  = gl.baseline
+   AND fl.basetype = 22
+INNER JOIN pesco_sbo_pescousd.por1 l
+    ON l.docentry = fl.baseentry
+   AND l.linenum  = fl.baseline
 INNER JOIN pesco_sbo_pescousd.opor o
     ON o.docentry = l.docentry
 WHERE gr.canceled = 'N'
