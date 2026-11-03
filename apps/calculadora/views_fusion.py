@@ -130,22 +130,52 @@ def _tarjetas(f):
     return tarjetas, conteo, totales
 
 
+def _filas_013(f):
+    """Filas de una bodega 013-xx (SPEC-34): posicion propia, con la accion del nodo Santiago."""
+    lista = analisis.santiago_por_bodega(f['bodega'], f['search']).get(f['bodega'], [])
+    if f['accion']:
+        lista = [x for x in lista if x['accion_nodo'] == f['accion']]
+    if f['urgencia']:
+        lista = [x for x in lista if x['urgencia_nodo'] == f['urgencia']]
+    if not f['todo'] and not f['accion']:
+        lista = [x for x in lista if x['faltante'] > 0 or x['cobertura_corta'] or x['accion_nodo'] != 'NINGUNA']
+    lista.sort(key=lambda x: (-x['faltante_usd'], -x['faltante'],
+                              x['cobertura'] if x['cobertura'] is not None else float('inf'), x['codigo']))
+    for x in lista:
+        x['accion_txt'] = ACCION_TXT.get(x['accion_nodo'], x['accion_nodo'])
+    return lista
+
+
 @login_required
 def bodegas(request):
     f = _filtros_bodegas(request)
-    qs = _ordenar(_base_bodegas(f).select_related('resultado', 'resultado__product', 'warehouse'))
-    page_obj = Paginator(qs, 50).get_page(request.GET.get('page'))
-    filas = list(page_obj.object_list)
-    for b in filas:
-        b.origenes_txt = _origenes_txt(b.origenes)
-        b.cobertura_corta = b.cobertura_dias is not None and b.cobertura_dias < (b.resultado.plazo_total_dias or 0)
-        b.accion_txt = ACCION_TXT.get(b.accion, b.accion)
+    bodegas_013 = analisis.bodegas_santiago()
+    es_013 = f['bodega'] in bodegas_013
+    if es_013:
+        page_obj = Paginator(_filas_013(f), 50).get_page(request.GET.get('page'))
+        filas = list(page_obj.object_list)
+    else:
+        qs = _ordenar(_base_bodegas(f).select_related('resultado', 'resultado__product', 'warehouse'))
+        page_obj = Paginator(qs, 50).get_page(request.GET.get('page'))
+        filas = list(page_obj.object_list)
+        for b in filas:
+            b.origenes_txt = _origenes_txt(b.origenes)
+            b.cobertura_corta = b.cobertura_dias is not None and b.cobertura_dias < (b.resultado.plazo_total_dias or 0)
+            b.accion_txt = ACCION_TXT.get(b.accion, b.accion)
+            b.componentes_txt = (' · '.join(f'{c} {_num(q)}' for c, q in b.componentes)
+                                 if b.warehouse.code == NODO_SANTIAGO and len(b.componentes or []) > 1 else '')
 
-    tarjetas, conteo, totales = _tarjetas(f)
+    # El resumen de una 013-xx es el de Santiago, con sus bodegas abiertas debajo
+    f_resumen = dict(f, bodega=NODO_SANTIAGO) if es_013 else f
+    tarjetas, conteo, totales = _tarjetas(f_resumen)
+    sub_santiago = []
+    if f['zona'] in ('', SANTIAGO) and (not f['bodega'] or f['bodega'] == NODO_SANTIAGO or es_013):
+        sub_santiago = analisis.resumen_santiago_por_bodega(analisis.santiago_por_bodega(buscar=f['search']))
     pills = [(a, nombre, conteo.get(a, 0)) for a, nombre in ACCIONES if a != 'NINGUNA']
-    codigos = sorted({t['code'] for t in tarjetas} | set(
+    nodos = sorted({t['code'] for t in tarjetas} | set(
         ResultadoBodega.objects.values_list('warehouse__code', flat=True).distinct()),
         key=lambda c: (0 if zona_red(c) == SANTIAGO else 1, c))
+    codigos = [c for n in nodos for c in ([n] + bodegas_013 if n == NODO_SANTIAGO else [n])]
     sin_pagina = request.GET.copy()
     sin_pagina.pop('page', None)
     sin_accion = request.GET.copy()
@@ -153,7 +183,8 @@ def bodegas(request):
         sin_accion.pop(k, None)
     return render(request, 'calculadora/bodegas.html', {
         'f': f, 'page_obj': page_obj, 'filas': filas, 'tarjetas': tarjetas, 'totales': totales, 'pills': pills,
-        'acciones': ACCIONES, 'urgencias': URGENCIAS, 'bodegas_lista': codigos,
+        'acciones': ACCIONES, 'urgencias': URGENCIAS, 'bodegas_lista': codigos, 'es_013': es_013,
+        'sub_santiago': sub_santiago,
         'total': page_obj.paginator.count, 'qs_sin_pagina': sin_pagina.urlencode(),
         'qs_sin_accion': sin_accion.urlencode(),
     })
@@ -162,6 +193,17 @@ def bodegas(request):
 @login_required
 def bodegas_excel(request):
     f = _filtros_bodegas(request)
+    if f['bodega'] in analisis.bodegas_santiago():
+        filas = [{
+            'Bodega': x['bodega'], 'Zona': 'Santiago (bodega)', 'Artículo': x['codigo'], 'Descripción': x['descripcion'],
+            'Letra': x['letra'], 'Stock físico': x['stock'], 'Por llegar': x['recibir'], 'Comprometido': x['entregar'],
+            'Disponible a futuro': x['disponible'], 'Faltante local': x['faltante'],
+            'Consumo 12 meses': round(x['consumo12'], 2), 'Consumo diario': round(x['consumo_diario'], 3),
+            'Cobertura (días)': round(x['cobertura'], 1) if x['cobertura'] is not None else '',
+            'Acción del nodo Santiago': x['accion_txt'], 'Urgencia del nodo': x['urgencia_nodo'],
+            'Faltante local USD': round(x['faltante_usd'], 2), 'Stock valorizado USD': round(x['valor_stock'], 2),
+        } for x in _filas_013(f)]
+        return respuesta_excel(f'bodega_{f["bodega"]}.xlsx', filas, f['bodega'])
     qs = _ordenar(_base_bodegas(f).select_related('resultado', 'resultado__product', 'warehouse'))
     filas = [{
         'Bodega': b.warehouse.code, 'Zona': {SANTIAGO: 'Santiago', SUCURSAL: 'Sucursal'}.get(zona_red(b.warehouse.code), ''),
@@ -173,6 +215,8 @@ def bodegas_excel(request):
         'Acción': ACCION_TXT.get(b.accion, b.accion), 'A trasladar': b.cantidad_trasladar,
         'Espera compra': b.espera_compra, 'Origen': _origenes_txt(b.origenes), 'Urgencia': b.urgencia,
         'Quiebre real USD': round(max(0.0, -b.disponible_futuro) * (b.resultado.costo_unitario or 0), 2),
+        'Stock por bodega (Santiago)': ', '.join(f'{c} {_num(q)}' for c, q in (b.componentes or []))
+        if b.warehouse.code == NODO_SANTIAGO else '',
     } for b in qs]
     return respuesta_excel('bodegas_calculadora.xlsx', filas, 'Bodegas')
 

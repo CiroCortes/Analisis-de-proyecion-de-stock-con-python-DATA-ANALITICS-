@@ -329,3 +329,80 @@ def bodegas_sap(sku):
     fechas, desfase = fechas_datos()
     return {'bodegas_sap': filas, 'totales_sap': totales, 'fechas_datos': fechas, 'desfase_horas': desfase,
             'desfase_aviso': desfase > DESFASE_AVISO_HORAS}
+
+
+# ── Santiago por bodega en el menu Bodegas (SPEC-34) ─────────────────────────
+
+def bodegas_santiago():
+    """Codigos 013-xx activos de la red, ordenados."""
+    return [c for c, _, tipo in ubicaciones() if tipo == BODEGA]
+
+
+def santiago_por_bodega(bodega=None, buscar='', hoy=None):
+    """{bodega 013-xx: [fila]} con la posicion propia de cada bodega de Santiago para los articulos de la
+    ultima corrida: stock, por llegar, comprometido (PC y OF de la bodega), disponible, consumo diario de
+    la bodega (12 meses cerrados / 365) y cobertura. El calculo sigue con Santiago como un nodo (SPEC-21):
+    la accion de la fila es la del nodo y el faltante local se cubre con stock de otra 013 o con la compra."""
+    hoy = hoy or timezone.localdate()
+    sc_cuenta = Resolutor().general.sc_cuenta_en_transito
+    res = ResultadoArticulo.objects.filter(product__category__is_active=True)
+    if buscar:
+        res = res.filter(Q(product__code__icontains=buscar) | Q(product__description__icontains=buscar))
+    articulos = {s: {'descripcion': d, 'letra': l, 'costo': c or 0.0, 'plazo': p or 0.0}
+                 for s, d, l, c, p in res.values_list('product_id', 'product__description', 'letra', 'costo_unitario',
+                                                      'plazo_total_dias')}
+    nodo = {s: (a, u) for s, a, u in ResultadoBodega.objects.filter(warehouse__code=NODO_SANTIAGO).values_list(
+        'resultado__product_id', 'accion', 'urgencia')}
+    validas = set(bodegas_santiago())
+    if bodega:
+        validas &= {bodega}
+    meses = meses_cerrados(hoy, MESES)
+    consumo = defaultdict(float)
+    for s, b, q in ConsumoMensual.objects.filter(mes__in=meses, bodega__in=validas).values_list(
+            'product_id', 'bodega', 'cantidad'):
+        consumo[(s, b)] += q
+    filas = defaultdict(dict)
+    for s, b, fis, oc, sc, ti, pc, of in InventoryMetric.objects.filter(warehouse__code__in=validas).values_list(
+            'product_id', 'warehouse__code', 'stock_physical', 'oc_po_qty', 'sc_qty', 'stock_transito_inter',
+            'comp_pc_qty', 'comp_of_qty'):
+        if s in articulos:
+            filas[b][s] = [fis, oc + ti + (sc if sc_cuenta else 0), pc + of]
+    for (s, b) in consumo:
+        if s in articulos:
+            filas[b].setdefault(s, [0, 0, 0])
+    out = {}
+    for b, por_sku in filas.items():
+        lista = []
+        for s, (fis, recibir, entregar) in por_sku.items():
+            c12 = max(0.0, consumo.get((s, b), 0.0))
+            if not (fis or recibir or entregar or c12):
+                continue
+            a = articulos[s]
+            disp = fis + recibir - entregar
+            diario = c12 / 365.0
+            accion, urgencia = nodo.get(s, ('NINGUNA', ''))
+            lista.append({
+                'bodega': b, 'codigo': s, 'descripcion': a['descripcion'], 'letra': a['letra'], 'costo': a['costo'],
+                'stock': fis, 'recibir': recibir, 'entregar': entregar, 'disponible': disp,
+                'faltante': max(0.0, -disp), 'consumo12': c12, 'consumo_diario': diario,
+                'cobertura': (max(0.0, disp) / diario) if diario > 0 else None,
+                'cobertura_corta': diario > 0 and max(0.0, disp) / diario < a['plazo'],
+                'accion_nodo': accion, 'urgencia_nodo': urgencia,
+                'valor_stock': fis * a['costo'], 'faltante_usd': max(0.0, -disp) * a['costo'],
+            })
+        out[b] = lista
+    return out
+
+
+def resumen_santiago_por_bodega(datos):
+    """Una fila por 013-xx para el resumen por nodo."""
+    import statistics
+    out = []
+    for b in sorted(datos):
+        lista = datos[b]
+        cob = [f['cobertura'] for f in lista if f['cobertura'] is not None]
+        out.append({'code': b, 'articulos': len(lista), 'faltantes': sum(1 for f in lista if f['faltante'] > 0),
+                    'faltante_usd': sum(f['faltante_usd'] for f in lista),
+                    'valor_stock': sum(f['valor_stock'] for f in lista),
+                    'cobertura_mediana': statistics.median(cob) if cob else None})
+    return out

@@ -47,7 +47,7 @@
             <tr class="hover:bg-slate-50 {% if f.bodega == t.code %}bg-pesco-lightcyan{% endif %}">
                 <td class="px-5 py-3">
                     <a href="?bodega={{ t.code }}{% if f.todo %}&todo=1{% endif %}" class="font-black text-pesco-darkcyan hover:underline">{% if t.zona == 'SANTIAGO' %}Santiago{% else %}{{ t.ciudad|default:t.code }}{% endif %}</a>
-                    <span class="font-mono text-[11px] text-slate-400 ml-1">{% if t.zona == 'SANTIAGO' %}todas las 013{% else %}{{ t.code }}{% endif %}</span>
+                    <span class="font-mono text-[11px] text-slate-400 ml-1">{% if t.zona == 'SANTIAGO' %}todas las 013{% if sub_santiago %} · por bodega abajo{% endif %}{% else %}{{ t.code }}{% endif %}</span>
                 </td>
                 <td class="px-3 text-right font-mono font-bold {% if t.riesgo %}text-amber-600{% else %}text-slate-300{% endif %}">{{ t.riesgo }}</td>
                 <td class="px-3 text-right font-mono font-bold {% if t.quiebre_usd %}text-red-600{% else %}text-slate-300{% endif %}">{{ t.quiebre_usd|compact_usd }}</td>
@@ -56,6 +56,15 @@
                 <td class="px-3 text-right font-mono">{{ t.espera }}</td>
                 <td class="px-5 text-right font-mono">{% if t.cobertura_mediana is not None %}{{ t.cobertura_mediana|floatformat:0 }} días{% else %}—{% endif %}</td>
             </tr>
+            {% if t.zona == 'SANTIAGO' %}{% for sb in sub_santiago %}
+            <tr class="hover:bg-slate-50 text-xs {% if f.bodega == sb.code %}bg-pesco-lightcyan{% endif %}">
+                <td class="pl-10 pr-5 py-2"><a href="?bodega={{ sb.code }}{% if f.todo %}&todo=1{% endif %}" class="font-mono font-bold text-pesco-darkcyan hover:underline">{{ sb.code }}</a> <span class="text-[10px] text-slate-400">{{ sb.articulos }} art. · stock {{ sb.valor_stock|compact_usd }}</span></td>
+                <td class="px-3 text-right font-mono {% if sb.faltantes %}text-amber-600{% else %}text-slate-300{% endif %}" title="Artículos con más comprometido que stock en esta bodega: se cubren con otra 013 o con la compra">{{ sb.faltantes }}</td>
+                <td class="px-3 text-right font-mono {% if sb.faltante_usd %}text-amber-700{% else %}text-slate-300{% endif %}" title="Faltante local valorizado (no es quiebre de Santiago)">{{ sb.faltante_usd|compact_usd }}</td>
+                <td class="px-3 text-right text-slate-300" colspan="3">parte de Santiago</td>
+                <td class="px-5 text-right font-mono">{% if sb.cobertura_mediana is not None %}{{ sb.cobertura_mediana|floatformat:0 }} días{% else %}—{% endif %}</td>
+            </tr>
+            {% endfor %}{% endif %}
             {% empty %}
             <tr><td colspan="7" class="px-5 py-8 text-center text-slate-500">Todavía no hay resultados por nodo. Ejecuta el cálculo desde <a class="text-pesco-cyan font-bold" href="{% url 'calculadora:panel' %}">Hoy</a>.</td></tr>
             {% endfor %}
@@ -155,9 +164,34 @@
                 <th class="text-left py-2 px-3">Urgencia {% ayuda 'urgencia' %}</th>
             </tr></thead>
             <tbody>
+            {% if es_013 %}
+            <tr><td colspan="10" class="px-4 py-2 text-[11px] bg-sky-50 text-sky-800">
+                <b>{{ f.bodega }}</b> es parte de Santiago: el cálculo y los traslados se deciden para Santiago completo.
+                Aquí se ve la posición propia de la bodega; un faltante local se cubre con stock de otra 013 o con la compra de la red.
+                Objetivo = comprometido de la bodega (PC y OF); acción = la del nodo Santiago.</td></tr>
+            {% for x in filas %}
+            <tr class="border-b border-slate-50 hover:bg-slate-50">
+                <td class="py-2 px-4 font-mono font-bold text-slate-700 whitespace-nowrap">{{ x.bodega }}<div class="text-[10px] font-sans font-normal text-slate-400">stock {{ x.stock|floatformat:"-1" }} · llega {{ x.recibir|floatformat:"-1" }}</div></td>
+                <td class="py-2 px-3">
+                    <a href="{% url 'calculadora:articulo' x.codigo %}" class="font-mono font-bold text-pesco-darkcyan hover:underline">{{ x.codigo }}</a>
+                    <div class="text-[11px] text-slate-500 truncate max-w-[280px]">{{ x.descripcion }}</div>
+                </td>
+                <td class="py-2 px-2 text-center"><span class="font-black text-slate-700">{{ x.letra }}</span></td>
+                <td class="py-2 px-3 text-right font-mono {% if x.disponible < 0 %}text-red-600 font-bold{% endif %}">{{ x.disponible|floatformat:"-1" }}</td>
+                <td class="py-2 px-3 text-right font-mono">{{ x.entregar|floatformat:"-1" }}</td>
+                <td class="py-2 px-3 text-right font-mono {% if x.faltante > 0 %}text-amber-700 font-bold{% else %}text-slate-300{% endif %}">{{ x.faltante|floatformat:"-1" }}</td>
+                <td class="py-2 px-3 text-right font-mono whitespace-nowrap {% if x.cobertura_corta %}text-red-600 font-bold{% endif %}">{% if x.cobertura is not None %}{{ x.cobertura|floatformat:0 }} d{% else %}<span class="text-slate-300" title="Sin consumo en esta bodega">—</span>{% endif %}</td>
+                <td class="py-2 px-3 whitespace-nowrap"><span class="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-slate-100 text-slate-500" title="Acción del nodo Santiago">{{ x.accion_txt }}</span></td>
+                <td class="py-2 px-3 text-slate-600">Consumo 12 m: {{ x.consumo12|floatformat:"-1" }}</td>
+                <td class="py-2 px-3">{% if x.urgencia_nodo %}<span class="text-[10px] font-black uppercase px-2 py-0.5 rounded-full {% if x.urgencia_nodo == 'URGENTE' %}bg-red-100 text-red-700{% elif x.urgencia_nodo == 'MEDIO' %}bg-amber-100 text-amber-700{% else %}bg-emerald-50 text-emerald-700{% endif %}">{{ x.urgencia_nodo|title }}</span>{% endif %}</td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="10" class="py-10 text-center text-slate-500">Sin artículos con faltante o acción en {{ f.bodega }}. {% if not f.todo %}<a class="text-pesco-cyan font-bold" href="?{{ qs_sin_pagina }}&todo=1">Ver todo</a>{% endif %}</td></tr>
+            {% endfor %}
+            {% else %}
             {% for b in filas %}
             <tr class="border-b border-slate-50 hover:bg-slate-50">
-                <td class="py-2 px-4 font-mono font-bold text-slate-700 whitespace-nowrap">{{ b.warehouse.code|nodo }}</td>
+                <td class="py-2 px-4 font-mono font-bold text-slate-700 whitespace-nowrap">{{ b.warehouse.code|nodo }}{% if b.componentes_txt %}<div class="text-[10px] font-normal text-slate-400" title="Stock físico por bodega de Santiago">{{ b.componentes_txt }}</div>{% endif %}</td>
                 <td class="py-2 px-3">
                     <a href="{% url 'calculadora:articulo' b.resultado.product_id %}" class="font-mono font-bold text-pesco-darkcyan hover:underline">{{ b.resultado.product_id }}</a>
                     <div class="text-[11px] text-slate-500 truncate max-w-[280px]">{{ b.resultado.product.description }}</div>
@@ -182,6 +216,7 @@
             {% empty %}
             <tr><td colspan="10" class="py-10 text-center text-slate-500">No hay bodegas con acciones para este filtro. {% if not f.todo %}<a class="text-pesco-cyan font-bold" href="?{{ qs_sin_pagina }}&todo=1">Ver todo</a>{% endif %}</td></tr>
             {% endfor %}
+            {% endif %}
             </tbody>
         </table>
         </div>
