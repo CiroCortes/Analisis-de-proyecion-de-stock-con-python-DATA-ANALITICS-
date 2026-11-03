@@ -13,7 +13,7 @@ from django.db.models import F, Sum
 
 from apps.data_ingestion.warehouses import nodo_red, nombre_nodo
 
-from .models import (AcuerdoGlobal, Alerta, CompromisoDetalle, ConsumoMensual, EventoComercial, HistorialMensual, ResultadoArticulo,
+from .models import (AcuerdoGlobal, PlazoOC, Alerta, CompromisoDetalle, ConsumoMensual, EventoComercial, HistorialMensual, ResultadoArticulo,
                      ResultadoBodega)
 
 ALTA, MEDIA, BAJA = 'ALTA', 'MEDIA', 'BAJA'
@@ -126,6 +126,12 @@ def generar(corrida, hoy):
     for sku, sev, msg in compromisos_antiguos(corrida, hoy, p):
         agregar(f'COMPROMISO_ANTIGUO|{sku}', 'COMPROMISO_ANTIGUO', sev, msg, sku)
 
+    # Plazo de entrega atipico (SPEC-33): una OC muy sobre la mediana del articulo no es el plazo del
+    # proveedor (OC que quedo abierta, recepcion tardia). Se recorta en el calculo y se avisa para que
+    # Compras corrija el proceso: el dato de SAP es real, el proceso no
+    for sku, sev, msg, prov in plazos_atipicos(corrida, hoy, p):
+        agregar(f'PLAZO_ATIPICO|{sku}', 'PLAZO_ATIPICO', sev, msg, sku, prov)
+
     # Doble envio a una sucursal (SPEC-31 §2): le llega stock por traslado y ademas una OC, y con eso
     # le sobra. Caso tipico: el traslado cubrio el PC mientras llegaba la compra; al llegar la OC no
     # hay que volver a enviar (la compra repone Santiago)
@@ -175,6 +181,36 @@ def generar(corrida, hoy):
 
 
 ORIGENES_OC = ('IMPORTACION', 'NACIONAL', 'SIN_OC')
+
+
+def plazos_atipicos(corrida, hoy, p):
+    """[(sku, severidad, mensaje, proveedor)] de articulos con OC sobre el tope de plazo (SPEC-33).
+    MEDIA si el articulo necesita compra (el recorte cambia lo que se compra), BAJA si no."""
+    resultados = {r.product_id: r for r in ResultadoArticulo.objects.filter(
+        corrida=corrida, n_oc_atipicas__gt=0).exclude(marca=ResultadoArticulo.EXCLUIDO)}
+    if not resultados:
+        return []
+    desde = hoy - datetime.timedelta(days=30 * p.meses_historia_oc)
+    ocs, todos = defaultdict(list), defaultdict(list)
+    for sku, nro, fecha_oc, entrada, dias in PlazoOC.objects.filter(
+            product_id__in=list(resultados), fecha_entrada__gte=desde, dias_entrega__gte=0,
+            dias_entrega__lte=365).values_list('product_id', 'nro_oc', 'fecha_oc', 'fecha_entrada', 'dias_entrega'):
+        todos[sku].append(dias)
+        if dias > resultados[sku].tope_plazo_dias:
+            ocs[sku].append((dias, nro, fecha_oc, entrada))
+    out = []
+    for sku, lista in ocs.items():
+        r = resultados[sku]
+        mediana = statistics.median(todos[sku])
+        lista.sort(reverse=True)
+        detalle = ', '.join(f'OC {n} {d:g} dias ({f:%m-%y} a {e:%m-%y})' if f and e else f'OC {n} {d:g} dias'
+                            for d, n, f, e in lista[:3])
+        mas = f' y {len(lista) - 3} mas' if len(lista) > 3 else ''
+        msg = (f'{detalle}{mas}: recortada(s) a {r.tope_plazo_dias:g} dias (plazo tipico '
+               f'{mediana:g} dias, mediana de {len(todos[sku])} OC). Revisar con Compras '
+               'si la OC quedo abierta o la recepcion se registro tarde')
+        out.append((sku, MEDIA if r.necesita_compra else BAJA, msg, r.proveedor_id or ''))
+    return out
 
 
 def compromisos_antiguos(corrida, hoy, p):

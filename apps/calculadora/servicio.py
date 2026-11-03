@@ -195,15 +195,32 @@ class Datos:
             self.oc[o.product_id].append(o)
 
         # Solicitudes de la plataforma aprobadas que SAP todavia no refleja: se suman al
-        # transito al crearlas (§5). Las exportadas cuentan hasta la siguiente carga de SC.
+        # transito al crearlas (§5). Una exportada deja de contar cuando SAP ya la refleja:
+        # - si las SC cuentan como en camino, con la siguiente carga de SC (la SC la reemplaza);
+        # - si no (SPEC-31 §2), cuando hay una OC del mismo articulo y proveedor emitida desde la
+        #   exportacion, o al vencer `dias_vigencia_exportada` (SPEC-32 §2). Antes dejaba de contar
+        #   con la carga de SC aunque la SC no contara: la cantidad se volvia a sugerir.
         self.solicitado = defaultdict(float)
         carga_sc = _mtime_carga_sc()
+        oc_desde = defaultdict(list)            # (sku, proveedor) -> fechas de OC abiertas
+        for lista in self.oc.values():
+            for o in lista:
+                if o.fecha_oc:
+                    oc_desde[(o.product_id, o.proveedor_codigo)].append(o.fecha_oc)
         for l in filtro(LineaSolicitud.objects.select_related('solicitud')).exclude(estado=LineaSolicitud.DESCARTADA):
             s = l.solicitud
-            if s.estado == SolicitudCompra.APROBADA or (
-                    s.estado == SolicitudCompra.EXPORTADA and (s.exportada_en or s.aprobada_en)
-                    and (s.exportada_en or s.aprobada_en).timestamp() > carga_sc):
+            if s.estado == SolicitudCompra.APROBADA:
                 self.solicitado[l.product_id] += l.cantidad_final
+            elif s.estado == SolicitudCompra.EXPORTADA and (s.exportada_en or s.aprobada_en):
+                exportada = s.exportada_en or s.aprobada_en
+                if general.sc_cuenta_en_transito:
+                    vigente = exportada.timestamp() > carga_sc
+                else:
+                    dia = timezone.localtime(exportada).date() if timezone.is_aware(exportada) else exportada.date()
+                    con_oc = any(f >= dia for f in oc_desde.get((l.product_id, s.proveedor_id), ()))
+                    vigente = not con_oc and (hoy - dia).days <= general.dias_vigencia_exportada
+                if vigente:
+                    self.solicitado[l.product_id] += l.cantidad_final
 
         desde = hoy - datetime.timedelta(days=30 * general.meses_historia_oc)
         self.plazos = defaultdict(list)
@@ -632,6 +649,7 @@ def _guardar(corrida, datos, calculados, valor_anual, otra_base=None, abc_v=None
             valor_consumo_anual=valor_anual.get(p.code, 0),
             dias_entrega_promedio=pl.dias_entrega_promedio, variacion_entrega_dias=pl.variacion_entrega_dias,
             plazo_total_dias=pl.plazo_total_dias, origen_plazo=pl.origen, n_oc=pl.n_oc,
+            tope_plazo_dias=pl.tope_plazo_dias, n_oc_atipicas=pl.n_oc_atipicas,
             metodo=po.metodo, ss_calculado=po.ss_calculado, piso_ss=po.piso_ss, stock_seguridad=po.stock_seguridad,
             punto_pedido=po.punto_pedido, stock_maximo=po.stock_maximo, salidas_en_plazo=po.salidas_en_plazo,
             stock_fisico=r.stock_fisico, en_transito=r.en_transito, comprometido=r.comprometido,

@@ -107,3 +107,61 @@ def test_nuevo_sin_minimo_y_sin_historia_no_se_compra_por_proyeccion():
                         fecha_creacion=datetime.date(2026, 8, 1), costo=1, es_dia_compra=False)
     r = calcular_articulo(e)
     assert r.politica.metodo == pol.SIN_COMPRA and r.cantidad_a_comprar == 0
+
+
+class RevisionNov3Test(_Base):
+    """Revision del 3-nov (SPEC-32): duplicados al regenerar y exportadas sin OC."""
+
+    def _exportada(self, hace_dias=0):
+        from apps.calculadora.solicitudes import marcar_exportadas
+        prov, _ = Proveedor.objects.get_or_create(codigo='P1')
+        s = SolicitudCompra.objects.create(proveedor=prov, fecha=HOY, estado=SolicitudCompra.APROBADA,
+                                           aprobada_en=timezone.now())
+        LineaSolicitud.objects.create(solicitud=s, product=self.sku, cantidad_sugerida=25, cantidad_final=25)
+        marcar_exportadas([s])
+        if hace_dias:
+            SolicitudCompra.objects.filter(pk=s.pk).update(
+                exportada_en=timezone.now() - datetime.timedelta(days=hace_dias))
+        return s
+
+    def _solicitado(self):
+        hoy = timezone.localdate()
+        return Datos(hoy, Resolutor(), producto=self.sku).solicitado['R1']
+
+    def test_exportada_sigue_contando_tras_la_carga_de_sc_hasta_que_hay_oc(self):
+        from apps.calculadora.models import OCAbierta
+        self._exportada()
+        original = servicio._mtime_carga_sc
+        servicio._mtime_carga_sc = lambda: timezone.now().timestamp() + 60   # SC cargada despues
+        try:
+            assert self._solicitado() == 25          # antes: 0 y se volvia a sugerir
+            OCAbierta.objects.create(product=self.sku, nro_oc='9001', bodega='013-PP', proveedor_codigo='P1',
+                                     fecha_oc=timezone.localdate(), cantidad_pendiente=25)
+            assert self._solicitado() == 0           # la OC ya esta en camino: no se cuenta dos veces
+        finally:
+            servicio._mtime_carga_sc = original
+
+    def test_oc_anterior_o_de_otro_proveedor_no_la_reemplaza(self):
+        from apps.calculadora.models import OCAbierta
+        self._exportada()
+        OCAbierta.objects.create(product=self.sku, nro_oc='8001', bodega='013-PP', proveedor_codigo='P1',
+                                 fecha_oc=timezone.localdate() - datetime.timedelta(days=20), cantidad_pendiente=5)
+        OCAbierta.objects.create(product=self.sku, nro_oc='8002', bodega='013-PP', proveedor_codigo='OTRO',
+                                 fecha_oc=timezone.localdate(), cantidad_pendiente=5)
+        assert self._solicitado() == 25
+
+    def test_exportada_vencida_deja_de_contar(self):
+        self._exportada(hace_dias=46)
+        assert self._solicitado() == 0
+
+    def test_regenerar_el_mismo_dia_no_marca_duplicados_contra_su_borrador(self):
+        from apps.calculadora.models import ResultadoArticulo
+        from apps.calculadora.solicitudes import generar
+        prov = Proveedor.objects.create(codigo='P2')
+        corrida = servicio.Corrida.objects.create(fecha_calculo=HOY)
+        ResultadoArticulo.objects.create(corrida=corrida, product=self.sku, proveedor=prov, comprar=True,
+                                         cantidad_sugerida=10)
+        generar(hoy=HOY)
+        generar(hoy=HOY)
+        lineas = LineaSolicitud.objects.filter(solicitud__fecha=HOY, product=self.sku)
+        assert lineas.count() == 1 and not lineas.first().duplicada_reciente

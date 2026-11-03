@@ -3,7 +3,10 @@
 Fecha: 28-oct-2026. Origen: reunión S&OP del 28-oct con Abastecimiento y Producción.
 Código: `apps/calculadora/cargadores.py`, `apps/data_ingestion/warehouses.py`,
 `apps/data_ingestion/datalake_ingest.py`. Consultas 5 (modificada) y 15 (nueva).
-Tests: `tests/test_notas_credito_prebodegas.py`.
+Tests: `tests/test_reunion_28oct.py`.
+
+> Actualización 2-nov: la consulta 8 lee `oivl` (la `oinm` del Datalake pierde movimientos) y la NC se
+> reubica a la bodega y el mes de la **guía** (SPEC-25). Donde abajo dice OINM, hoy es OIVL.
 
 ---
 

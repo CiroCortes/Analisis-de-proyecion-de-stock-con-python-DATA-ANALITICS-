@@ -308,6 +308,8 @@ class ResultadoArticulo(models.Model):
     plazo_total_dias = models.FloatField(default=0)
     origen_plazo = models.CharField(max_length=10, default='MAESTRO')
     n_oc = models.IntegerField(default=0)
+    tope_plazo_dias = models.FloatField(default=0)          # SPEC-33: 0 = sin OC atipicas
+    n_oc_atipicas = models.IntegerField(default=0)
 
     # Politica
     metodo = models.CharField(max_length=15, default='SIN_COMPRA')
@@ -539,6 +541,7 @@ class Alerta(models.Model):
         ('CAIDA_CONSUMO_NODO', 'Caida de consumo en una bodega'),
         ('DOBLE_ENVIO', 'Llega por traslado y por OC'),
         ('COMPROMISO_ANTIGUO', 'PC/OF abierto antiguo'),
+        ('PLAZO_ATIPICO', 'Plazo de OC atipico'),
     ]
     tipo = models.CharField(max_length=20, choices=TIPOS, db_index=True)
     product = models.ForeignKey(ProductSKU, null=True, blank=True, on_delete=models.CASCADE, related_name='alertas')

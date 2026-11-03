@@ -1,4 +1,4 @@
-# PENDIENTES (actualizado 2-nov-2026)
+# PENDIENTES (actualizado 3-nov-2026)
 
 ## 2-nov-2026 (Datalake OIVL y SPEC-31)
 
@@ -6,13 +6,18 @@
 |---|---|---|
 | 29 | La `oinm` del Datalake pierde movimientos (ago-26 −59 %, dic-25 −55 %, may-26 −38 %; caso 31206011: NC 9783 e IM 35049 ausentes). `oivl` está completa y sin duplicados | **Hecho**: consulta 8 sobre `oivl`. +203 mil u en 12 meses; brecha de NC 2.712 → 9 u. Reportado al dueño del Datalake |
 | 30 | Requerimientos de César (doc. y reunión 2-nov) | **Hecho (SPEC-31)**: pantalla Marcas (excluir del cálculo con motivo; equipos de gerencia con plan), SC fuera del tránsito, en camino desglosado, promedio con demanda, alerta de caída por bodega, ABC por venta |
-| 31 | Consulta 17 (Ventas Mensuales.txt) | **Pendiente**: exportar; validar que `linetotal` está en USD contra una factura |
-| 32 | 30 códigos 4999990xxx (USD 841 mil del sugerido) y 10 equipos caros con compra (USD 671 mil) | **Pendiente (Abastecimiento)**: marcarlos en Marcas |
+| 31 | Consulta 17 (Ventas Mensuales.txt) | **Hecho** (corrida 31): `linetotal` validado en USD (venta/costo mediana 1,84). ABC por venta: A = 230 artículos, USD 5,15 M |
+| 32 | 30 códigos 4999990xxx (USD 841 mil del sugerido) y 10 equipos caros con compra (USD 671 mil) | **Pendiente (Ciro, validado con Ignacio)**: marcarlos en Marcas. Correo a los encargados por el uso del 4999990001 |
+| 33 | Venta de exportación (0EX): 13 artículos, USD 460 mil del sugerido (16 %); parecen un proyecto puntual (20401254: 458 u, USD 225 mil) | **Decisión abierta (Ignacio, con la opinión de César)**: demanda normal (hoy), evento atípico o a pedido |
+| 34 | Revisión con usuarios (la herramienta sugiere, decide jefatura): 29 A por venta sin disponible, 338 PC/OF antiguos (127 MEDIA, USD 290 mil) para Contraloría, 18 DOBLE_ENVIO, pedido SAP sin OC (USD 133 mil) | **Pendiente** |
+| 35 | Service Layer (SPEC-30): el puerto 50000 no responde desde la red de la oficina (3-nov) y falta la clave en `.env` | **Bloqueado**: subdominio (Gisella) y red con TI (Ciro) |
+| 36 | 154 OC (239 artículos) con plazo atípico: mediana 66 días contra 7 típicos, sobre todo proveedores nacionales. Inflaban el SS (4201130215: SS 9 → 3, compra 8 → 0) | **Hecho (SPEC-33)**: tope por mediana y alerta PLAZO_ATIPICO. **Pendiente (gerencia y Compras)**: revisar la causa de cada OC (`data/OC_plazo_atipico_2026-11-03.xlsx`) y definir una regla de cierre de OC |
 
 
 ## Próximo paso (datos)
 
-0. **Datalake: la consulta 8 no es estable** (28-oct, SPEC-22 §4). Dos exportaciones con un día de
+0. ~~**Datalake: la consulta 8 no es estable**~~ **Resuelto el 2-nov**: la consulta 8 lee `oivl`, completa y sin
+   duplicados (hallazgo 29). Lo que sigue es historia (28-oct, SPEC-22 §4). Dos exportaciones con un día de
    diferencia traen filas muy distintas por mes; falta 2025-02 en ambas, 2025-07 en la del 28-oct y
    2026-08 viene con 969 filas contra 4.061. Con el archivo del 28-oct la compra sugerida pasó de
    USD 4,06 M a USD 3,36 M **por el cambio de datos, no por las NC** (las NC mueven ~4.700 u de 12
@@ -83,8 +88,8 @@ quiebre real USD 717 mil vs brecha contra objetivo USD 3,94 M.
 | # | Decisión | Quién | Hoy implementado |
 |---|---|---|---|
 | 1 | Costo: `lastpurprc`, precio del acuerdo global, o ambos | Abastecimiento | `lastpurprc`; en solicitudes, precio del acuerdo si existe |
-| 2 | Fuente del consumo: OINM con TransType explícitos vs documentos | Abastecimiento / datos | OINM (consulta 8); respaldo PC/OF |
-| 3 | Devoluciones: mes original o mes en que ocurren | Abastecimiento | Mes en que ocurren |
+| 2 | Fuente del consumo: OINM con TransType explícitos vs documentos | Abastecimiento / datos | **OIVL** (consulta 8, desde el 2-nov); respaldo PC/OF. Con el Service Layer: SPEC-30 fase 2 |
+| 3 | Devoluciones: mes original o mes en que ocurren | Abastecimiento | NC: bodega y mes de la guía (SPEC-25). Devoluciones de entrega (TransType 16): mes en que ocurren |
 | 4 | OC con recepciones parciales: primera o última entrada | Abastecimiento | **Primera entrada** |
 | 5 | Base de datos: SQLite vs PostgreSQL | Equipo | SQLite (corrida ~10 s) |
 | 6 | "Familia" en parámetros: `u_rhfamilia` o grupo SAP | Abastecimiento | Grupo SAP |
@@ -99,12 +104,16 @@ quiebre real USD 717 mil vs brecha contra objetivo USD 3,94 M.
 | 15 | Días de reserva de consumo propio antes de trasladar (protección simétrica) | Abastecimiento | 15 días (`dias_reserva_traslado`) |
 | 17 | Base de compromisos del cálculo: todos o solo recientes, y cuántos meses | Abastecimiento / Producción | Todos; se muestra también la otra base (3 meses) |
 | 16 | Bodega de entrega de las solicitudes exportadas: 013-PP o 013 | Compras | 013-PP |
-| 17 | Compra: el disponible resta todos los compromisos y el punto de pedido ya incluye el consumo del plazo (posible doble conteo, ≈ 38 artículos y USD 0,29 M). Los meses atípicos se recortan del consumo, así que un pedido grande puntual no está en el promedio | Abastecimiento | Fórmula del documento (§4.6) |
+| 18 | Compra: el disponible resta todos los compromisos y el punto de pedido ya incluye el consumo del plazo (posible doble conteo, ≈ 38 artículos y USD 0,29 M). Los meses atípicos se recortan del consumo, así que un pedido grande puntual no está en el promedio | Abastecimiento | Fórmula del documento (§4.6) |
+| 19 | Comprar por sucursal a su pre-bodega (cross-docking) o centralizar en Santiago | Gerencia (Gisella) | Centralizado (SPEC-21) |
+| 20 | Venta de exportación (0EX) como demanda | Ignacio, con la opinión de César | Cuenta como venta |
+| 21 | Tratamiento de la 013-IN (devoluciones físicas) | Abastecimiento | Pendiente (SPEC-27) |
 
 ## Bloqueado
 
-- **Escribir en SAP** (Service Layer, U_RPEO, U_CRITICO, creación de solicitudes): hasta habilitación
-  de IT. Mientras tanto: planilla de exportación (SPEC-13 §5); validar la plantilla DTW con IT.
+- **Escribir en SAP: no se hará** (decisión del 28-oct). La plataforma solo sugiere; las solicitudes salen
+  por Excel (SPEC-13 §5) y Compras las ingresa en SAP. U_RPEO y U_CRITICO quedan en la plataforma.
+- **Service Layer (solo lectura, SPEC-30)**: cliente listo; falta la red (subdominio y TI) y la clave.
 - **Conexión directa a Athena** (boto3): construida, sin probar (`manage.py check_athena`).
 - **Saldo de acuerdos globales**: `OAT1.planqty` está declarada `DECIMAL(12,6)` en el catálogo
   Glue y hay acuerdos con 500.000.000 → Athena no puede leer la columna (INVALID_CAST_ARGUMENT,

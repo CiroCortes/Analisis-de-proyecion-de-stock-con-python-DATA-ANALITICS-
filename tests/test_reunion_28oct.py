@@ -58,8 +58,8 @@ class NotasCreditoTest(TestCase):
             ['1', 'NC1', '010', '2026-09-10', 3, -1, '', '', '', 'N'],
         ])
 
-    def _aplicar(self, acumulado, nc_oinm):
-        return aplicar_notas_credito(acumulado, nc_oinm, {'NC1'}, self.dir)
+    def _aplicar(self, acumulado, nc_registradas):
+        return aplicar_notas_credito(acumulado, nc_registradas, {'NC1'}, self.dir)
 
     def test_nc_se_resta_en_la_bodega_y_mes_de_la_factura(self):
         V = ConsumoMensual.VENTA

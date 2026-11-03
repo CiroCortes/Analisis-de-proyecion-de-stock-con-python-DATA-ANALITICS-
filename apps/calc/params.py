@@ -38,6 +38,9 @@ class Params:
     # consumo se recorta a ese tope. Con 4 se recortan 404 articulos (-10,9% de demanda en USD).
     # 0 deja solo la regla del documento (promedio + 3 desvest).
     multiplicador_pico_mediana: float = 4
+    # Plazo de entrega atipico (SPEC-33): OC sobre max(k x mediana; mediana + dias) se recortan al tope
+    multiplicador_plazo_mediana: float = 4
+    dias_min_plazo_atipico: float = 30
 
     # Clasificacion
     umbral_r: int = 3
@@ -71,6 +74,8 @@ class Params:
 
     # Transito (SPEC-31 §2): Slim4 y Abastecimiento no cuentan las SC abiertas como transito
     sc_cuenta_en_transito: bool = False
+    # Solicitud exportada sin OC en SAP: dias que sigue contando como en camino (SPEC-32 §2)
+    dias_vigencia_exportada: int = 45
 
     # Equipos planificados por gerencia (SPEC-31 §1.3): candidatos de la pantalla Marcas
     umbral_costo_equipo_usd: float = 5000
@@ -113,6 +118,8 @@ CATALOGO = {
     'variacion_entrega_defecto': ('Variacion de entrega por defecto (% del plazo)', (GENERAL,), 0, 1),
     'multiplicador_atipico': ('Multiplicador del tope de mes atipico', (GENERAL,), 1, 10),
     'multiplicador_pico_mediana': ('Pico de consumo: veces la mediana mensual (0 = sin tope)', (GENERAL,), 0, 20),
+    'multiplicador_plazo_mediana': ('Plazo atipico: veces la mediana de los plazos de OC (0 = sin tope)', (GENERAL,), 0, 20),
+    'dias_min_plazo_atipico': ('Plazo atipico: dias minimos sobre la mediana', (GENERAL,), 0, 365),
     'umbral_r': ('Umbral R (meses con consumo de 12)', (GENERAL,), 1, 12),
     'umbral_r_regular': ('Umbral R-Regular (meses con consumo de 12)', (GENERAL,), 1, 12),
     'nuevo_meses_repuestos': ('Antiguedad para Nuevo, repuestos (meses)', (GENERAL,), 0, 36),
@@ -133,6 +140,7 @@ CATALOGO = {
     'alerta_sobrestock_meses': ('Sobrestock: meses sobre el maximo', (GENERAL,), 0, 24),
     'alerta_caida_meses_nodo': ('Caida por bodega: meses seguidos sin consumo en el nodo', (GENERAL,), 2, 12),
     'sc_cuenta_en_transito': ('Las solicitudes de compra (SC) cuentan como en camino', (GENERAL,), 0, 1),
+    'dias_vigencia_exportada': ('Solicitud exportada sin OC: dias que cuenta como en camino', (GENERAL,), 1, 365),
     'umbral_costo_equipo_usd': ('Equipo de gerencia: costo unitario minimo (USD)', (GENERAL,), 0, 1000000),
     'meses_max_equipo': ('Equipo de gerencia: maximo de meses con consumo de 12', (GENERAL,), 0, 12),
 }

@@ -2,7 +2,7 @@
 
 Fecha: 28-oct-2026. Origen: reunión S&OP del 28-oct. Consulta 16 (nueva).
 Código: `apps/calc/params.py`, `apps/calculadora/servicio.py`, `apps/calculadora/cargadores.py`,
-`apps/calculadora/views_gestion.py`. Tests: `tests/test_compromisos_recientes.py`.
+`apps/calculadora/views_gestion.py`. Tests: `tests/test_reunion_28oct.py`.
 
 ---
 

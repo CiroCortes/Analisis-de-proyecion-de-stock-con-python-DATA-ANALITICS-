@@ -159,6 +159,15 @@
         <!-- Posicion por bodega -->
         <div class="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden xl:col-span-2">
             <div class="px-5 py-4 border-b border-slate-100 text-[10px] font-bold text-slate-400 uppercase tracking-wider">Posición y acción por nodo (última corrida) {% ayuda 'santiago_nodo' %}</div>
+            {% if guardado %}
+            <div class="px-5 py-2 border-b border-slate-100 text-xs {% if guardado.comprar %}bg-emerald-50 text-emerald-800{% elif guardado.necesita_compra %}bg-amber-50 text-amber-800{% else %}text-slate-500{% endif %}">
+                <i class="fa-solid fa-cart-shopping"></i>
+                <b>Compra de la red:</b>
+                {% if guardado.cantidad_sugerida %}{{ guardado.cantidad_sugerida|floatformat:"0g" }} u a la 013-PP{% if guardado.comprar %}, hoy{% elif guardado.proxima_fecha_compra %}, próxima compra {{ guardado.proxima_fecha_compra|date:"d-m" }}{% endif %}{% if guardado.fecha_llegada_estimada %} · llegaría el {{ guardado.fecha_llegada_estimada|date:"d-m" }}{% endif %}.
+                {% else %}no se sugiere compra.{% endif %}
+                <span class="text-slate-500">Esta tabla muestra los traslados entre bodegas; la compra se decide para toda la red y llega a Santiago.</span>
+            </div>
+            {% endif %}
             <div class="overflow-x-auto">
             <table class="min-w-full text-xs">
                 <thead class="bg-slate-50 text-[10px] uppercase text-slate-500"><tr>
@@ -264,7 +273,7 @@
             <div class="px-5 py-3 border-b border-slate-100 text-[10px] font-bold text-slate-400 uppercase tracking-wider">Plazos reales de OC recibidas</div>
             <table class="min-w-full text-xs"><thead class="bg-slate-50 text-[10px] uppercase text-slate-500"><tr><th class="px-4 py-1.5 text-left">OC</th><th class="text-left">Proveedor</th><th class="text-left">Fecha OC</th><th class="text-left">Entrada</th><th class="text-right px-4">Días</th></tr></thead>
             <tbody class="divide-y divide-slate-100">
-            {% for pl in plazos %}<tr class="{% if pl.dias_entrega < 0 or pl.dias_entrega > 365 %}bg-red-50{% endif %}"><td class="px-4 py-1.5 font-mono">{{ pl.nro_oc }}</td><td class="font-mono">{{ pl.proveedor_codigo }}</td><td>{{ pl.fecha_oc|date:"d-m-Y" }}</td><td>{{ pl.fecha_entrada|date:"d-m-Y" }}</td><td class="text-right px-4 font-mono font-bold">{{ pl.dias_entrega }}</td></tr>
+            {% for pl in plazos %}<tr class="{% if pl.dias_entrega < 0 or pl.dias_entrega > 365 %}bg-red-50{% elif guardado.tope_plazo_dias and pl.dias_entrega > guardado.tope_plazo_dias %}bg-amber-50{% endif %}"{% if guardado.tope_plazo_dias and pl.dias_entrega > guardado.tope_plazo_dias and pl.dias_entrega <= 365 %} title="Plazo atípico: en el cálculo se recorta a {{ guardado.tope_plazo_dias|floatformat:'0' }} días (SPEC-33)"{% endif %}><td class="px-4 py-1.5 font-mono">{{ pl.nro_oc }}</td><td class="font-mono">{{ pl.proveedor_codigo }}</td><td>{{ pl.fecha_oc|date:"d-m-Y" }}</td><td>{{ pl.fecha_entrada|date:"d-m-Y" }}</td><td class="text-right px-4 font-mono font-bold">{{ pl.dias_entrega }}</td></tr>
             {% empty %}<tr><td colspan="5" class="px-4 py-3 text-slate-500 text-center">Sin historia de OC (se usa el plazo del maestro). Falta la consulta 9.</td></tr>{% endfor %}
             </tbody></table>
         </div>

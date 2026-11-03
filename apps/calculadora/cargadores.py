@@ -69,8 +69,8 @@ def _skus():
 # ── Consumo mensual ───────────────────────────────────────────────────────────
 
 def cargar_consumo_mensual(data_dir=None):
-    """Consulta 8 (movimientos de inventario de OIVL agregados por mes; OINM hasta el 2-nov). Sin archivo: se reconstruye desde los PC y OF
-    cerrados ya cargados (fuente provisional, SPEC-08 §3). Devuelve la fuente usada."""
+    """Consulta 8 (movimientos de inventario de OIVL agregados por mes; OINM hasta el 2-nov).
+    Sin archivo: se reconstruye desde los PC y OF cerrados ya cargados (fuente provisional, SPEC-08 §3). Devuelve la fuente usada."""
     ruta = archivo('consumo_mensual', data_dir)
     if not os.path.exists(ruta):
         n = reconstruir_consumo_desde_movimientos()
@@ -80,7 +80,7 @@ def cargar_consumo_mensual(data_dir=None):
 
     skus = _skus()
     acumulado = defaultdict(float)
-    nc_oinm = defaultdict(float)       # (sku, bodega, mes) -> NC registradas por OINM (negativo)
+    nc_registradas = defaultdict(float)       # (sku, bodega, mes) -> NC registradas en el inventario (negativo)
     cobranzas = 0.0                    # salidas (refacturas) descartadas de 013-NC / 013-NC_E (SPEC-25 §3.1)
     for cols in iter_txt_rows(ruta, 5):
         sku, bodega, mes, origen = cols[0], cols[1], _mes(cols[2]), (cols[3] or 'VENTA').upper()
@@ -90,7 +90,7 @@ def cargar_consumo_mensual(data_dir=None):
             cobranzas += max(0.0, _clean_num(cols[4]))
             continue
         if origen == 'NC':
-            nc_oinm[(sku, bodega, mes)] += _clean_num(cols[4])
+            nc_registradas[(sku, bodega, mes)] += _clean_num(cols[4])
             continue
         if origen == 'FACTURA':        # consulta 8 separada (SPEC-25): sigue siendo venta
             origen = ConsumoMensual.VENTA
@@ -110,7 +110,7 @@ def cargar_consumo_mensual(data_dir=None):
                     acumulado[clave] -= mover
                     acumulado[(sku, bodega, mes, ConsumoMensual.OF)] += mover
 
-    aplicar_notas_credito(acumulado, nc_oinm, skus, data_dir)
+    aplicar_notas_credito(acumulado, nc_registradas, skus, data_dir)
 
     filas = [ConsumoMensual(product_id=s, bodega=b, mes=m, origen=o, cantidad=q)
              for (s, b, m, o), q in acumulado.items() if q]
@@ -123,17 +123,17 @@ def cargar_consumo_mensual(data_dir=None):
     return 'OIVL'
 
 
-def aplicar_notas_credito(acumulado, nc_oinm, skus, data_dir=None):
-    """SPEC-22 §1 y SPEC-25 §3.2. `nc_oinm`: lo que OINM registro como nota de credito (TransType 14,
-    origen 'NC' de la consulta 8) por (sku, bodega, mes). Esa cantidad se resta en la bodega y el mes
+def aplicar_notas_credito(acumulado, nc_registradas, skus, data_dir=None):
+    """SPEC-22 §1 y SPEC-25 §3.2. `nc_registradas`: lo que el inventario (OIVL desde el
+    2-nov) registro como nota de credito (TransType 14, origen 'NC' de la consulta 8) por (sku, bodega, mes). Esa cantidad se resta en la bodega y el mes
     de la guia de despacho de la factura (columnas 11-13 de la consulta 15; si no vienen, la factura
     o entrega de origen) en vez de donde se registro la NC (casi siempre la 013-IN, que cae en
-    Santiago). Solo se reubica lo que OINM registro: una NC que no movio stock
+    Santiago). Solo se reubica lo que el inventario registro: una NC que no movio stock
     (por ejemplo, sobre una factura de reserva) no tiene venta que anular. Lo que no se puede
     ligar a un origen queda donde estaba. Nunca se resta mas de lo que el origen tiene: si la venta
     original no esta en la consulta 8 (mes incompleto en el Datalake), la NC queda donde se
     registro. `acumulado` se modifica en el lugar."""
-    if not nc_oinm:
+    if not nc_registradas:
         _registrar('notas_credito', '', 0, fuente='SIN_MARCA',
                    nota='La consulta 8 no separa las NC (origen NC): re-exportarla; las NC quedan donde se registraron')
         return 0
@@ -148,7 +148,7 @@ def aplicar_notas_credito(acumulado, nc_oinm, skus, data_dir=None):
             if sku in skus and q > 0 and cols[5] in ('13', '15') and bodega_origen and mes_nc and mes_origen:
                 lineas[(sku, cols[2], mes_nc)].append((q, bodega_origen, mes_origen))
     reubicadas = 0.0
-    for (sku, bodega, mes), cantidad in nc_oinm.items():
+    for (sku, bodega, mes), cantidad in nc_registradas.items():
         pendiente = -cantidad
         for q, bodega_origen, mes_origen in lineas.get((sku, bodega, mes), ()):
             if pendiente <= 0:
@@ -164,7 +164,7 @@ def aplicar_notas_credito(acumulado, nc_oinm, skus, data_dir=None):
         acumulado[(sku, bodega, mes, ConsumoMensual.VENTA)] -= pendiente
     nota = (f'{reubicadas:,.0f} u restadas en la bodega y el mes de su factura' if os.path.exists(ruta)
             else 'Sin consulta 15: las NC quedan en la bodega y el mes en que se registraron')
-    _registrar('notas_credito', ruta if os.path.exists(ruta) else '', len(nc_oinm), nota=nota)
+    _registrar('notas_credito', ruta if os.path.exists(ruta) else '', len(nc_registradas), nota=nota)
     return reubicadas
 
 

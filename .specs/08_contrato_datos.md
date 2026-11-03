@@ -82,16 +82,16 @@ parámetros de compra → plazos → acuerdos → consumo. Se llama al final del
 - **Recepciones parciales**: de cada línea de OC se toma la **primera** entrada (decisión abierta
   #4). Plazos negativos o > 365 días se guardan y el cálculo los excluye y cuenta (SPEC-10 §2).
 - Consumo: netos negativos (más devoluciones que salidas) se tratan como 0 en el cálculo.
-  Devoluciones restan en el mes en que ocurren (OINM), no en el del movimiento original
+  Devoluciones restan en el mes en que ocurren (OIVL; OINM hasta el 2-nov, SPEC-31 §6), no en el del movimiento original
   (decisión abierta #3).
 
 ## 5. Checklist de validación en Athena (fase 1)
 
-1. Bloque 0: `SHOW TABLES` / `DESCRIBE` de `oinm`, `owtq`, `ooat`, `oat1`, `ocrd`, `owhs`, `oitm`.
+1. Bloque 0: `SHOW TABLES` / `DESCRIBE` de `oivl` (la `oinm` del Datalake está incompleta, 2-nov), `owtq`, `ooat`, `oat1`, `ocrd`, `owhs`, `oitm`.
 2. Consulta 8 con `LIMIT 5`; confirmar TransType 13, 14, 15, 16, 60.
 3. Cuadrar el consumo de 30 artículos contra el informe de auditoría de stock de B1, por bodega
    (criterio de aceptación fase 1, documento §13).
 4. Consultas 9, 10, 11, 12, 14 con `LIMIT 5`; ajustar nombres de columna según `DESCRIBE`.
 5. Consulta 13: comparar contra el stock de bodegas `T` antes de decidir si se suma.
 6. Quitar `LIMIT`, exportar a `data/` con el nombre de la cabecera y correr `manage.py calcular_compras`.
-   Verificar en `CargaDatos` que la fuente de consumo pase de `PC_OF` a `OINM`.
+   Verificar en `CargaDatos` que la fuente de consumo pase de `PC_OF` a `OIVL`.

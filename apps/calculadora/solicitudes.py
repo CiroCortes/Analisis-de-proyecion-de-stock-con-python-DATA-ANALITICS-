@@ -57,7 +57,6 @@ def generar(hoy=None, usuario=None, proveedor=None):
     codigos = {r.product_id for r in del_dia + excepciones} | {r.product_id for v in de_pasada.values() for r in v}
     for a in AcuerdoGlobal.objects.filter(product_id__in=codigos):
         acuerdos[a.product_id].append(a)
-    recientes = _lineas_recientes(hoy)
 
     grupos = defaultdict(list)
     for r in del_dia:
@@ -70,6 +69,9 @@ def generar(hoy=None, usuario=None, proveedor=None):
 
     SolicitudCompra.objects.filter(fecha=hoy, estado=SolicitudCompra.BORRADOR,
                                    proveedor_id__in={k[0] for k in grupos}).delete()
+    # Despues de borrar los borradores que se reemplazan: si no, al regenerar el mismo dia cada
+    # linea quedaba marcada como duplicada contra su propio borrador anterior.
+    recientes = _lineas_recientes(hoy)
     creadas = []
     for (prov, tipo), filas in grupos.items():
         sol = SolicitudCompra.objects.create(proveedor_id=prov, tipo=tipo, fecha=hoy, creada_por=usuario)

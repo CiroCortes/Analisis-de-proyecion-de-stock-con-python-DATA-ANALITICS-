@@ -306,7 +306,9 @@ def _memoria(e, r):
              _n(po.consumo_usado))
 
     origen = 'OC reales' if pl.origen == 'REAL' else 'maestro SAP (menos de 3 OC)'
-    paso('Plazo', 'dias_entrega_promedio', f'Promedio de {pl.n_oc} OC' if pl.origen == 'REAL' else 'OITM.LeadTime',
+    recorte = (f' · {pl.n_oc_atipicas} OC atípica(s) recortada(s) a {_n(pl.tope_plazo_dias, 0)} días (SPEC-33)'
+               if pl.n_oc_atipicas else '')
+    paso('Plazo', 'dias_entrega_promedio', (f'Promedio de {pl.n_oc} OC' + recorte) if pl.origen == 'REAL' else 'OITM.LeadTime',
          f'{_n(pl.dias_entrega_promedio, 1)} días ({origen})')
     paso('Plazo', 'variacion_entrega_dias',
          'DESVEST.M de los plazos' if pl.origen == 'REAL' else f'{_n(p.variacion_entrega_defecto * 100, 0)}% del plazo',
