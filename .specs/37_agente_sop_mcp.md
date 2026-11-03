@@ -81,6 +81,7 @@ fecha de los datos.
 |---|---|---|
 | `compras_atrasadas(dias, tipo)` | OC o FR con fecha vencida que siguen contando como en camino | 20401255 (3-nov): ~USD 310 mil con más de 90 días |
 | `importaciones_detenidas(dias)` | FR con mucho atraso y entradas parciales muy espaciadas | 20401255: OC de may-25, 6 entradas en 16 meses, 73 u en EE.UU. |
+| `fechas_irreales()` | OC o FR cuya fecha comprometida es imposible para el plazo (heredada de la SC); generan falsas "OC atrasada" | 35471214 (3-nov): 264 líneas de importación prometen 6 días contra 70 |
 | `ofs_antiguas()` | OF abiertas sin cerrar que inflan el "Pedido" de SAP | SPEC-36: kits HIAB, 15 OF desde ago-2023 |
 | `compromisos_antiguos()` | PC/OF abiertos hace meses, con su responsable | SPEC-23, SPEC-31 §6 |
 | `pedido_sap_sin_documento()` | `OnOrder` de SAP sin OC, FR ni OF cargada | SPEC-35/36: residuo USD 252 mil |
@@ -121,6 +122,8 @@ Es lo que hace que el agente "sepa el negocio". Sale de los specs y **cada spec 
 | 4999990xxx | Códigos genéricos de entrega de materiales; no son productos | 32 (pend.) |
 | Plazo atípico | OC sobre max(4 × mediana; mediana + 30): se recorta | 33 |
 | Pico de consumo | Mes recortado a la mediana | 26 |
+| Fecha comprometida de la OC | Se hereda de la SC; quien la emite a veces pone una fecha imposible (35471214: 2 días para una importación de 70). No es atraso del proveedor | Pend. #42 |
+| FR "cerrada" en SAP | Puede estar cerrada en lo financiero (pagada o por pagar) y seguir pendiente de entrega: manda el pendiente de la línea y el "Pedido" de la bodega | 35, caso 35471214 |
 | `PrcrmntMtd` | No se usa en Pesco (todo `B`): no sirve para reconocer lo fabricado | 36 |
 
 ## 6. Vigía (después de cada corrida)
