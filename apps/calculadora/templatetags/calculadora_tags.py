@@ -20,9 +20,11 @@ def ayuda(clave):
     """Icono (?) con la definicion corta del glosario; enlaza a la Guia."""
     nombre, definicion, _, _ = termino(clave)
     return format_html(
-        '<a href="{}#{}" class="inline-flex items-center text-slate-300 hover:text-pesco-cyan align-middle ml-0.5" '
-        'title="{}: {}" aria-label="Qué significa {}"><i class="fa-regular fa-circle-question text-[11px]"></i></a>',
-        reverse('calculadora:guia'), clave, nombre, definicion, nombre)
+        '<a href="{}#{}" class="tip-wrap inline-flex items-center text-slate-400 hover:text-pesco-cyan align-middle ml-0.5" '
+        'title="{}: {}" aria-label="Qué significa {}">'
+        '<i class="fa-regular fa-circle-question text-[11px]"></i>'
+        '<span class="tip-box hidden"><strong class="text-pesco-cyan block mb-0.5">{}</strong>{}</span></a>',
+        reverse('calculadora:guia'), clave, nombre, definicion, nombre, nombre, definicion)
 
 
 @register.filter

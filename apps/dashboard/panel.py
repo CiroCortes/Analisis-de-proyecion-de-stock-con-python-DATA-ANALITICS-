@@ -40,7 +40,7 @@ def indicadores(corrida, filtros=None):
     sobre_meses = Resolutor().general.alerta_sobrestock_meses
 
     k = dict.fromkeys(('articulos', 'comprar', 'necesita_compra', 'excepciones', 'urgentes', 'compra_hoy_usd',
-                       'necesita_usd', 'quiebre_usd', 'brecha_usd', 'stock_usd', 'sobrestock_usd',
+                       'necesita_usd', 'quiebre_usd', 'quiebre_cant', 'brecha_usd', 'stock_usd', 'sobrestock_usd',
                        'sobrestock_articulos'), 0.0)
     por_letra = {l: {'letra': l, 'nombre': n, 'articulos': 0, 'compra_hoy': 0.0, 'necesita': 0.0, 'stock': 0.0}
                  for l, n in LETRAS}
@@ -64,6 +64,7 @@ def indicadores(corrida, filtros=None):
             k['necesita_usd'] += r['valor_sugerido'] or 0
         if r['disponible_futuro'] < 0:
             k['quiebre_usd'] += -r['disponible_futuro'] * costo
+            k['quiebre_cant'] += -r['disponible_futuro']
         k['brecha_usd'] += r['faltante'] * costo
         k['stock_usd'] += r['stock_fisico'] * costo
         if r['stock_maximo'] > 0 and r['disponible_futuro'] > r['stock_maximo'] + sobre_meses * r['consumo_promedio_mes']:

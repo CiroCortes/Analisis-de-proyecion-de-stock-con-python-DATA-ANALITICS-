@@ -12,6 +12,7 @@ from apps.inventory.models import (
 )
 from apps.inventory.stock_actual_models import StockActual
 from apps.data_ingestion.datalake_ingest import run_full_datalake_pipeline
+from apps.data_ingestion.athena_client import athena_permitido, sync_datalake
 
 DATALAKE_FILES = [
     {
@@ -117,6 +118,16 @@ def upload_view(request):
                 dt = round(time.time() - t0, 1)
                 messages.success(request, f"¡Sincronización oficial desde Datalake (TXT) completada con éxito en {dt} segundos! Base de datos y motor S&OP actualizados.")
 
+            elif action == 'sync_athena':
+                # Solo DEBUG + administrador; se valida aqui aunque el boton no se muestre
+                if not athena_permitido(request.user):
+                    messages.error(request, 'La conexión directa a Athena solo está disponible en modo DEBUG para administradores.')
+                    return redirect('data_ingestion:upload')
+                sync_datalake(log=lambda *_: None)
+                run_full_datalake_pipeline()
+                dt = round(time.time() - t0, 1)
+                messages.success(request, f"Consultas ejecutadas en Athena (boto3) y datos ingestados en {dt} segundos. Los TXT de data/ quedaron actualizados.")
+
             elif action == 'sync_engine':
                 from apps.calculadora.servicio import recalcular_red
                 recalcular_red(usuario=request.user)
@@ -147,5 +158,6 @@ def upload_view(request):
         'datalake_status': datalake_status,
         'all_datalake_exist': all(f['exists'] for f in datalake_status if not f.get('optional')),
         'db_stats': db_stats,
+        'puede_athena': athena_permitido(request.user),
     }
     return render(request, 'data_ingestion/upload.html', context)

@@ -19,7 +19,7 @@ from apps.inventory.models import ProductSKU
 from . import cargadores, marcas, servicio, solicitudes
 from .excel import respuesta_excel
 from .models import (Alerta, ArticuloConfig, CargaDatos, CompromisoAbierto, ConsumoMensual, Corrida, EventoComercial,
-                     HistorialMensual, OCAbierta, PlazoOC, Proveedor, ResultadoArticulo, TrasladoSugerido)
+                     HistorialMensual, OCAbierta, PlazoOC, Proveedor, ResultadoArticulo, ResultadoBodega, TrasladoSugerido)
 from .parametros import puede_aprobar, puede_editar
 
 LETRAS = [('R', 'Reposición'), ('E', 'Estratégico'), ('P', 'A pedido'), ('O', 'Obsoleto')]
@@ -30,11 +30,43 @@ CAUSAS = {'OC_ATRASADA': 'OC atrasada', 'PEDIDO': 'Pedido nuevo', 'EVENTO': 'Eve
           'CONSUMO': 'Alza de consumo', 'DATO_FALTANTE': 'Dato faltante'}
 ORDENES = {
     'valor': ('-valor_accion', 'Mayor valor a comprar'),
-    'urgencia': ('urg_orden', 'Urgencia'),
+    'valor_asc': ('valor_accion', 'Menor valor a comprar'),
+    'urgencia': ('urg_orden', 'Mayor urgencia'),
+    'urgencia_desc': ('-urg_orden', 'Menor urgencia'),
     'cobertura': ('cobertura_dias', 'Menor cobertura'),
+    'cobertura_desc': ('-cobertura_dias', 'Mayor cobertura'),
     'disponible': ('disponible_futuro', 'Menor disponible'),
+    'disponible_desc': ('-disponible_futuro', 'Mayor disponible'),
     'consumo': ('-consumo_promedio_mes', 'Mayor consumo'),
-    'codigo': ('product__code', 'Código'),
+    'consumo_asc': ('consumo_promedio_mes', 'Menor consumo'),
+    'variacion': ('-variacion_consumo', 'Mayor variación'),
+    'variacion_asc': ('variacion_consumo', 'Menor variación'),
+    'dias': ('-dias_entrega_promedio', 'Mayor plazo de entrega'),
+    'dias_asc': ('dias_entrega_promedio', 'Menor plazo de entrega'),
+    'factor': ('-factor_servicio', 'Mayor factor de servicio'),
+    'factor_asc': ('factor_servicio', 'Menor factor de servicio'),
+    'ss': ('-stock_seguridad', 'Mayor stock seguridad'),
+    'ss_asc': ('stock_seguridad', 'Menor stock seguridad'),
+    'punto_pedido': ('-punto_pedido', 'Mayor punto de pedido'),
+    'punto_pedido_asc': ('punto_pedido', 'Menor punto de pedido'),
+    'maximo': ('-stock_maximo', 'Mayor stock máximo'),
+    'maximo_asc': ('stock_maximo', 'Menor stock máximo'),
+    'cantidad': ('-cant_accion', 'Mayor cantidad a comprar'),
+    'cantidad_asc': ('cant_accion', 'Menor cantidad a comprar'),
+    'stock': ('-stock_fisico', 'Mayor stock físico'),
+    'stock_asc': ('stock_fisico', 'Menor stock físico'),
+    'transito': ('-en_transito', 'Mayor tránsito'),
+    'transito_asc': ('en_transito', 'Menor tránsito'),
+    'comprometido': ('-comprometido', 'Mayor comprometido'),
+    'comprometido_asc': ('comprometido', 'Menor comprometido'),
+    'codigo': ('product__code', 'Código (A-Z)'),
+    'codigo_desc': ('-product__code', 'Código (Z-A)'),
+    'descripcion': ('product__description', 'Descripción (A-Z)'),
+    'descripcion_desc': ('-product__description', 'Descripción (Z-A)'),
+    'clase': ('letra', 'Clase / REPO (A-Z)'),
+    'clase_desc': ('-letra', 'Clase / REPO (Z-A)'),
+    'proveedor': ('proveedor__nombre', 'Proveedor (A-Z)'),
+    'proveedor_desc': ('-proveedor__nombre', 'Proveedor (Z-A)'),
 }
 FUENTES_BRECHA = ('SIN_ARCHIVO', 'RESPALDO', 'PC_OF', 'SIN_MONEDA')
 MESES_ABR = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic']
@@ -130,6 +162,13 @@ def panel(request):
     corrida = Corrida.objects.first()
     ultima_ok = Corrida.objects.filter(estado=Corrida.OK).first()
     resumen = ultima_ok.resumen if ultima_ok else {}
+    # Asegurar que quiebre_real_cant y quiebre_real_articulos existan aunque la corrida venga de antes
+    if 'quiebre_real_cant' not in resumen:
+        q_stats = ResultadoArticulo.objects.filter(disponible_futuro__lt=0).aggregate(
+            cant=Sum('disponible_futuro'), n=Count('pk')
+        )
+        resumen['quiebre_real_cant'] = abs(q_stats['cant'] or 0)
+        resumen['quiebre_real_articulos'] = q_stats['n'] or 0
     cargas = _ultimas_cargas()
     tipos = dict(Alerta.TIPOS)
     alertas_tipo = sorted(((tipos.get(t, t), n) for t, n in (resumen.get('alertas') or {}).items()),
@@ -174,7 +213,13 @@ def correr(request):
 def _filtros(request):
     g = request.GET
     f = {k: g.get(k, '').strip() for k in ('search', 'letra', 'subclase', 'abc', 'xyz', 'urgencia', 'metodo', 'proveedor',
-                                          'familia', 'compra', 'bodega_accion', 'orden')}
+                                          'familia', 'compra', 'bodega', 'bodega_accion', 'orden')}
+    # Soporte de seleccion multiple para grupos/familias SAP
+    familias_list = g.getlist('familia')
+    # Limpiar vacíos
+    f['familias'] = [x.strip() for x in familias_list if x.strip()]
+    if f['familias'] and not f['familia']:
+        f['familia'] = f['familias'][0]
     for k in ('nuevo', 'inmovilizado', 'critico'):
         f[k] = g.get(k) == '1'
     # "Solo con acción" activo por defecto; el formulario envia todo=1 para verlo todo
@@ -191,7 +236,9 @@ def _queryset(f):
             qs = qs.filter(**{campo: f[campo]})
     if f['proveedor']:
         qs = qs.filter(Q(proveedor_id=f['proveedor']) | Q(proveedor__nombre__icontains=f['proveedor']))
-    if f['familia']:
+    if f.get('familias'):
+        qs = qs.filter(Q(product__sap_group_code__in=f['familias']) | Q(product__category__code__in=f['familias']))
+    elif f['familia']:
         qs = qs.filter(Q(product__sap_group_code=f['familia']) | Q(product__category__code=f['familia']))
     compra = f['compra']
     # Desde la Segmentacion (celda ABC-XYZ) se quiere ver la celda completa, no solo lo que tiene accion
@@ -205,7 +252,11 @@ def _queryset(f):
         qs = qs.filter(excepcion=True)
     elif not f['todo'] and not f['search']:
         qs = qs.filter(Q(necesita_compra=True) | Q(excepcion=True) | Q(bodegas__accion__in=[a for a, _ in ACCIONES_BODEGA]))
-    if f['bodega_accion']:
+    if f['bodega'] and f['bodega_accion']:
+        qs = qs.filter(bodegas__warehouse__code=f['bodega'], bodegas__accion=f['bodega_accion'])
+    elif f['bodega']:
+        qs = qs.filter(bodegas__warehouse__code=f['bodega'])
+    elif f['bodega_accion']:
         qs = qs.filter(bodegas__accion=f['bodega_accion'])
     if f['nuevo']:
         qs = qs.filter(es_nuevo=True)
@@ -215,6 +266,8 @@ def _queryset(f):
         qs = qs.filter(es_critico=True)
     qs = _anotar_accion(qs.distinct())
     orden = ORDENES.get(f['orden'] or 'valor', ORDENES['valor'])[0]
+    if orden in ('product__code', '-product__code'):
+        return qs.order_by(orden)
     return qs.order_by(orden, 'product__code')
 
 
@@ -224,20 +277,33 @@ def grilla(request):
     qs = _queryset(f)
     kpi = qs.aggregate(n=Count('pk', distinct=True), unidades=Sum('cant_accion'), valor=Sum('valor_accion'),
                        urgentes=Count('pk', filter=Q(urgencia='URGENTE'), distinct=True),
+                       quiebre_n=Count('pk', filter=Q(disponible_futuro__lt=0), distinct=True),
+                       quiebre_cant=Sum('disponible_futuro', filter=Q(disponible_futuro__lt=0)),
                        excepciones=Count('pk', filter=Q(excepcion=True), distinct=True))
+    if kpi.get('quiebre_cant') is not None:
+        kpi['quiebre_cant'] = abs(kpi['quiebre_cant'])
     page = Paginator(qs.select_related('product', 'product__category', 'proveedor'), 50).get_page(request.GET.get('page'))
     for r in page.object_list:
         r.spark = _sparkline(r.consumo_meses)
         r.causa_txt = CAUSAS.get(r.causa_excepcion, r.causa_excepcion)
     params = request.GET.copy()
     params.pop('page', None)
+    params_sort = params.copy()
+    params_sort.pop('orden', None)
     familias = (ProductSKU.objects.filter(category__is_active=True, resultado_calc__isnull=False)
                 .exclude(sap_group_code='').values_list('sap_group_code', 'sap_group_name').distinct().order_by('sap_group_name'))
+    proveedores = (ResultadoArticulo.objects.filter(proveedor__isnull=False)
+                   .values_list('proveedor_id', 'proveedor__nombre').distinct().order_by('proveedor__nombre', 'proveedor_id'))
+    bodegas = sorted(
+        ResultadoBodega.objects.values_list('warehouse__code', 'warehouse__name').distinct(),
+        key=lambda x: (0 if zone_for(x[0]) == SANTIAGO else 1, x[0]))
     return render(request, 'calculadora/grilla.html', {
         'page_obj': page, 'f': f, 'kpi': kpi, 'query': params.urlencode(),
+        'query_sort': params_sort.urlencode(),
         'letras': LETRAS, 'metodos': METODOS, 'acciones_bodega': ACCIONES_BODEGA,
         'urgencias': ('URGENTE', 'MEDIO', 'NORMAL'),
         'ordenes': [(k, v[1]) for k, v in ORDENES.items()], 'familias': familias,
+        'proveedores': proveedores, 'bodegas': bodegas,
     })
 
 

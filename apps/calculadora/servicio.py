@@ -609,7 +609,7 @@ def _resumen(calculados):
     letras = defaultdict(int)
     res = {'articulos': len(calculados), 'comprar': 0, 'necesita_compra': 0, 'excepciones': 0, 'urgentes': 0,
            'valor_sugerido': 0.0, 'valor_stock_maximo': 0.0, 'traslados': 0, 'unidades_trasladar': 0.0,
-           'quiebre_real_usd': 0.0, 'brecha_objetivo_usd': 0.0}
+           'quiebre_real_usd': 0.0, 'quiebre_real_cant': 0.0, 'quiebre_real_articulos': 0, 'brecha_objetivo_usd': 0.0}
     for p, e, r, prov, proxima in calculados:
         letras[r.letra] += 1
         res['comprar'] += int(r.compra.comprar)
@@ -623,10 +623,13 @@ def _resumen(calculados):
         # Quiebre real (disponible < 0) separado de la brecha contra el objetivo (§5, §12)
         if r.compra.disponible_futuro < 0:
             res['quiebre_real_usd'] += -r.compra.disponible_futuro * e.costo
+            res['quiebre_real_cant'] += -r.compra.disponible_futuro
+            res['quiebre_real_articulos'] += 1
         res['brecha_objetivo_usd'] += r.compra.faltante * e.costo
     res['letras'] = dict(letras)
     for k in ('valor_sugerido', 'valor_stock_maximo', 'quiebre_real_usd', 'brecha_objetivo_usd'):
         res[k] = round(res[k], 2)
+    res['quiebre_real_cant'] = round(res['quiebre_real_cant'], 0)
     return res
 
 

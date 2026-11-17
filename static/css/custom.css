@@ -15,3 +15,35 @@
     color: #065F46;
     border: 1px solid #6EE7B7;
 }
+
+/* Tooltips instantáneos para menús y ayuda (?) */
+.tip-wrap {
+    position: relative;
+}
+.tip-box {
+    display: none;
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 60;
+    width: max-content;
+    max-width: 240px;
+    padding: 6px 10px;
+    border-radius: 10px;
+    background-color: #0F172A;
+    color: #F8FAFC;
+    font-size: 11px;
+    font-weight: 500;
+    line-height: 1.35;
+    text-transform: none;
+    letter-spacing: normal;
+    white-space: normal;
+    text-align: left;
+    box-shadow: 0 10px 15px -3px rgba(15, 23, 42, 0.25);
+    pointer-events: none;
+}
+.tip-wrap:hover .tip-box,
+.tip-wrap:focus-visible .tip-box {
+    display: block !important;
+}

@@ -19,6 +19,15 @@ SQL_FILE = os.path.join(settings.BASE_DIR, 'data', 'consultas_datalake.sql')
 ARCHIVO_RE = re.compile(r'^--\s*ARCHIVO:\s*(.+?)\s*$', re.MULTILINE)
 
 
+def athena_permitido(user):
+    """Conexion directa a Athena desde la plataforma: solo en modo DEBUG y solo administradores.
+
+    En produccion (DEBUG=0) siempre es False: la plataforma no sale al Datalake (decision de IT)
+    y la carga es por los TXT de DBeaver.
+    """
+    return bool(settings.DEBUG and getattr(user, 'is_authenticated', False) and user.is_superuser)
+
+
 def _load_dotenv():
     path = os.path.join(settings.BASE_DIR, '.env')
     if not os.path.exists(path):

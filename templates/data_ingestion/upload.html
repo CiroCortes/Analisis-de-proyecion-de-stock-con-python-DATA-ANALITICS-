@@ -6,61 +6,88 @@
 <div class="w-full space-y-6">
 
     <!-- Header Section -->
-    <div class="bg-white p-6 sm:p-7 rounded-3xl shadow-sm border border-slate-200 border-l-8 border-l-pesco-cyan flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+    <div
+        class="bg-white p-6 sm:p-7 rounded-3xl shadow-sm border border-slate-200 border-l-8 border-l-pesco-cyan flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
             <div class="flex items-center gap-2 flex-wrap">
-                <span class="text-xs font-bold text-pesco-cyan uppercase tracking-wider">Centro de Control de Datos S&amp;OP</span>
-                <span class="bg-indigo-100 text-indigo-800 text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full border border-indigo-200">
+                <span class="text-xs font-bold text-pesco-cyan uppercase tracking-wider">Centro de Control de Datos
+                    S&amp;OP</span>
+                <span
+                    class="bg-indigo-100 text-indigo-800 text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full border border-indigo-200">
                     <i class="fa-solid fa-database mr-1"></i> Datalake SAP B1 Oficial
                 </span>
-                <span class="bg-emerald-100 text-emerald-800 text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full border border-emerald-200">
+                <span
+                    class="bg-emerald-100 text-emerald-800 text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full border border-emerald-200">
                     <i class="fa-solid fa-bolt mr-1"></i> Ingesta Directa sin Subida Web
                 </span>
             </div>
-            <h1 class="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight mt-1">Sincronización de Datos &amp; Pipeline S&amp;OP</h1>
-            <p class="text-sm text-slate-500 mt-0.5">Alimenta el catálogo maestro, inventario multi-bodega y ejecuta la clasificación REPO y el balanceo DRP.</p>
+            <h1 class="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight mt-1">Sincronización de Datos &amp;
+                Pipeline S&amp;OP</h1>
+            <p class="text-sm text-slate-500 mt-0.5">Alimenta el catálogo maestro, inventario multi-bodega y ejecuta la
+                clasificación REPO y el balanceo DRP.</p>
         </div>
 
-        <form method="POST" action="{% url 'data_ingestion:upload' %}" id="syncDatalakeForm">
-            {% csrf_token %}
-            <input type="hidden" name="action" value="sync_datalake">
-            <button type="submit" id="btnSyncDatalake"
-                    class="bg-pesco-cyan hover:bg-pesco-darkcyan text-white text-xs font-bold px-7 py-4 rounded-full shadow-lg transition flex items-center gap-2 uppercase tracking-wider whitespace-nowrap">
-                <i class="fa-solid fa-arrows-rotate fa-spin-pulse"></i> Sincronizar desde Datalake (TXT)
-            </button>
-        </form>
+        <div class="flex flex-col gap-2 items-stretch">
+            <form method="POST" action="{% url 'data_ingestion:upload' %}" id="syncDatalakeForm">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="sync_datalake">
+                <button type="submit" id="btnSyncDatalake"
+                    class="w-full bg-pesco-cyan hover:bg-pesco-darkcyan text-white text-xs font-bold px-7 py-4 rounded-full shadow-lg transition flex justify-center items-center gap-2 uppercase tracking-wider whitespace-nowrap">
+                    <i class="fa-solid fa-arrows-rotate fa-spin-pulse"></i> Sincronizar desde Datalake (TXT)
+                </button>
+            </form>
+            {% if puede_athena %}
+            <!-- Solo DEBUG + administrador (athena_permitido); en producción no se renderiza -->
+            <form method="POST" action="{% url 'data_ingestion:upload' %}" id="syncAthenaForm"
+                onsubmit="var b=document.getElementById('btnSyncAthena'); b.disabled=true; b.classList.add('opacity-60','cursor-not-allowed'); return confirm('Se ejecutarán todas las consultas en Athena y se reemplazarán los TXT de data/. Puede tardar varios minutos. ¿Continuar?');">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="sync_athena">
+                <button type="submit" id="btnSyncAthena"
+                    class="w-full bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold px-7 py-3 rounded-full shadow-md transition flex justify-center items-center gap-2 uppercase tracking-wider whitespace-nowrap">
+                    <i class="fa-solid fa-cloud-bolt"></i> Sincronizar desde Athena (boto3)
+                    <span class="bg-slate-900 text-white text-[9px] px-1.5 py-0.5 rounded-full">DEBUG · ADMIN</span>
+                </button>
+            </form>
+            {% endif %}
+        </div>
     </div>
 
     <!-- DB Stats Row -->
     <div class="grid grid-cols-2 md:grid-cols-6 gap-4">
         <div class="bg-white rounded-2xl border border-slate-200 p-4 text-center shadow-sm">
             <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Catálogo SKUs</div>
-            <div class="text-2xl sm:text-3xl font-black text-slate-900 mt-1 font-mono">{{ db_stats.total_skus|default:"0" }}</div>
+            <div class="text-2xl sm:text-3xl font-black text-slate-900 mt-1 font-mono">{{
+                db_stats.total_skus|default:"0" }}</div>
             <span class="text-[10px] text-emerald-600 font-bold block mt-0.5">Artículos Activos</span>
         </div>
         <div class="bg-white rounded-2xl border border-slate-200 p-4 text-center shadow-sm">
             <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Historial OFs</div>
-            <div class="text-2xl sm:text-3xl font-black text-slate-900 mt-1 font-mono">{{ db_stats.total_ofs|default:"0" }}</div>
+            <div class="text-2xl sm:text-3xl font-black text-slate-900 mt-1 font-mono">{{ db_stats.total_ofs|default:"0"
+                }}</div>
             <span class="text-[10px] text-pesco-cyan font-bold block mt-0.5">Consumos Taller</span>
         </div>
         <div class="bg-white rounded-2xl border border-slate-200 p-4 text-center shadow-sm">
             <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Historial Ventas</div>
-            <div class="text-2xl sm:text-3xl font-black text-slate-900 mt-1 font-mono">{{ db_stats.total_pedidos|default:"0" }}</div>
+            <div class="text-2xl sm:text-3xl font-black text-slate-900 mt-1 font-mono">{{
+                db_stats.total_pedidos|default:"0" }}</div>
             <span class="text-[10px] text-indigo-600 font-bold block mt-0.5">Despachos Clientes</span>
         </div>
         <div class="bg-white rounded-2xl border border-slate-200 p-4 text-center shadow-sm">
             <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Clasificaciones</div>
-            <div class="text-2xl sm:text-3xl font-black text-slate-900 mt-1 font-mono">{{ db_stats.total_clasificaciones|default:"0" }}</div>
+            <div class="text-2xl sm:text-3xl font-black text-slate-900 mt-1 font-mono">{{
+                db_stats.total_clasificaciones|default:"0" }}</div>
             <span class="text-[10px] text-amber-600 font-bold block mt-0.5">Matriz Slim4+REPO</span>
         </div>
         <div class="bg-white rounded-2xl border border-slate-200 p-4 text-center shadow-sm">
             <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Stock 63 Bodegas</div>
-            <div class="text-2xl sm:text-3xl font-black text-slate-900 mt-1 font-mono">{{ db_stats.total_stock_actual|default:"0" }}</div>
+            <div class="text-2xl sm:text-3xl font-black text-slate-900 mt-1 font-mono">{{
+                db_stats.total_stock_actual|default:"0" }}</div>
             <span class="text-[10px] text-teal-600 font-bold block mt-0.5">Ubicaciones SAP</span>
         </div>
         <div class="bg-slate-900 rounded-2xl border border-slate-700 p-4 text-center shadow-sm">
             <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Proyecciones DRP</div>
-            <div class="text-2xl sm:text-3xl font-black text-white mt-1 font-mono">{{ db_stats.total_proyecciones|default:"0" }}</div>
+            <div class="text-2xl sm:text-3xl font-black text-white mt-1 font-mono">{{
+                db_stats.total_proyecciones|default:"0" }}</div>
             <span class="text-[10px] text-emerald-400 font-bold block mt-0.5">9 Bodegas S&amp;OP</span>
         </div>
     </div>
@@ -69,22 +96,29 @@
          TABLA 1: ARCHIVOS OFICIALES DATALAKE SAP B1 (TXT)
          ═══════════════════════════════════════════════════════════ -->
     <div class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
-        <div class="p-6 border-b border-slate-100 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 bg-gradient-to-r from-slate-50 to-indigo-50/30">
+        <div
+            class="p-6 border-b border-slate-100 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 bg-gradient-to-r from-slate-50 to-indigo-50/30">
             <div>
                 <h3 class="text-base font-black text-slate-900 flex items-center gap-2">
-                    <i class="fa-solid fa-cloud-arrow-down text-indigo-600"></i> Pipeline Oficial Datalake Pesco (AWS Athena / SAP B1)
+                    <i class="fa-solid fa-cloud-arrow-down text-indigo-600"></i> Pipeline Oficial Datalake Pesco (AWS
+                    Athena / SAP B1)
                 </h3>
-                <p class="text-xs text-slate-500 mt-0.5">Archivos TXT delimitados por pipes generados desde las consultas optimizadas en el Datalake (carpeta <code class="font-mono bg-slate-100 px-1 py-0.5 rounded">data/</code>).</p>
+                <p class="text-xs text-slate-500 mt-0.5">Archivos TXT delimitados por pipes generados desde las
+                    consultas optimizadas en el Datalake (carpeta <code
+                        class="font-mono bg-slate-100 px-1 py-0.5 rounded">data/</code>).</p>
             </div>
-            <span class="text-xs {% if all_datalake_exist %}bg-emerald-100 text-emerald-800 border-emerald-300{% else %}bg-amber-100 text-amber-800 border-amber-300{% endif %} border font-bold px-3 py-1 rounded-full flex items-center gap-1.5">
-                <i class="fa-solid {% if all_datalake_exist %}fa-circle-check text-emerald-600{% else %}fa-triangle-exclamation text-amber-600{% endif %}"></i>
+            <span
+                class="text-xs {% if all_datalake_exist %}bg-emerald-100 text-emerald-800 border-emerald-300{% else %}bg-amber-100 text-amber-800 border-amber-300{% endif %} border font-bold px-3 py-1 rounded-full flex items-center gap-1.5">
+                <i
+                    class="fa-solid {% if all_datalake_exist %}fa-circle-check text-emerald-600{% else %}fa-triangle-exclamation text-amber-600{% endif %}"></i>
                 {% if all_datalake_exist %}5 Archivos Listos{% else %}Archivos Pendientes{% endif %}
             </span>
         </div>
 
         <div class="overflow-x-auto">
             <table class="w-full text-left text-sm">
-                <thead class="bg-slate-50 text-slate-500 uppercase text-[10px] font-bold tracking-wider border-b border-slate-200">
+                <thead
+                    class="bg-slate-50 text-slate-500 uppercase text-[10px] font-bold tracking-wider border-b border-slate-200">
                     <tr>
                         <th class="py-3.5 px-5">Estado</th>
                         <th class="py-3.5 px-4">Conjunto de Datos (Datalake)</th>
@@ -99,11 +133,13 @@
                     <tr class="hover:bg-slate-50 transition">
                         <td class="py-3.5 px-5">
                             {% if f.exists %}
-                            <span class="bg-emerald-100 text-emerald-800 border border-emerald-200 px-2.5 py-1 rounded-full font-black text-[10px] inline-flex items-center gap-1">
+                            <span
+                                class="bg-emerald-100 text-emerald-800 border border-emerald-200 px-2.5 py-1 rounded-full font-black text-[10px] inline-flex items-center gap-1">
                                 <i class="fa-solid fa-circle-check"></i> DISPONIBLE
                             </span>
                             {% else %}
-                            <span class="bg-rose-100 text-rose-800 border border-rose-200 px-2.5 py-1 rounded-full font-black text-[10px] inline-flex items-center gap-1">
+                            <span
+                                class="bg-rose-100 text-rose-800 border border-rose-200 px-2.5 py-1 rounded-full font-black text-[10px] inline-flex items-center gap-1">
                                 <i class="fa-solid fa-circle-xmark"></i> NO DETECTADO
                             </span>
                             {% endif %}

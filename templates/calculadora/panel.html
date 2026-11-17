@@ -80,7 +80,7 @@
                 <div class="flex items-center gap-2 text-[10px] font-black uppercase tracking-wider text-cyan-700"><i class="fa-solid fa-truck-fast"></i> Traslados urgentes {% ayuda 'traslado' %}</div>
                 {% if t.n %}
                 <div class="text-3xl font-black text-slate-900 font-mono mt-2">{{ t.n }}</div>
-                <p class="text-sm text-slate-600 mt-1">Hay que mover <b>{{ t.u|floatformat:"0g" }} unidades</b> a <b>{{ t.destinos }} bodega{{ t.destinos|pluralize }}</b> que ya no tiene{{ t.destinos|pluralize:"n" }} para cumplir lo comprometido.</p>
+                <p class="text-sm text-slate-600 mt-1">Hay que mover <b>{{ t.u|chile_num:0 }} unidades</b> a <b>{{ t.destinos }} bodega{{ t.destinos|pluralize }}</b> que ya no tiene{{ t.destinos|pluralize:"n" }} para cumplir lo comprometido.</p>
                 {% else %}
                 <div class="text-lg font-black text-emerald-700 mt-2"><i class="fa-solid fa-circle-check"></i> Al día</div>
                 <p class="text-sm text-slate-600 mt-1">Ninguna bodega necesita un traslado urgente.</p>
@@ -172,7 +172,7 @@
         <a href="{% url 'calculadora:traslados' %}" class="bg-cyan-50 rounded-2xl border border-cyan-200 p-4 text-center shadow-sm hover:shadow-md transition">
             <div class="text-[10px] font-bold text-cyan-700 uppercase tracking-wider">Traslados</div>
             <div class="text-2xl font-black text-cyan-800 mt-1 font-mono">{{ resumen.traslados|default:0 }}</div>
-            <div class="text-[10px] text-cyan-600">{{ resumen.unidades_trasladar|floatformat:"0g" }} unidades</div>
+            <div class="text-[10px] text-cyan-600">{{ resumen.unidades_trasladar|chile_num:0 }} unidades</div>
         </a>
     </div>
 
@@ -189,8 +189,14 @@
             <div class="text-[11px] text-slate-500 mt-1">Plata que inmovilizaría tener todo al máximo</div>
         </div>
         <div class="bg-red-50 rounded-2xl border border-red-200 p-5 shadow-sm" title="{{ resumen.quiebre_real_usd|full_usd }}">
-            <div class="text-[10px] font-bold text-red-600 uppercase tracking-wider">Quiebre real {% ayuda 'quiebre_real' %}</div>
-            <div class="text-2xl font-black text-red-700 mt-1 font-mono">{{ resumen.quiebre_real_usd|compact_usd }}</div>
+            <div class="flex justify-between items-start">
+                <div class="text-[10px] font-bold text-red-600 uppercase tracking-wider">Quiebre real {% ayuda 'quiebre_real' %}</div>
+                <span class="text-[10px] font-bold bg-red-100 text-red-700 px-2 py-0.5 rounded-full">{{ resumen.quiebre_real_articulos|default:0|chile_num:0 }} SKUs</span>
+            </div>
+            <div class="flex items-baseline gap-2 mt-1">
+                <div class="text-2xl font-black text-red-700 font-mono">{{ resumen.quiebre_real_cant|default:0|chile_num:0 }} u</div>
+                <div class="text-xs font-bold text-red-600 font-mono">({{ resumen.quiebre_real_usd|compact_usd }})</div>
+            </div>
             <div class="text-[11px] text-red-600 mt-1">Compromisos que el stock de la red no cubre (disponible &lt; 0)</div>
         </div>
         <div class="bg-amber-50 rounded-2xl border border-amber-200 p-5 shadow-sm" title="{{ resumen.brecha_objetivo_usd|full_usd }}">
@@ -271,15 +277,15 @@
                     <td class="px-3 py-2 text-center">
                         <span class="px-2 py-0.5 rounded-full text-[10px] font-black {% if r.urgencia == 'URGENTE' %}bg-red-100 text-red-700{% elif r.urgencia == 'MEDIO' %}bg-amber-100 text-amber-700{% else %}bg-emerald-100 text-emerald-700{% endif %}">{{ r.urgencia }}</span>
                     </td>
-                    <td class="px-3 py-2 text-right font-mono {% if r.disponible_futuro <= 0 %}text-red-600 font-bold{% endif %}">{{ r.disponible_futuro|floatformat:"0g" }}</td>
-                    <td class="px-3 py-2 text-right font-mono">{{ r.punto_pedido }}</td>
+                    <td class="px-3 py-2 text-right font-mono {% if r.disponible_futuro <= 0 %}text-red-600 font-bold{% endif %}">{{ r.disponible_futuro|chile_num:0 }}</td>
+                    <td class="px-3 py-2 text-right font-mono">{{ r.punto_pedido|chile_num:0 }}</td>
                     <td class="px-3 py-2">
                         {% if r.comprar %}<span class="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-bold text-[10px]">COMPRA HOY</span>
                         {% elif r.excepcion %}<span class="px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 font-bold text-[10px]">EXCEPCIÓN</span>
                             <span class="text-[10px] text-slate-500">{{ r.causa_txt }}</span>
                         {% else %}<span class="text-slate-500">Espera día de compra ({{ r.proxima_fecha_compra|date:"d-m" }})</span>{% endif %}
                     </td>
-                    <td class="px-3 py-2 text-right font-mono font-bold">{{ r.cant_accion|floatformat:"0g" }}</td>
+                    <td class="px-3 py-2 text-right font-mono font-bold">{{ r.cant_accion|chile_num:0 }}</td>
                     <td class="px-3 py-2 text-right font-mono">{{ r.valor_accion|compact_usd }}</td>
                     <td class="px-3 py-2 text-slate-600 truncate max-w-[12rem]">{{ r.proveedor.nombre|default:"⚠ sin proveedor" }}</td>
                 </tr>
