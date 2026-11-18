@@ -23,7 +23,7 @@ from apps.inventory.models import ProductSKU, Warehouse
 
 from . import parametros as par
 from . import solicitudes as sol
-from .excel import respuesta_excel
+from .excel import respuesta_excel, respuesta_excel_multi
 from .models import (Alerta, CompromisoDetalle, Corrida, EventoComercial, LineaSolicitud, OCAbierta, ParametroCambio, ParametroValor, Proveedor,
                      ResultadoArticulo, SolicitudCompra, TrasladoSugerido)
 
@@ -340,15 +340,63 @@ def compromisos_excel(request):
     qs, _ = _compromisos_filtrados(request)
     hoy = timezone.localdate()
     etiquetas = dict(TRAMOS)
-    filas = [{
-        'Tipo': d['tipo'], 'Numero': d['numero'], 'Emision': d['emision'],
-        'Dias abierto': (hoy - d['emision']).days if d['emision'] else '',
-        'Antiguedad': etiquetas.get(d['tramo_doc'], ''), 'Entrega comprometida': d['entrega'],
-        'Nodo': 'Santiago' if d['nodo_doc'] == '013' else d['nodo_doc'], 'Cliente': d['cliente'],
-        'Responsable': d['responsable_doc'], 'Referencia': d['referencia_doc'], 'Lineas': d['lineas'],
-        'Unidades pendientes': round(d['unidades'] or 0, 2), 'Valor USD': round(d['valor_doc'] or 0, 2),
+
+    # Catálogo para enriquecer con descripción y grupo SAP
+    skus_ids = set(qs.values_list('codigo_sku', flat=True).distinct())
+    info_skus = {
+        p.code: (p.description or '', p.sap_group_name or '')
+        for p in ProductSKU.objects.filter(code__in=skus_ids)
+    }
+
+    # 1. Detalle por Artículo (Línea por línea)
+    filas_detalle = []
+    for c in qs.order_by('fecha_emision', 'numero', 'codigo_sku'):
+        desc, grupo = info_skus.get(c.codigo_sku, ('', ''))
+        dias_abierto = (hoy - c.fecha_emision).days if c.fecha_emision else ''
+        valor_usd = round(c.cantidad * c.costo_unitario, 2)
+        filas_detalle.append({
+            'Tipo': c.tipo,
+            'N° Documento': c.numero,
+            'Código SKU': c.codigo_sku,
+            'Descripción Artículo': desc,
+            'Grupo SAP': grupo,
+            'Bodega': c.bodega,
+            'Nodo': 'Santiago' if c.nodo == '013' else c.nodo,
+            'Fecha Emisión': c.fecha_emision,
+            'Fecha Entrega': c.fecha_entrega,
+            'Días Abierto': dias_abierto,
+            'Antigüedad': etiquetas.get(c.tramo, ''),
+            'Código Cliente': c.codigo_cliente,
+            'Nombre Cliente': c.nombre_cliente,
+            'Responsable': c.responsable,
+            'Referencia': c.referencia,
+            'Cantidad Pendiente': round(c.cantidad, 2),
+            'Costo Unitario USD': round(c.costo_unitario, 2),
+            'Valor Total USD': valor_usd,
+        })
+
+    # 2. Resumen consolidado por Documento
+    filas_resumen = [{
+        'Tipo': d['tipo'],
+        'N° Documento': d['numero'],
+        'Emisión': d['emision'],
+        'Días Abierto': (hoy - d['emision']).days if d['emision'] else '',
+        'Antigüedad': etiquetas.get(d['tramo_doc'], ''),
+        'Entrega Comprometida': d['entrega'],
+        'Nodo': 'Santiago' if d['nodo_doc'] == '013' else d['nodo_doc'],
+        'Cliente': d['cliente'],
+        'Responsable': d['responsable_doc'],
+        'Referencia': d['referencia_doc'],
+        'Líneas': d['lineas'],
+        'Unidades Pendientes': round(d['unidades'] or 0, 2),
+        'Valor USD': round(d['valor_doc'] or 0, 2),
     } for d in _documentos(qs)]
-    return respuesta_excel(f'compromisos_abiertos_{hoy:%Y%m%d}.xlsx', filas, 'Compromisos abiertos')
+
+    hojas = {
+        'Detalle por Artículo': filas_detalle,
+        'Resumen por Documento': filas_resumen,
+    }
+    return respuesta_excel_multi(f'compromisos_abiertos_{hoy:%Y%m%d}.xlsx', hojas)
 
 
 # ── Alertas ──────────────────────────────────────────────────────────────────

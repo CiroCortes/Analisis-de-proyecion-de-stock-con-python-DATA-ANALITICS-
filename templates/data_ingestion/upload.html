@@ -56,38 +56,32 @@
     <div class="grid grid-cols-2 md:grid-cols-6 gap-4">
         <div class="bg-white rounded-2xl border border-slate-200 p-4 text-center shadow-sm">
             <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Catálogo SKUs</div>
-            <div class="text-2xl sm:text-3xl font-black text-slate-900 mt-1 font-mono">{{
-                db_stats.total_skus|default:"0" }}</div>
+            <div class="text-2xl sm:text-3xl font-black text-slate-900 mt-1 font-mono">{{ db_stats.total_skus|default:"0" }}</div>
             <span class="text-[10px] text-emerald-600 font-bold block mt-0.5">Artículos Activos</span>
         </div>
         <div class="bg-white rounded-2xl border border-slate-200 p-4 text-center shadow-sm">
             <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Historial OFs</div>
-            <div class="text-2xl sm:text-3xl font-black text-slate-900 mt-1 font-mono">{{ db_stats.total_ofs|default:"0"
-                }}</div>
+            <div class="text-2xl sm:text-3xl font-black text-slate-900 mt-1 font-mono">{{ db_stats.total_ofs|default:"0" }}</div>
             <span class="text-[10px] text-pesco-cyan font-bold block mt-0.5">Consumos Taller</span>
         </div>
         <div class="bg-white rounded-2xl border border-slate-200 p-4 text-center shadow-sm">
             <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Historial Ventas</div>
-            <div class="text-2xl sm:text-3xl font-black text-slate-900 mt-1 font-mono">{{
-                db_stats.total_pedidos|default:"0" }}</div>
+            <div class="text-2xl sm:text-3xl font-black text-slate-900 mt-1 font-mono">{{ db_stats.total_pedidos|default:"0" }}</div>
             <span class="text-[10px] text-indigo-600 font-bold block mt-0.5">Despachos Clientes</span>
         </div>
         <div class="bg-white rounded-2xl border border-slate-200 p-4 text-center shadow-sm">
             <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Clasificaciones</div>
-            <div class="text-2xl sm:text-3xl font-black text-slate-900 mt-1 font-mono">{{
-                db_stats.total_clasificaciones|default:"0" }}</div>
+            <div class="text-2xl sm:text-3xl font-black text-slate-900 mt-1 font-mono">{{ db_stats.total_clasificaciones|default:"0" }}</div>
             <span class="text-[10px] text-amber-600 font-bold block mt-0.5">Matriz Slim4+REPO</span>
         </div>
         <div class="bg-white rounded-2xl border border-slate-200 p-4 text-center shadow-sm">
             <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Stock 63 Bodegas</div>
-            <div class="text-2xl sm:text-3xl font-black text-slate-900 mt-1 font-mono">{{
-                db_stats.total_stock_actual|default:"0" }}</div>
+            <div class="text-2xl sm:text-3xl font-black text-slate-900 mt-1 font-mono">{{ db_stats.total_stock_actual|default:"0" }}</div>
             <span class="text-[10px] text-teal-600 font-bold block mt-0.5">Ubicaciones SAP</span>
         </div>
         <div class="bg-slate-900 rounded-2xl border border-slate-700 p-4 text-center shadow-sm">
             <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Proyecciones DRP</div>
-            <div class="text-2xl sm:text-3xl font-black text-white mt-1 font-mono">{{
-                db_stats.total_proyecciones|default:"0" }}</div>
+            <div class="text-2xl sm:text-3xl font-black text-white mt-1 font-mono">{{ db_stats.total_proyecciones|default:"0" }}</div>
             <span class="text-[10px] text-emerald-400 font-bold block mt-0.5">9 Bodegas S&amp;OP</span>
         </div>
     </div>
