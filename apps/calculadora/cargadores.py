@@ -296,8 +296,15 @@ def cargar_compromisos_detalle(data_dir=None):
     if not os.path.exists(ruta):
         _registrar('compromisos_detalle', '', 0, fuente='SIN_ARCHIVO', nota='Sin consulta 16: informe de antiguedad vacio')
         return 0
-    costos = {c: float(v or 0) for c, v in ProductSKU.objects.filter(is_active=True, category__is_active=True)
-              .values_list('code', 'unit_cost_usd')}
+    from django.db.models import Q
+    costos = {}
+    skus_repo = set()
+    for code, cost, cat_active in ProductSKU.objects.filter(is_active=True).filter(
+            Q(category__is_active=True) | Q(clase='1')
+    ).values_list('code', 'unit_cost_usd', 'category__is_active'):
+        costos[code] = float(cost or 0)
+        if cat_active:
+            skus_repo.add(code)
     filas = []
     for cols in iter_txt_rows(ruta, 11):
         q = _clean_num(cols[10])
@@ -307,7 +314,8 @@ def cargar_compromisos_detalle(data_dir=None):
             tipo=cols[0][:2], numero=cols[1].replace(',', ''), codigo_sku=cols[2], bodega=cols[3][:20],
             nodo=nodo_red(cols[3] or '013'), fecha_emision=parse_date(cols[4]), fecha_entrega=parse_date(cols[5]),
             codigo_cliente=cols[6][:30], nombre_cliente=cols[7][:200], responsable=cols[8][:120],
-            referencia=cols[9][:100], cantidad=q, costo_unitario=costos[cols[2]]))
+            referencia=cols[9][:100], cantidad=q, costo_unitario=costos[cols[2]],
+            en_alcance_repo=(cols[2] in skus_repo)))
     with transaction.atomic():
         CompromisoDetalle.objects.all().delete()
         CompromisoDetalle.objects.bulk_create(filas, batch_size=5000)

@@ -124,6 +124,8 @@ class CompromisoDetalle(models.Model):
     referencia = models.CharField(max_length=100, blank=True, default='')
     cantidad = models.FloatField(default=0)
     costo_unitario = models.FloatField(default=0)
+    en_alcance_repo = models.BooleanField(default=True, db_index=True,
+                                          help_text='True si el SKU pertenece al alcance de Repuestos (Category.is_active)')
 
 
 class ParametroCompra(models.Model):
@@ -572,3 +574,64 @@ class Alerta(models.Model):
 
     class Meta:
         ordering = ['-creada_en']
+
+
+# ── S&OP Equipos / HIAB (alimentado desde BD Datalake + decisiones 1 a 1) ───
+
+class PresupuestoSOP(models.Model):
+    """Presupuesto anual por modelo SAP (lo unico que no existe en SAP/Datalake)."""
+    anio = models.IntegerField(db_index=True)
+    familia = models.CharField(max_length=100, default='113', db_index=True)
+    subfamilia = models.CharField(max_length=100, default='71', db_index=True)
+    modelo = models.CharField(max_length=100, db_index=True, help_text='Valor exacto de ProductSKU.modelo en SAP')
+    cantidad = models.FloatField(default=0)
+    monto_usd = models.FloatField(default=0)
+    actualizado_por = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL)
+    actualizado_en = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ('anio', 'familia', 'subfamilia', 'modelo')
+        ordering = ['anio', 'modelo']
+
+    def __str__(self):
+        return f'Ppto {self.anio} - Modelo {self.modelo}: {self.cantidad:g} un (${self.monto_usd:,.0f})'
+
+
+class PropuestaCompraSOP(models.Model):
+    """Registro auditable de propuestas y decisiones 1 a 1 en la mesa S&OP (reemplaza hoja Solicitud)."""
+    PENDIENTE = 'PENDIENTE'
+    APROBADA = 'APROBADA'
+    PARCIAL = 'PARCIAL'
+    REFUTADA = 'REFUTADA'
+    POSTERGADA = 'POSTERGADA'
+    DECISIONES = [
+        (PENDIENTE, 'En evaluación'),
+        (APROBADA, 'Aprobada'),
+        (PARCIAL, 'Aprobación parcial'),
+        (REFUTADA, 'Refutada'),
+        (POSTERGADA, 'Postergada'),
+    ]
+
+    familia = models.CharField(max_length=100, default='113', db_index=True)
+    subfamilia = models.CharField(max_length=100, default='71', db_index=True)
+    modelo = models.CharField(max_length=100, db_index=True, help_text='Valor exacto de ProductSKU.modelo en SAP')
+    modelo_nombre = models.CharField(max_length=255, blank=True, default='')
+    vendedor = models.CharField(max_length=120, blank=True, default='')
+    negocio = models.CharField(max_length=200, blank=True, default='', help_text='Cliente, licitación o negocio asociado')
+    cantidad_solicitada = models.IntegerField(default=0)
+    cantidad_aprobada = models.IntegerField(default=0)
+    costo_unitario_usd = models.FloatField(default=0)
+    inversion_usd = models.FloatField(default=0)
+    cobertura_actual_meses = models.FloatField(default=0)
+    cobertura_proyectada_meses = models.FloatField(default=0)
+    decision = models.CharField(max_length=15, choices=DECISIONES, default=PENDIENTE, db_index=True)
+    comentario = models.TextField(blank=True, default='')
+    creado_por = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL)
+    creado_en = models.DateTimeField(auto_now_add=True)
+    actualizado_en = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-creado_en']
+
+    def __str__(self):
+        return f'Modelo {self.modelo} | {self.get_decision_display()} ({self.cantidad_aprobada}/{self.cantidad_solicitada} un)'

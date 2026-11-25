@@ -23,6 +23,8 @@ SUBNAV = [
      'Ranking de artículos según su peso en ventas y consumo valorizado.'),
     ('marcas', 'Marcas', 'fa-tags', ('marcas',),
      'Gestión de marcas y líneas excluidas o planificadas por gerencia.'),
+    ('sop_hiab', 'S&OP HIAB', 'fa-handshake', ('sop_hiab',),
+     'Mesa de negociación 1 a 1 y análisis comercial de grúas HIAB.'),
     ('indicadores', 'Indicadores', 'fa-chart-column', ('indicadores',),
      'KPIs de abastecimiento, quiebre real, cobertura y comparación entre escenarios.'),
     ('eventos', 'Eventos', 'fa-bullhorn', ('eventos',),

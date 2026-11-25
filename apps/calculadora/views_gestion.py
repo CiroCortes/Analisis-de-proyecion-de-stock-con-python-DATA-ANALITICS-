@@ -258,7 +258,7 @@ def _tramo_expr(hoy):
 
 def _compromisos_filtrados(request):
     f = {k: request.GET.get(k, '').strip() for k in ('tipo', 'tramo', 'nodo', 'responsable', 'search')}
-    qs = CompromisoDetalle.objects.annotate(
+    qs = CompromisoDetalle.objects.filter(en_alcance_repo=True).annotate(
         tramo=_tramo_expr(timezone.localdate()),
         valor=F('cantidad') * F('costo_unitario'))
     if f['tipo']:
@@ -325,7 +325,7 @@ def compromisos(request):
                    'solo_recientes': res.get('valor_sugerido', 0) if recientes else res['valor_otra_base']}
         impacto['diferencia'] = impacto['todos'] - impacto['solo_recientes']
 
-    base = CompromisoDetalle.objects
+    base = CompromisoDetalle.objects.filter(en_alcance_repo=True)
     return render(request, 'calculadora/compromisos.html', {
         'f': f, 'tabla': tabla, 'total_valor': total_valor, 'tramos': TRAMOS, 'responsables': responsables,
         'page_obj': page_obj, 'query': params.urlencode(), 'impacto': impacto,

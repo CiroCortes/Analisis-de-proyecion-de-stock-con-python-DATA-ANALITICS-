@@ -1,0 +1,875 @@
+{% extends 'base.html' %}
+{% load calculadora_tags %}
+
+{% block title %}S&OP HIAB · Mesa de Negociación Comercial | Calculadora Pesco{% endblock %}
+
+{% block content %}
+<div class="w-full space-y-6">
+    {% include 'calculadora/_subnav.html' %}
+
+    <!-- Header Hero -->
+    <div
+        class="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 bg-white p-6 sm:p-7 rounded-3xl shadow-sm border border-slate-200 border-l-8 border-l-pesco-cyan">
+        <div>
+            <div class="flex flex-wrap items-center gap-2">
+                <span class="text-xs font-bold text-pesco-cyan uppercase tracking-wider">Planificación S&OP · Equipos de
+                    Izaje</span>
+                <span class="px-2 py-0.5 rounded-full text-[10px] font-black bg-cyan-100 text-cyan-800">Mesa 1 a
+                    1</span>
+                {% if hay_datos %}
+                <span
+                    class="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-200">
+                    <i class="fa-solid fa-database mr-1"></i>{{ fuente }}{% if fecha_sync %} · Sync {{ fecha_sync|date:"d-m-Y H:i" }}{% endif %}
+                </span>
+                {% endif %}
+            </div>
+            <h1 class="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight mt-1">S&OP HIAB · Análisis
+                Comercial y Refutador de Compras</h1>
+            <p class="text-sm text-slate-500 mt-1 max-w-4xl">
+                Alimentado directamente desde nuestra base de datos (Datalake SAP) agrupando por <strong>Modelo
+                    SAP</strong>.
+                Unifica automáticamente los <strong>códigos de compra</strong> y <strong>códigos de venta</strong>,
+                integrando stock físico, tránsito real (FR), tránsito proyectado (OC), montaje en taller (OF) y backlog
+                comprometido (PC) contra la demanda anual real.
+            </p>
+        </div>
+        <div class="flex flex-wrap gap-2">
+            <a href="{% url 'calculadora:sop_hiab_excel' %}"
+                class="bg-pesco-cyan hover:bg-pesco-darkcyan text-white text-xs font-bold px-5 py-3 rounded-full shadow-md uppercase tracking-wider whitespace-nowrap flex items-center gap-2">
+                <i class="fa-solid fa-file-excel"></i> Exportar Acta Excel
+            </a>
+        </div>
+    </div>
+
+    {% if skus_sin_modelo %}
+    <div
+        class="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-xs text-amber-900 flex items-center justify-between gap-4">
+        <div>
+            <strong class="font-black"><i class="fa-solid fa-triangle-exclamation mr-1"></i> Master Data SAP:</strong>
+            Existen <strong>{{ skus_sin_modelo|length }}</strong> códigos HIAB sin campo <span
+                class="font-mono font-bold">modelo</span> asignado en SAP. Al ajustarlos en Master Data y sincronizar el
+            Datalake se agruparán automáticamente.
+        </div>
+    </div>
+    {% endif %}
+
+    {% if not hay_datos %}
+    <div class="bg-amber-50 border border-amber-200 rounded-3xl p-6 text-sm text-amber-800">
+        {{ error|default:"No hay datos de Equipos HIAB cargados desde el Datalake. Ejecuta la sincronización del Datalake primero." }}
+    </div>
+    {% else %}
+
+    <!-- 1. BLOQUE DE RESUMEN MACRO (Idéntico a la Hoja Resumen de Ignacio) -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
+        <!-- Tarjeta 1: Cumplimiento Presupuesto 2026 -->
+        <div class="bg-white rounded-3xl border border-slate-200 p-5 shadow-sm flex flex-col justify-between">
+            <div>
+                <div class="flex justify-between items-center mb-3">
+                    <span class="text-[11px] font-black text-slate-400 uppercase tracking-wider">Cumplimiento
+                        Presupuesto 2026</span>
+                    <span
+                        class="px-2 py-0.5 rounded-full text-[10px] font-black {% if kpis.cumplimiento_cant_pct >= 75 %}bg-emerald-100 text-emerald-800{% else %}bg-amber-100 text-amber-800{% endif %}">
+                        Avance {{ kpis.cumplimiento_cant_pct }}% cant
+                    </span>
+                </div>
+                <div class="grid grid-cols-2 gap-3 mb-4">
+                    <div class="bg-slate-50 p-3 rounded-2xl border border-slate-100">
+                        <div class="text-[10px] font-bold text-slate-400 uppercase">En Cantidad</div>
+                        <div class="text-xl font-black text-slate-900 font-mono mt-0.5">{{ kpis.cumplimiento_cant_pct }}%</div>
+                        <div class="text-[11px] text-slate-500 mt-1 font-mono">
+                            {{ kpis.entregado_2026_cant|add:kpis.backlog_cant }} / {{ kpis.presupuesto_cant }} un
+                        </div>
+                    </div>
+                    <div class="bg-slate-50 p-3 rounded-2xl border border-slate-100">
+                        <div class="text-[10px] font-bold text-slate-400 uppercase">En Dinero (USD)</div>
+                        <div class="text-xl font-black text-slate-900 font-mono mt-0.5">{{ kpis.cumplimiento_usd_pct }}%
+                        </div>
+                        <div class="text-[11px] text-slate-500 mt-1 font-mono">
+                            ${{ kpis.presupuesto_usd|floatformat:"0g" }} meta
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="pt-3 border-t border-slate-100 flex justify-between text-xs text-slate-600">
+                <span>Ventas L12M (Año móvil):</span>
+                <span class="font-mono font-bold text-slate-900">{{ kpis.entregado_12m_cant }} un · USD {{ kpis.entregado_12m_usd|floatformat:"0g" }}</span>
+            </div>
+        </div>
+
+        <!-- Tarjeta 2: Ecuación de Inventario y Capital de Trabajo -->
+        <div class="bg-white rounded-3xl border border-slate-200 p-5 shadow-sm flex flex-col justify-between">
+            <div>
+                <div class="flex justify-between items-center mb-3">
+                    <span class="text-[11px] font-black text-slate-400 uppercase tracking-wider">Ecuación de Inventario
+                        Global</span>
+                    <span class="px-2 py-0.5 rounded-full text-[10px] font-black bg-slate-100 text-slate-800">
+                        Total {{ kpis.inventario_inicial_cant }} grúas
+                    </span>
+                </div>
+                <div class="space-y-1.5 text-xs">
+                    <div class="flex justify-between items-center py-1 border-b border-slate-50">
+                        <span class="text-slate-600 flex items-center gap-1.5"><i
+                                class="fa-solid fa-warehouse text-emerald-500 text-[10px]"></i> Stock Físico (+)</span>
+                        <span class="font-mono font-bold text-slate-900">{{ kpis.stock_cant }} un <span
+                                class="text-slate-400 font-normal">(${{ kpis.stock_usd|floatformat:"0g" }})</span></span>
+                    </div>
+                    <div class="flex justify-between items-center py-1 border-b border-slate-50">
+                        <span class="text-slate-600 flex items-center gap-1.5"><i
+                                class="fa-solid fa-ship text-pesco-cyan text-[10px]"></i> Tránsito Real (+)</span>
+                        <span class="font-mono font-bold text-slate-900">{{ kpis.transito_real_cant }} un <span
+                                class="text-slate-400 font-normal">(${{ kpis.transito_real_usd|floatformat:"0g" }})</span></span>
+                    </div>
+                    <div class="flex justify-between items-center py-1 border-b border-slate-50">
+                        <span class="text-slate-600 flex items-center gap-1.5"><i
+                                class="fa-solid fa-clock-rotate-left text-indigo-500 text-[10px]"></i> Tránsito
+                            Proyectado (+)</span>
+                        <span class="font-mono font-bold text-slate-900">{{ kpis.transito_proj_cant }} un <span
+                                class="text-slate-400 font-normal">(${{ kpis.transito_proj_usd|floatformat:"0g" }})</span></span>
+                    </div>
+                    <div class="flex justify-between items-center py-1 border-b border-slate-50">
+                        <span class="text-slate-600 flex items-center gap-1.5"><i
+                                class="fa-solid fa-gears text-purple-500 text-[10px]"></i> Montaje Taller / Producción
+                            (+)</span>
+                        <span class="font-mono font-bold text-slate-900">{{ kpis.en_proceso_cant }} un <span
+                                class="text-slate-400 font-normal">(${{ kpis.en_proceso_usd|floatformat:"0g" }})</span></span>
+                    </div>
+                    <div
+                        class="flex justify-between items-center py-1 text-red-600 font-medium border-b border-slate-100">
+                        <span class="flex items-center gap-1.5"><i class="fa-solid fa-file-signature text-[10px]"></i>
+                            Backlog Clientes Comprometido (-)</span>
+                        <span class="font-mono font-bold">-{{ kpis.backlog_cant }} un <span
+                                class="text-red-400 font-normal">(-${{ kpis.backlog_usd|floatformat:"0g" }})</span></span>
+                    </div>
+                </div>
+            </div>
+            <div class="pt-3 border-t border-slate-100 flex justify-between items-center">
+                <span class="text-xs font-black uppercase text-slate-700">Inventario Libre No Comprometido:</span>
+                <span class="text-lg font-black font-mono text-emerald-600">{{ kpis.inventario_final_cant }} un <span
+                        class="text-xs text-slate-400 font-normal">(${{ kpis.inventario_final_usd|floatformat:"0g" }})</span></span>
+            </div>
+        </div>
+
+        <!-- Tarjeta 3: Rotación y Cobertura (Mando de Control) -->
+        <div class="bg-white rounded-3xl border border-slate-200 p-5 shadow-sm flex flex-col justify-between">
+            <div>
+                <div class="flex justify-between items-center mb-3">
+                    <span class="text-[11px] font-black text-slate-400 uppercase tracking-wider">Rotación y Meses de
+                        Cobertura</span>
+                    <span class="px-2 py-0.5 rounded-full text-[10px] font-black bg-cyan-100 text-cyan-800">
+                        Demanda L12M
+                    </span>
+                </div>
+                <div class="p-4 rounded-2xl bg-slate-50 border border-slate-200 text-center mb-4">
+                    <div class="text-xs font-bold text-slate-500 uppercase tracking-wider">Cobertura Actual de la Red
+                    </div>
+                    <div class="text-3xl font-black font-mono text-pesco-cyan mt-1">{{ kpis.rotacion_actual_meses }}
+                        <span class="text-lg font-normal text-slate-600">meses</span>
+                    </div>
+                    <p class="text-[11px] text-slate-500 mt-1">Con {{ kpis.inventario_final_cant }} unidades libres
+                        cubrimos {{ kpis.rotacion_actual_meses }} meses al ritmo de venta real.</p>
+                </div>
+            </div>
+            <div class="p-3 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 text-xs">
+                <div class="flex justify-between items-center font-bold">
+                    <span>Solicitudes en evaluación:</span>
+                    <span class="font-mono">+{{ kpis.solicitud_cant }} un (${{ kpis.solicitud_usd|floatformat:"0g" }}
+                        USD)</span>
+                </div>
+                <div class="flex justify-between items-center mt-1 text-[11px] text-amber-700">
+                    <span>Rotación proyectada si se compran:</span>
+                    <span class="font-mono font-bold">{{ kpis.rotacion_proj_meses }} meses</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 2. SIMULADOR 1 A 1 DE NEGOCIACIÓN COMERCIAL (REDiseñado 100% LIGHT THEME PESCO) -->
+    <div class="bg-white rounded-3xl p-6 sm:p-8 shadow-sm border border-slate-200 border-l-8 border-l-pesco-cyan">
+        <div
+            class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-slate-100 pb-5">
+            <div>
+                <div class="flex items-center gap-2">
+                    <span
+                        class="px-2.5 py-1 rounded-full text-[10px] font-black bg-cyan-100 text-cyan-800 uppercase tracking-wider">Simulador
+                        1 a 1</span>
+                    <span class="text-xs text-slate-500 font-medium">Reunión de Negociación Comercial con
+                        Vendedor</span>
+                </div>
+                <h2 class="text-2xl font-black tracking-tight text-slate-900 mt-1">Evaluador y Refutador de Propuestas
+                    de Compra</h2>
+                <p class="text-xs text-slate-500 mt-0.5">Selecciona el modelo que el vendedor propone comprar y simula
+                    el volumen para obtener el argumento técnico de refutación o aprobación.</p>
+            </div>
+            <div class="flex items-center gap-3 w-full md:w-auto">
+                <label class="text-xs text-slate-700 font-bold whitespace-nowrap">Modelo a Evaluar:</label>
+                <select id="sim-subfam-select" onchange="cambiarModeloSimulador()"
+                    class="bg-white border-2 border-slate-200 text-slate-900 rounded-2xl px-4 py-2.5 text-xs font-bold focus:ring-2 focus:ring-pesco-cyan focus:border-pesco-cyan w-full md:w-80 shadow-xs">
+                    {% for sf in todas_subfamilias %}
+                    <option value="{{ sf.clave }}" {% if active_sf.clave == sf.clave %}selected{% endif %}>
+                        HIAB {{ sf.clave }} · {{ sf.nombre|truncatechars:35 }} (Libres: {{ sf.inv_libre_cant }})
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+
+        {% if active_sf %}
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 mt-6">
+            <!-- Columna Izquierda: Radiografía Actual del Modelo (5 cols) -->
+            <div
+                class="lg:col-span-5 bg-slate-50 rounded-2xl p-5 border border-slate-200 flex flex-col justify-between">
+                <div>
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <span class="text-[10px] font-black text-pesco-cyan uppercase tracking-wider">Subfamilia {{ active_sf.clave }}</span>
+                            <h3 id="sim-modelo-nombre" class="text-lg font-black text-slate-900 mt-0.5 leading-snug">{{ active_sf.nombre }}</h3>
+                        </div>
+                        <span id="sim-semaforo-badge" class="px-2.5 py-1 rounded-full text-[10px] font-black uppercase
+                            {% if active_sf.semaforo == 'SOBRESTOCK' %}bg-red-100 text-red-800 border border-red-200
+                            {% elif active_sf.semaforo == 'PRECAUCION' %}bg-amber-100 text-amber-800 border border-amber-200
+                            {% elif active_sf.semaforo == 'OPTIMO' %}bg-emerald-100 text-emerald-800 border border-emerald-200
+                            {% else %}bg-cyan-100 text-cyan-800 border border-cyan-200{% endif %}">
+                            {{ active_sf.semaforo_label }}
+                        </span>
+                    </div>
+
+                    <div class="grid grid-cols-3 gap-2.5 mt-4 text-center">
+                        <div class="bg-white p-3 rounded-xl border border-slate-200 shadow-xs">
+                            <div class="text-[9px] font-bold text-slate-400 uppercase">Stock Físico</div>
+                            <div id="sim-stk-val" class="text-xl font-black font-mono text-slate-900 mt-0.5">{{ active_sf.stock_cant }}</div>
+                            <div class="text-[9px] text-slate-400">unidades</div>
+                        </div>
+                        <div class="bg-white p-3 rounded-xl border border-slate-200 shadow-xs">
+                            <div class="text-[9px] font-bold text-slate-400 uppercase">En Tránsito</div>
+                            <div id="sim-tr-val" class="text-xl font-black font-mono text-cyan-700 mt-0.5">{{ active_sf.tr_real_cant|add:active_sf.tr_proj_cant }}</div>
+                            <div class="text-[9px] text-slate-400">R: {{ active_sf.tr_real_cant }} | P: {{ active_sf.tr_proj_cant }}</div>
+                        </div>
+                        <div class="bg-white p-3 rounded-xl border border-slate-200 shadow-xs">
+                            <div class="text-[9px] font-bold text-slate-400 uppercase">En Taller</div>
+                            <div id="sim-prod-val" class="text-xl font-black font-mono text-purple-700 mt-0.5">{{ active_sf.en_proceso_cant }}</div>
+                            <div class="text-[9px] text-slate-400">montaje</div>
+                        </div>
+                    </div>
+
+                    <div class="mt-4 space-y-2 text-xs">
+                        <div class="flex justify-between py-1 border-b border-slate-200">
+                            <span class="text-slate-600">Inventario Inicial Total:</span>
+                            <span id="sim-inv-ini" class="font-mono font-bold text-slate-900">{{ active_sf.inv_inicial_cant }} unidades</span>
+                        </div>
+                        <div class="flex justify-between py-1 border-b border-slate-200 text-red-600">
+                            <span>Backlog Clientes (Comprometido):</span>
+                            <span id="sim-bklg" class="font-mono font-bold">-{{ active_sf.backlog_cant }}
+                                unidades</span>
+                        </div>
+                        <div
+                            class="flex justify-between py-2 bg-emerald-50 px-3 rounded-xl border border-emerald-200 font-bold">
+                            <span class="text-emerald-800">Inventario Libre Actual:</span>
+                            <span id="sim-inv-libre" class="font-mono text-emerald-800 font-black text-sm">{{ active_sf.inv_libre_cant }} unidades</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-4 mt-3 border-t border-slate-200 grid grid-cols-2 gap-2 text-xs">
+                    <div class="bg-white p-2.5 rounded-xl border border-slate-200 text-center">
+                        <span class="text-[10px] text-slate-400 block font-bold uppercase">Ventas L12M</span>
+                        <span id="sim-l12m" class="font-mono font-bold text-slate-900 text-sm">{{ active_sf.ent_12m_cant }} un</span>
+                        <span class="text-[9px] text-slate-500 block font-mono">({{ active_sf.ritmo_mensual }}
+                            un/mes)</span>
+                    </div>
+                    <div class="bg-white p-2.5 rounded-xl border border-slate-200 text-center">
+                        <span class="text-[10px] text-slate-400 block font-bold uppercase">Cobertura Actual</span>
+                        <span id="sim-cob-act" class="font-mono font-black text-amber-600 text-sm">{{ active_sf.cobertura_meses }} meses</span>
+                        <span class="text-[9px] text-slate-500 block">al ritmo anual</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Columna Derecha: Entrada de la Propuesta y Veredicto Automático (7 cols) -->
+            <div
+                class="lg:col-span-7 bg-slate-50 rounded-2xl p-6 border border-slate-200 flex flex-col justify-between space-y-4">
+                <div>
+                    <div
+                        class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
+                        <div>
+                            <span
+                                class="text-[10px] font-black text-pesco-cyan uppercase tracking-wider block">Propuesta
+                                del Vendedor</span>
+                            <span class="text-sm font-bold text-slate-900">¿Cuántas unidades propone comprar a
+                                fábrica?</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <button type="button" onclick="modificarCantidad(-1)"
+                                class="w-9 h-9 rounded-xl bg-slate-100 hover:bg-slate-200 active:scale-95 text-slate-800 font-black flex items-center justify-center border border-slate-300 shadow-xs cursor-pointer transition select-none">-</button>
+                            <input type="number" id="sim-input-cant"
+                                value="{{ simulacion.cantidad_solicitada|default:2 }}" min="0" max="50"
+                                oninput="ejecutarSimulacionEnVivo()"
+                                class="w-16 bg-white border-2 border-pesco-cyan text-slate-900 text-center rounded-xl py-2 font-mono text-lg font-black focus:ring-2 focus:ring-pesco-cyan">
+                            <button type="button" onclick="modificarCantidad(1)"
+                                class="w-9 h-9 rounded-xl bg-slate-100 hover:bg-slate-200 active:scale-95 text-slate-800 font-black flex items-center justify-center border border-slate-300 shadow-xs cursor-pointer transition select-none">+</button>
+                            <span class="text-xs text-slate-600 font-bold ml-1">unidades</span>
+                        </div>
+                    </div>
+
+                    <!-- Impacto Proyectado en Cifras -->
+                    <div class="grid grid-cols-3 gap-3 mt-4 text-center text-xs">
+                        <div class="bg-white p-3 rounded-xl border border-slate-200 shadow-xs">
+                            <span class="text-[10px] text-slate-500 block uppercase font-bold">Inversión Estimada</span>
+                            <span id="sim-res-inversion"
+                                class="text-base font-black font-mono text-slate-900 mt-1 block">
+                                ${{ simulacion.inversion_usd|floatformat:"0g" }} USD
+                            </span>
+                            <span class="text-[9px] text-slate-400 block mt-0.5">(${{ active_sf.costo_unitario_compra|floatformat:"0g" }} c/u)</span>
+                        </div>
+                        <div class="bg-white p-3 rounded-xl border border-slate-200 shadow-xs">
+                            <span class="text-[10px] text-slate-500 block uppercase font-bold">Inv. Libre
+                                Resultante</span>
+                            <span id="sim-res-invlibre" class="text-base font-black font-mono text-cyan-700 mt-1 block">
+                                {{ simulacion.inv_libre_proyectado }} unidades
+                            </span>
+                            <span class="text-[9px] text-slate-400 block mt-0.5">Disponibles sin venta</span>
+                        </div>
+                        <div class="bg-white p-3 rounded-xl border border-slate-200 shadow-xs">
+                            <span class="text-[10px] text-slate-500 block uppercase font-bold">Nueva Cobertura</span>
+                            <span id="sim-res-cobertura"
+                                class="text-base font-black font-mono text-amber-600 mt-1 block">
+                                {{ simulacion.cobertura_proyectada_meses }} meses
+                            </span>
+                            <span class="text-[9px] text-slate-400 block mt-0.5">Meses de inventario</span>
+                        </div>
+                    </div>
+
+                    <!-- Veredicto y Argumentario de Refutación -->
+                    <div class="mt-4">
+                        <div id="sim-box-veredicto" class="p-4 rounded-2xl border
+                            {% if simulacion.color == 'red' %}bg-red-50 border-red-200 text-red-900
+                            {% elif simulacion.color == 'amber' %}bg-amber-50 border-amber-200 text-amber-900
+                            {% elif simulacion.color == 'emerald' %}bg-emerald-50 border-emerald-200 text-emerald-900
+                            {% else %}bg-white border-slate-200 text-slate-800{% endif %}">
+                            <div class="flex items-center gap-2 mb-2">
+                                <span class="text-xs font-black uppercase tracking-wider text-slate-500">Veredicto
+                                    S&OP:</span>
+                                <span id="sim-veredicto-titulo" class="font-black text-sm">{{ simulacion.veredicto }}</span>
+                            </div>
+                            <p id="sim-argumento-texto" class="text-xs leading-relaxed font-medium">
+                                {{ simulacion.argumento }}
+                            </p>
+                        </div>
+                    </div>
+                    <!-- Registrar Decisión de Reunión 1 a 1 en BD -->
+                    <form method="post" action="{% url 'calculadora:sop_hiab_guardar_decision' %}"
+                        class="mt-4 bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-3">
+                        {% csrf_token %}
+                        <input type="hidden" name="modelo" id="dec-modelo" value="{{ active_sf.clave }}">
+                        <input type="hidden" name="cantidad_solicitada" id="dec-cant-sol"
+                            value="{{ simulacion.cantidad_solicitada|default:2 }}">
+                        <div class="flex items-center justify-between">
+                            <span class="text-[10px] font-black text-slate-700 uppercase tracking-wider"><i
+                                    class="fa-solid fa-gavel text-pesco-cyan mr-1"></i> Registrar Decisión de Reunión 1
+                                a 1</span>
+                            <span class="text-[10px] text-slate-400">Reemplaza hoja Solicitud del Excel</span>
+                        </div>
+                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+                            <input type="text" name="vendedor" placeholder="Vendedor / Ejecutivo"
+                                class="border border-slate-200 rounded-xl px-3 py-1.5 text-xs">
+                            <input type="text" name="negocio" placeholder="Cliente / Negocio / Licitación"
+                                class="border border-slate-200 rounded-xl px-3 py-1.5 text-xs">
+                            <select name="decision"
+                                class="border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-bold">
+                                {% for val, lbl in decision_choices %}
+                                <option value="{{ val }}">{{ lbl }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 text-xs">
+                            <input type="number" name="cantidad_aprobada" id="dec-cant-apr" min="0" max="50"
+                                value="{{ simulacion.cantidad_solicitada|default:0 }}" placeholder="Cant. aprobada"
+                                class="w-full sm:w-28 border border-slate-200 rounded-xl px-3 py-1.5 text-xs font-mono font-bold"
+                                title="Unidades aprobadas finalmente">
+                            <input type="text" name="comentario" placeholder="Acuerdo / comentario de la reunión..."
+                                class="flex-1 border border-slate-200 rounded-xl px-3 py-1.5 text-xs">
+                            <button type="submit"
+                                class="bg-slate-900 hover:bg-pesco-cyan text-white font-bold px-4 py-1.5 rounded-xl cursor-pointer transition whitespace-nowrap">
+                                <i class="fa-solid fa-check mr-1"></i> Guardar Decisión
+                            </button>
+                        </div>
+                    </form>
+                </div>
+
+                <div
+                    class="flex justify-between items-center text-[11px] text-slate-500 border-t border-slate-200 pt-3">
+                    <span>Criterio estándar Pesco: Lead time fábrica ~4-6 meses. Todo stock por sobre 12 meses es
+                        catalogado como sobrestock de alto riesgo.</span>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- 3. MATRIZ S&OP POR SUBFAMILIA Y MODELO (TABLA MAESTRA CON DESGLOSE COMPRA/VENTA Y BACKLOG) -->
+    <div id="matriz-consolidada"
+        class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden scroll-mt-6">
+        <div
+            class="p-6 border-b border-slate-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+            <div>
+                <span class="text-xs font-bold text-pesco-cyan uppercase tracking-wider">Matriz Consolidada · Maestro
+                    SAP</span>
+                <h3 class="text-xl font-black text-slate-900 tracking-tight">Radiografía S&OP de los {{ total_subfamilias }} Modelos HIAB</h3>
+                <p class="text-xs text-slate-500 mt-0.5">Haz clic en cualquier fila para desplegar sus códigos de
+                    compra, códigos de venta sobre camión, pedidos en backlog y editar su presupuesto anual.</p>
+            </div>
+
+            <!-- Barra de Filtros y Búsqueda -->
+            <form method="get" action="#matriz-consolidada" class="flex flex-wrap items-center gap-2 text-xs">
+                <select name="semaforo" onchange="this.form.submit()"
+                    class="border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium cursor-pointer">
+                    <option value="">Todos los Estados</option>
+                    <option value="SOBRESTOCK" {% if f_semaforo == 'SOBRESTOCK' %}selected{% endif %}>🔴 Sobrestock (> 12
+                        m)</option>
+                    <option value="PRECAUCION" {% if f_semaforo == 'PRECAUCION' %}selected{% endif %}>🟡 Precaución (6-12
+                        m)</option>
+                    <option value="OPTIMO" {% if f_semaforo == 'OPTIMO' %}selected{% endif %}>🟢 Óptimo (3-6 m)</option>
+                    <option value="QUIEBRE" {% if f_semaforo == 'QUIEBRE' %}selected{% endif %}>🔵 Baja Cobertura (< 3
+                            m)</option>
+                </select>
+
+                <input type="text" name="q" value="{{ f_search }}" placeholder="Buscar modelo o SKU..."
+                    class="border border-slate-200 rounded-xl px-3 py-2 text-xs w-48">
+
+                <button type="submit"
+                    class="bg-pesco-cyan hover:bg-pesco-darkcyan text-white font-bold px-4 py-2 rounded-xl cursor-pointer transition">Filtrar</button>
+                {% if f_semaforo or f_search or f_subfam %}
+                <a href="{% url 'calculadora:sop_hiab' %}#matriz-consolidada"
+                    class="text-slate-500 hover:text-slate-800 font-bold px-2 py-2">Limpiar</a>
+                {% endif %}
+            </form>
+        </div>
+
+        <div class="overflow-x-auto">
+            <table class="min-w-full text-xs">
+                <thead>
+                    <tr
+                        class="text-[10px] uppercase tracking-wider text-slate-400 bg-slate-50/80 border-b border-slate-200">
+                        <th class="py-3 px-4 text-left">Modelo / Subfamilia</th>
+                        <th class="py-3 px-2 text-right">Stock</th>
+                        <th class="py-3 px-2 text-right">Tránsito</th>
+                        <th class="py-3 px-2 text-right">Taller</th>
+                        <th class="py-3 px-2 text-right text-red-600">Backlog</th>
+                        <th class="py-3 px-3 text-right font-black text-slate-900 bg-emerald-50/50">Inv. Libre</th>
+                        <th class="py-3 px-2 text-right">L12M</th>
+                        <th class="py-3 px-2 text-right">Ppto 2026</th>
+                        <th class="py-3 px-3 text-right">Cobertura</th>
+                        <th class="py-3 px-3 text-center">Estado</th>
+                        <th class="py-3 px-3 text-center">Solicitud</th>
+                        <th class="py-3 px-4 text-center">Acción</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100 font-sans">
+                    {% for sf in subfamilias %}
+                    <tr class="hover:bg-slate-50/80 transition group" id="row-{{ sf.clave }}">
+                        <td class="py-3 px-4">
+                            <div class="flex items-center gap-2">
+                                <span
+                                    class="font-mono font-black text-xs px-2 py-0.5 rounded bg-slate-100 text-slate-800">{{ sf.clave }}</span>
+                                <div>
+                                    <span class="font-bold text-slate-900 block">{{ sf.nombre|truncatechars:38 }}</span>
+                                    <span class="text-[10px] text-slate-400">{{ sf.skus|length }} SKUs mapeados ·
+                                        Familia {{ sf.familia }}</span>
+                                </div>
+                            </div>
+                        </td>
+                        <td class="px-2 text-right font-mono font-bold text-slate-900">{{ sf.stock_cant }}</td>
+                        <td class="px-2 text-right font-mono text-cyan-700 font-bold">{{ sf.tr_real_cant|add:sf.tr_proj_cant }}</td>
+                        <td class="px-2 text-right font-mono text-purple-700 font-bold">{{ sf.en_proceso_cant }}</td>
+                        <td class="px-2 text-right font-mono font-bold text-red-600">{% if sf.backlog_cant %}-{{ sf.backlog_cant }}{% else %}0{% endif %}</td>
+                        <td class="px-3 text-right font-mono font-black text-emerald-700 bg-emerald-50/40 text-sm">{{ sf.inv_libre_cant }}</td>
+                        <td class="px-2 text-right font-mono text-slate-700">{{ sf.ent_12m_cant }}</td>
+                        <td class="px-2 text-right font-mono text-slate-500">{{ sf.presup_cant }}</td>
+                        <td class="px-3 text-right font-mono font-black
+                            {% if sf.semaforo == 'SOBRESTOCK' %}text-red-600
+                            {% elif sf.semaforo == 'PRECAUCION' %}text-amber-600
+                            {% elif sf.semaforo == 'OPTIMO' %}text-emerald-600
+                            {% else %}text-cyan-600{% endif %}">
+                            {{ sf.cobertura_meses }} m
+                        </td>
+                        <td class="px-3 text-center">
+                            <span class="px-2 py-0.5 rounded-full text-[10px] font-black
+                                {% if sf.semaforo == 'SOBRESTOCK' %}bg-red-100 text-red-800
+                                {% elif sf.semaforo == 'PRECAUCION' %}bg-amber-100 text-amber-800
+                                {% elif sf.semaforo == 'OPTIMO' %}bg-emerald-100 text-emerald-800
+                                {% else %}bg-cyan-100 text-cyan-800{% endif %}">
+                                {{ sf.semaforo_label }}
+                            </span>
+                        </td>
+                        <td class="px-3 text-center font-mono">
+                            {% if sf.solic_cant %}
+                            <span class="px-2 py-0.5 rounded bg-amber-100 text-amber-900 font-bold">+{{ sf.solic_cant }}
+                                un</span>
+                            {% else %}
+                            <span class="text-slate-300">—</span>
+                            {% endif %}
+                        </td>
+                        <td class="px-4 text-center whitespace-nowrap">
+                            <div class="flex items-center justify-center gap-1.5">
+                                <button type="button" onclick="cargarEnSimulador('{{ sf.clave }}')"
+                                    class="bg-pesco-lightcyan hover:bg-pesco-cyan text-pesco-cyan hover:text-white text-[10px] font-bold px-2.5 py-1.5 rounded-lg transition"
+                                    title="Subir a la caja del simulador">
+                                    <i class="fa-solid fa-calculator mr-0.5"></i> Simular
+                                </button>
+                                <button type="button" onclick="toggleDetalle('{{ sf.clave }}')"
+                                    class="bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-bold px-2 py-1.5 rounded-lg transition"
+                                    title="Ver desglose de SKUs y clientes">
+                                    <i class="fa-solid fa-chevron-down" id="chevron-{{ sf.clave }}"></i>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+
+                    <!-- FILA ACORDEÓN DE DETALLE EXPANDIBLE (SKUS Y CLIENTES) -->
+                    <tr id="detalle-{{ sf.clave }}" class="hidden bg-slate-50/90 border-b border-slate-200">
+                        <td colspan="12" class="p-4 sm:p-6">
+                            <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                                <!-- Desglose de SKUs de Compra vs Venta -->
+                                <div class="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm">
+                                    <div
+                                        class="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-2 flex items-center justify-between">
+                                        <span>SKUs Asociados al Modelo (Compra y Venta)</span>
+                                        <span class="text-pesco-cyan">{{ sf.skus|length }} códigos</span>
+                                    </div>
+                                    <div class="space-y-2 max-h-60 overflow-y-auto pr-1">
+                                        {% for s in sf.skus %}
+                                        <div
+                                            class="p-2.5 rounded-xl border border-slate-100 bg-slate-50/50 flex justify-between items-center text-xs">
+                                            <div>
+                                                <div class="flex items-center gap-1.5">
+                                                    <span
+                                                        class="px-1.5 py-0.2 rounded text-[9px] font-black {% if s.origen == 'Compra' %}bg-amber-100 text-amber-800{% else %}bg-cyan-100 text-cyan-800{% endif %}">
+                                                        {{ s.origen }}
+                                                    </span>
+                                                    <span class="font-mono font-bold text-slate-900">{{ s.codigo }}</span>
+                                                    {% if s.sobre_camion == 'Sí' %}
+                                                    <span
+                                                        class="px-1.5 py-0.2 rounded text-[9px] font-bold bg-purple-100 text-purple-800">Sobre
+                                                        Camión</span>
+                                                    {% endif %}
+                                                </div>
+                                                <div class="text-[11px] text-slate-600 mt-0.5">{{ s.descripcion }}</div>
+                                            </div>
+                                            <div class="text-right font-mono text-[11px]">
+                                                <div>Stock: <strong class="text-slate-900">{{ s.stock_cant }}</strong>
+                                                </div>
+                                                {% if s.tr_real_cant or s.tr_proj_cant %}
+                                                <div class="text-cyan-700">Trán: {{ s.tr_real_cant|add:s.tr_proj_cant }}
+                                                </div>
+                                                {% endif %}
+                                                {% if s.prod_cant %}
+                                                <div class="text-purple-700">Taller: {{ s.prod_cant }}</div>
+                                                {% endif %}
+                                            </div>
+                                        </div>
+                                        {% endfor %}
+                                    </div>
+                                </div>
+
+                                <!-- Detalle de Backlog con Clientes y Solicitudes -->
+                                <div
+                                    class="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm flex flex-col justify-between">
+                                    <div>
+                                        <div
+                                            class="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-2 flex items-center justify-between">
+                                            <span>Compromisos en Backlog (Clientes)</span>
+                                            <span class="text-red-600 font-bold">{{ sf.backlog_items|length }}
+                                                pedidos</span>
+                                        </div>
+                                        {% if sf.backlog_items %}
+                                        <div class="space-y-2 max-h-44 overflow-y-auto pr-1">
+                                            {% for b in sf.backlog_items %}
+                                            <div class="p-2.5 rounded-xl border border-red-100 bg-red-50/30 text-xs">
+                                                <div class="flex justify-between items-start">
+                                                    <span class="font-black text-slate-900">{{ b.cliente }}</span>
+                                                    <span class="font-mono font-bold text-red-600">{{ b.cantidad }}
+                                                        un</span>
+                                                </div>
+                                                <div
+                                                    class="flex justify-between items-center text-[10px] text-slate-500 mt-1">
+                                                    <span>PC: <strong class="text-slate-700">{{ b.pc }}</strong> · Ejec:
+                                                        {{ b.ejecutivo }}</span>
+                                                    <span class="font-mono">${{ b.total_usd|floatformat:"0g" }}
+                                                        USD</span>
+                                                </div>
+                                            </div>
+                                            {% endfor %}
+                                        </div>
+                                        {% else %}
+                                        <div class="p-6 text-center text-slate-400 text-xs italic">
+                                            No hay pedidos de clientes en backlog para esta subfamilia.
+                                        </div>
+                                        {% endif %}
+                                    </div>
+
+                                    {% if sf.solicitudes_items %}
+                                    <div class="mt-3 pt-3 border-t border-slate-100">
+                                        <div
+                                            class="text-[10px] font-black text-amber-700 uppercase tracking-wider mb-1">
+                                            Solicitudes de Compra Registradas</div>
+                                        {% for sol in sf.solicitudes_items %}
+                                        <div
+                                            class="p-2 rounded-xl bg-amber-50 border border-amber-200 text-xs flex justify-between items-center text-amber-900">
+                                            <div>
+                                                <strong>{{ sol.cantidad }} un</strong> para <em>{{ sol.negocio }}</em>
+                                                <span class="text-[10px] text-amber-700 block">{{ sol.descripcion }}</span>
+                                            </div>
+                                            <span class="font-mono font-bold">${{ sol.total_usd|floatformat:"0g" }}
+                                                USD</span>
+                                        </div>
+                                        {% endfor %}
+                                    </div>
+                                    {% endif %}
+                                    <div class="mt-3 pt-3 border-t border-slate-100">
+                                        <form method="post"
+                                            action="{% url 'calculadora:sop_hiab_guardar_presupuesto' %}"
+                                            class="flex flex-wrap items-center gap-2 text-xs">
+                                            {% csrf_token %}
+                                            <input type="hidden" name="modelo" value="{{ sf.clave }}">
+                                            <input type="hidden" name="anio" value="{{ anio_ref }}">
+                                            <span class="text-[10px] font-black text-slate-500 uppercase">Ppto {{ anio_ref }}:</span>
+                                            <input type="number" name="cantidad" min="0" step="1"
+                                                value="{{ sf.presup_cant }}" placeholder="Unid."
+                                                class="w-20 border border-slate-200 rounded-lg px-2 py-1 text-xs font-mono">
+                                            <input type="number" name="monto_usd" min="0" step="1000"
+                                                value="{{ sf.presup_usd|floatformat:0 }}" placeholder="USD"
+                                                class="w-28 border border-slate-200 rounded-lg px-2 py-1 text-xs font-mono">
+                                            <button type="submit"
+                                                class="bg-slate-800 hover:bg-pesco-cyan text-white text-[10px] font-bold px-3 py-1 rounded-lg cursor-pointer transition">Guardar
+                                                Ppto</button>
+                                        </form>
+                                    </div>
+                                </div>
+                            </div>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="12" class="p-8 text-center text-slate-500">
+                            No se encontraron modelos con los filtros seleccionados.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- 4. HISTORIAL DE DECISIONES 1 A 1 REGISTRADAS EN BD -->
+    <div id="historial-decisiones"
+        class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden scroll-mt-6">
+        <div class="p-6 border-b border-slate-100 flex justify-between items-center">
+            <div>
+                <span class="text-xs font-bold text-pesco-cyan uppercase tracking-wider">Bitácora Comercial 1 a 1</span>
+                <h3 class="text-lg font-black text-slate-900 tracking-tight">Decisiones y Propuestas Registradas</h3>
+            </div>
+            <span class="text-xs font-mono font-bold text-slate-500">{{ propuestas_recientes|length }}
+                registro(s)</span>
+        </div>
+        {% if propuestas_recientes %}
+        <div class="overflow-x-auto">
+            <table class="min-w-full text-xs">
+                <thead>
+                    <tr
+                        class="text-[10px] uppercase tracking-wider text-slate-400 bg-slate-50 border-b border-slate-200">
+                        <th class="py-2.5 px-4 text-left">Fecha</th>
+                        <th class="py-2.5 px-3 text-left">Modelo SAP</th>
+                        <th class="py-2.5 px-3 text-left">Vendedor / Negocio</th>
+                        <th class="py-2.5 px-2 text-right">Solic.</th>
+                        <th class="py-2.5 px-2 text-right">Aprob.</th>
+                        <th class="py-2.5 px-3 text-right">Inversión USD</th>
+                        <th class="py-2.5 px-3 text-center">Decisión</th>
+                        <th class="py-2.5 px-3 text-left">Comentario</th>
+                        <th class="py-2.5 px-3 text-center">Acción</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100">
+                    {% for pr in propuestas_recientes %}
+                    <tr class="hover:bg-slate-50/70">
+                        <td class="py-2.5 px-4 font-mono text-slate-500 whitespace-nowrap">{{ pr.creado_en|date:"d-m-Y H:i" }}</td>
+                        <td class="py-2.5 px-3">
+                            <span class="font-mono font-black px-1.5 py-0.5 rounded bg-slate-100 text-slate-800">{{ pr.modelo }}</span>
+                            <span class="text-slate-600 ml-1">{{ pr.modelo_nombre|truncatechars:28 }}</span>
+                        </td>
+                        <td class="py-2.5 px-3">
+                            <span class="font-bold text-slate-800">{{ pr.vendedor|default:"—" }}</span>
+                            {% if pr.negocio %}<span class="text-slate-500 block text-[11px]">{{ pr.negocio }}</span>{% endif %}
+                        </td>
+                        <td class="py-2.5 px-2 text-right font-mono">{{ pr.cantidad_solicitada }}</td>
+                        <td class="py-2.5 px-2 text-right font-mono font-bold text-emerald-700">{{ pr.cantidad_aprobada }}</td>
+                        <td class="py-2.5 px-3 text-right font-mono">${{ pr.inversion_usd|floatformat:"0g" }}</td>
+                        <td class="py-2.5 px-3 text-center">
+                            <span
+                                class="px-2 py-0.5 rounded-full text-[10px] font-black {% if pr.decision == 'APROBADA' %}bg-emerald-100 text-emerald-800{% elif pr.decision == 'REFUTADA' %}bg-red-100 text-red-800{% elif pr.decision == 'PARCIAL' or pr.decision == 'POSTERGADA' %}bg-amber-100 text-amber-800{% else %}bg-slate-100 text-slate-700{% endif %}">{{ pr.get_decision_display }}</span>
+                        </td>
+                        <td class="py-2.5 px-3 text-slate-600 max-w-xs truncate">{{ pr.comentario|default:"—" }}</td>
+                        <td class="py-2.5 px-3 text-center">
+                            <form method="post" action="{% url 'calculadora:sop_hiab_eliminar_decision' pr.pk %}"
+                                onsubmit="return confirm('¿Eliminar este registro?');">
+                                {% csrf_token %}
+                                <button type="submit" class="text-slate-400 hover:text-red-600 cursor-pointer"
+                                    title="Eliminar"><i class="fa-solid fa-trash-can"></i></button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="p-6 text-center text-xs text-slate-400 italic">
+            Aún no hay decisiones registradas. Usa el formulario dentro del Simulador 1 a 1 para guardar el resultado de
+            cada reunión con vendedores.
+        </div>
+        {% endif %}
+    </div>
+    {% endif %}
+</div>
+
+<!-- Datos serializados de forma segura para JavaScript -->
+{{ subfamilias_map|json_script:"sf-data-json" }}
+
+<!-- JavaScript para la Simulación en Tiempo Real y Acordeón -->
+<script>
+    const sfDataMap = JSON.parse(document.getElementById('sf-data-json')?.textContent || '{}');
+
+    function toggleDetalle(clave) {
+        const row = document.getElementById('detalle-' + clave);
+        const chevron = document.getElementById('chevron-' + clave);
+        if (!row) return;
+        if (row.classList.contains('hidden')) {
+            row.classList.remove('hidden');
+            if (chevron) chevron.classList.add('rotate-180');
+        } else {
+            row.classList.add('hidden');
+            if (chevron) chevron.classList.remove('rotate-180');
+        }
+    }
+
+    function cargarEnSimulador(clave) {
+        const sel = document.getElementById('sim-subfam-select');
+        if (sel) {
+            sel.value = clave;
+            cambiarModeloSimulador();
+            // scroll suave hacia arriba
+            sel.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+    }
+
+    function cambiarModeloSimulador() {
+        const sel = document.getElementById('sim-subfam-select');
+        if (!sel) return;
+        const clave = sel.value;
+        const sf = sfDataMap[clave];
+        if (!sf) return;
+
+        // Actualizar datos estáticos en el panel
+        document.getElementById('sim-modelo-nombre').innerText = sf.nombre;
+        document.getElementById('sim-stk-val').innerText = sf.stock_cant;
+        document.getElementById('sim-tr-val').innerText = sf.tr_real_cant + sf.tr_proj_cant;
+        document.getElementById('sim-prod-val').innerText = sf.en_proceso_cant;
+        document.getElementById('sim-inv-ini').innerText = sf.inv_inicial_cant + ' unidades';
+        document.getElementById('sim-bklg').innerText = '-' + sf.backlog_cant + ' unidades';
+        document.getElementById('sim-inv-libre').innerText = sf.inv_libre_cant + ' unidades';
+        document.getElementById('sim-l12m').innerText = sf.ent_12m_cant + ' un';
+        document.getElementById('sim-cob-act').innerText = sf.cobertura_meses + ' meses';
+
+        // Actualizar semáforo badge
+        const badge = document.getElementById('sim-semaforo-badge');
+        if (badge) {
+            badge.className = 'px-2.5 py-1 rounded-full text-[10px] font-black uppercase ';
+            if (sf.semaforo === 'SOBRESTOCK') {
+                badge.className += 'bg-red-100 text-red-800 border border-red-200';
+            } else if (sf.semaforo === 'PRECAUCION') {
+                badge.className += 'bg-amber-100 text-amber-800 border border-amber-200';
+            } else if (sf.semaforo === 'OPTIMO') {
+                badge.className += 'bg-emerald-100 text-emerald-800 border border-emerald-200';
+            } else {
+                badge.className += 'bg-cyan-100 text-cyan-800 border border-cyan-200';
+            }
+            badge.innerText = sf.semaforo_label;
+        }
+
+        ejecutarSimulacionEnVivo();
+    }
+
+    function modificarCantidad(delta) {
+        const input = document.getElementById('sim-input-cant');
+        if (!input) return;
+        let v = parseInt(input.value) || 0;
+        v = Math.max(0, v + delta);
+        input.value = v;
+        ejecutarSimulacionEnVivo();
+    }
+
+    function formatMoney(num) {
+        return '$' + Math.round(num).toLocaleString('de-DE') + ' USD';
+    }
+
+    function ejecutarSimulacionEnVivo() {
+        const sel = document.getElementById('sim-subfam-select');
+        const input = document.getElementById('sim-input-cant');
+        if (!sel || !input) return;
+
+        const clave = sel.value;
+        const cant = Math.max(0, parseInt(input.value) || 0);
+        const sf = sfDataMap[clave];
+        if (!sf) return;
+
+        // Sincronizar campos del formulario "Registrar Decisión 1 a 1"
+        const decMod = document.getElementById('dec-modelo');
+        const decSol = document.getElementById('dec-cant-sol');
+        const decApr = document.getElementById('dec-cant-apr');
+        if (decMod) decMod.value = clave;
+        if (decSol) decSol.value = cant;
+        if (decApr) decApr.value = cant;
+
+        const costo_u = sf.costo_unitario_compra || 100000;
+        const inversion = cant * costo_u;
+        const inv_libre_proj = sf.inv_libre_cant + cant;
+        let cob_proj = 0;
+        if (sf.ritmo_mensual > 0) {
+            cob_proj = Math.round((inv_libre_proj / sf.ritmo_mensual) * 10) / 10;
+        } else if (inv_libre_proj > 0) {
+            cob_proj = 999;
+        }
+
+        // Actualizar métricas proyectadas con colores contrastados
+        document.getElementById('sim-res-inversion').innerText = formatMoney(inversion);
+        document.getElementById('sim-res-invlibre').innerText = inv_libre_proj + ' unidades';
+        document.getElementById('sim-res-cobertura').innerText = cob_proj + ' meses';
+
+        // Dictamen y Argumento comercial (100% Light Theme legible)
+        const box = document.getElementById('sim-box-veredicto');
+        const titulo = document.getElementById('sim-veredicto-titulo');
+        const texto = document.getElementById('sim-argumento-texto');
+
+        if (cant === 0) {
+            box.className = 'p-4 rounded-2xl border bg-white border-slate-200 text-slate-800 shadow-xs';
+            titulo.innerText = 'Sin solicitud adicional';
+            texto.innerText = `El modelo ${sf.nombre} (Subfamilia ${sf.clave}) cuenta actualmente con ${sf.inv_libre_cant} unidades libres (${sf.stock_cant} en stock, ${sf.tr_real_cant + sf.tr_proj_cant} en tránsito y ${sf.en_proceso_cant} en taller, descontando ${sf.backlog_cant} comprometidas en backlog). Cobertura actual: ${sf.cobertura_meses} meses.`;
+        } else if (sf.cobertura_meses > 12.0) {
+            box.className = 'p-4 rounded-2xl border bg-red-50 border-red-200 text-red-900 shadow-xs';
+            titulo.innerText = '⛔ REFUTAR COMPRA (Sobrestock Severo)';
+            texto.innerText = `Rechazar solicitud. El modelo ya cuenta con ${sf.inv_libre_cant} unidades disponibles no comprometidas (${sf.cobertura_meses} meses de cobertura al ritmo anual de ${sf.ent_12m_cant} unidades). Comprar ${cant} unidades adicionales inmovilizaría ${formatMoney(inversion)} en capital de trabajo y dispararía la cobertura a ${cob_proj} meses (${(cob_proj / 12).toFixed(1)} años). Recomendación: Priorizar la venta de las unidades en stock (${sf.stock_cant}) y en tránsito (${sf.tr_real_cant + sf.tr_proj_cant}).`;
+        } else if (sf.cobertura_meses >= 6.0) {
+            box.className = 'p-4 rounded-2xl border bg-amber-50 border-amber-200 text-amber-900 shadow-xs';
+            titulo.innerText = '⚠️ NEGOCIAR REDUCCIÓN O POSTERGAR';
+            texto.innerText = `Ajustar o diferir compra. El inventario libre actual (${sf.inv_libre_cant} unidades) cubre ${sf.cobertura_meses} meses de demanda, suficiente para cubrir el lead time de fábrica. Comprar ${cant} unidades (${formatMoney(inversion)}) elevaría la cobertura a ${cob_proj} meses. Recomendación: Si el cliente no tiene una orden en firme firmada, aplazar la compra a la próxima ventana S&OP o comprar máximo 1 unidad.`;
+        } else if (cob_proj <= 6.0) {
+            box.className = 'p-4 rounded-2xl border bg-emerald-50 border-emerald-200 text-emerald-900 shadow-xs';
+            titulo.innerText = '✅ APROBAR COMPRA (Completamente Justificada)';
+            texto.innerText = `Aprobar compra de ${cant} unidades (${formatMoney(inversion)}). El inventario libre actual es de solo ${sf.inv_libre_cant} unidades con cobertura baja (${sf.cobertura_meses} meses) frente a una demanda de ${sf.ritmo_mensual} un/mes. La compra asegura suministro para los próximos ${cob_proj} meses manteniendo un nivel de inventario saludable.`;
+        } else {
+            box.className = 'p-4 rounded-2xl border bg-amber-50 border-amber-200 text-amber-900 shadow-xs';
+            const sugerida = Math.max(1, Math.round((6.0 * sf.ritmo_mensual) - sf.inv_libre_cant));
+            titulo.innerText = '⚠️ APROBACIÓN PARCIAL (Reducir volumen)';
+            texto.innerText = `La compra solicitada de ${cant} unidades sobrepasa la cobertura óptima (alcanza ${cob_proj} meses). Se recomienda contra-ofertar la compra de ${sugerida} unidades (${formatMoney(sugerida * costo_u)}) para dejar la cobertura en un rango de ~6 meses.`;
+        }
+    }
+</script>
+{% endblock %}

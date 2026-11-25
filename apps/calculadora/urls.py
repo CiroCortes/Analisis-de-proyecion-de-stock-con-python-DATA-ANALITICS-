@@ -4,6 +4,7 @@ from . import views_fusion as fu
 from . import views_gestion as g
 from . import views_marcas as mk
 from . import views_planificacion as v
+from . import views_sop_hiab as hiab
 
 app_name = 'calculadora'
 
@@ -51,4 +52,12 @@ urlpatterns = [
     # Marcas de gestion y ABC por venta (SPEC-31)
     path('marcas/', mk.marcas_view, name='marcas'),
     path('abc-venta/', mk.abc_venta, name='abc_venta'),
+
+    # S&OP HIAB: Analisis especial de Ignacio y Mesa de Negociacion 1 a 1
+    path('sop-hiab/', hiab.sop_hiab_view, name='sop_hiab'),
+    path('sop-hiab/simular/', hiab.sop_hiab_simular_api, name='sop_hiab_simular'),
+    path('sop-hiab/decision/', hiab.sop_hiab_guardar_decision, name='sop_hiab_guardar_decision'),
+    path('sop-hiab/decision/<int:pk>/eliminar/', hiab.sop_hiab_eliminar_decision, name='sop_hiab_eliminar_decision'),
+    path('sop-hiab/presupuesto/', hiab.sop_hiab_guardar_presupuesto, name='sop_hiab_guardar_presupuesto'),
+    path('sop-hiab/excel/', hiab.sop_hiab_excel, name='sop_hiab_excel'),
 ]

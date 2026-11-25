@@ -230,7 +230,8 @@ def compromisos_antiguos(corrida, hoy, p):
     from .servicio import _restar_meses
     corte = _restar_meses(hoy, p.meses_compromisos_recientes)
     docs = defaultdict(list)
-    for sku, tipo, numero, emision, responsable in CompromisoDetalle.objects.filter(fecha_emision__lt=corte).values_list(
+    for sku, tipo, numero, emision, responsable in CompromisoDetalle.objects.filter(
+            en_alcance_repo=True, fecha_emision__lt=corte).values_list(
             'codigo_sku', 'tipo', 'numero', 'fecha_emision', 'responsable'):
         docs[sku].append((emision, tipo, numero, responsable))
     out = []
