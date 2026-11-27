@@ -626,6 +626,10 @@ class PropuestaCompraSOP(models.Model):
     cobertura_proyectada_meses = models.FloatField(default=0)
     decision = models.CharField(max_length=15, choices=DECISIONES, default=PENDIENTE, db_index=True)
     comentario = models.TextField(blank=True, default='')
+    solicitud_compra = models.ForeignKey(
+        SolicitudCompra, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='propuestas_sop', help_text='SC generada en el módulo oficial desde esta decisión 1 a 1',
+    )
     creado_por = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL)
     creado_en = models.DateTimeField(auto_now_add=True)
     actualizado_en = models.DateTimeField(auto_now=True)
@@ -635,3 +639,40 @@ class PropuestaCompraSOP(models.Model):
 
     def __str__(self):
         return f'Modelo {self.modelo} | {self.get_decision_display()} ({self.cantidad_aprobada}/{self.cantidad_solicitada} un)'
+
+
+class NegocioEnCursoSOP(models.Model):
+    """Negocios en Curso (NEC / NEC 4) gestionados por Abastecimiento/Comercial por Modelo SAP."""
+    NEC_4 = 'NEC_4'
+    NEC_3 = 'NEC_3'
+    COTIZACION = 'COTIZACION'
+    ETAPAS = [
+        (NEC_4, 'NEC 4 (Alta probabilidad)'),
+        (NEC_3, 'NEC 3 (En negociación)'),
+        (COTIZACION, 'Cotización abierta'),
+    ]
+
+    anio = models.IntegerField(db_index=True, default=2026)
+    familia = models.CharField(max_length=100, default='', db_index=True)
+    subfamilia = models.CharField(max_length=100, default='', db_index=True)
+    modelo = models.CharField(max_length=100, db_index=True, help_text='Valor exacto de ProductSKU.modelo en SAP')
+    modelo_nombre = models.CharField(max_length=255, blank=True, default='')
+    cliente = models.CharField(max_length=200, blank=True, default='')
+    comercial = models.CharField(max_length=120, blank=True, default='')
+    etapa = models.CharField(max_length=15, choices=ETAPAS, default=NEC_4, db_index=True)
+    cantidad = models.IntegerField(default=1)
+    precio_unitario_usd = models.FloatField(default=0)
+    comentario = models.CharField(max_length=255, blank=True, default='')
+    creado_por = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL)
+    creado_en = models.DateTimeField(auto_now_add=True)
+    actualizado_en = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-actualizado_en', '-id']
+
+    @property
+    def total_usd(self):
+        return float(self.cantidad or 0) * float(self.precio_unitario_usd or 0)
+
+    def __str__(self):
+        return f'{self.get_etapa_display()} | Mod {self.modelo} · {self.cliente} ({self.cantidad} un)'

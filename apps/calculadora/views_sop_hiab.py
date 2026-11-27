@@ -1,126 +1,203 @@
-"""Vistas para el Panel S&OP HIAB: Análisis y Mesa de Negociación Comercial (1 a 1)."""
+"""Vistas para el Panel S&OP Equipos (Todas las Marcas) y Mesa de Negociación 1 a 1."""
+from urllib.parse import urlencode
+
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.http import JsonResponse, HttpResponse
+from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
-from . import sop_hiab
+from . import sop_equipos, sop_equipos_io
 from .excel import respuesta_excel_multi
 from .models import PresupuestoSOP, PropuestaCompraSOP
 
 
-@login_required
-def sop_hiab_view(request):
-    """Vista principal de la mesa S&OP HIAB de Ignacio."""
-    data = sop_hiab.get_sop_hiab_data()
-    if not data.get('hay_datos'):
-        return render(request, 'calculadora/sop_hiab.html', {'hay_datos': False, 'error': data.get('error')})
+def _leer_filtros(request):
+    """Lee y normaliza los filtros de alcance y búsqueda desde GET o POST."""
+    src = request.GET if request.method == 'GET' else request.POST
+    return {
+        'grupo': src.get('grupo', '').strip(),
+        'marca': src.get('marca', '').strip(),
+        'semaforo': src.get('semaforo', '').strip(),
+        'q': src.get('q', '').strip(),
+    }
 
-    subfamilias = data['subfamilias']
-    kpis = data['kpis']
 
-    # Filtros
-    f_subfam = request.GET.get('subfamilia', '').strip()
-    f_semaforo = request.GET.get('semaforo', '').strip()
-    f_search = request.GET.get('q', '').strip().lower()
+def _url_retorno(filtros, extra=None, anchor=''):
+    """Construye la URL de retorno preservando filtros activos de Grupo/Marca/Semáforo."""
+    params = {k: v for k, v in filtros.items() if v}
+    if extra:
+        params.update({k: v for k, v in extra.items() if v not in ('', None)})
+    base = reverse('calculadora:sop_hiab')
+    qs = f'?{urlencode(params)}' if params else ''
+    frag = f'#{anchor}' if anchor else ''
+    return f'{base}{qs}{frag}'
 
-    subfamilias_filtradas = []
+
+def _parse_int(val, default=0, minimo=0):
+    try:
+        return max(minimo, int(val or 0))
+    except (ValueError, TypeError):
+        return default
+
+
+def _parse_float(val, default=0.0, minimo=0.0):
+    try:
+        return max(minimo, float(val or 0))
+    except (ValueError, TypeError):
+        return default
+
+
+def _filtrar_modelos(subfamilias, f_semaforo, f_search):
+    q = f_search.lower()
+    out = []
     for sf in subfamilias:
-        if f_subfam and sf['clave'] != f_subfam:
-            continue
         if f_semaforo and sf['semaforo'] != f_semaforo:
             continue
-        if f_search:
+        if q:
             match_txt = (
-                f_search in sf['clave'].lower() or
-                f_search in sf['nombre'].lower() or
-                any(f_search in s['codigo'].lower() or f_search in s['descripcion'].lower() for s in sf['skus'])
+                q in sf['modelo'].lower()
+                or q in sf['nombre'].lower()
+                or q in sf['marca_label'].lower()
+                or q in sf['grupo_sap'].lower()
+                or any(q in s['codigo'].lower() or q in s['descripcion'].lower() for s in sf['skus'])
             )
             if not match_txt:
                 continue
-        subfamilias_filtradas.append(sf)
+        out.append(sf)
+    return out
 
-    # Subfamilia activa para el simulador 1 a 1
-    selected_clave = request.GET.get('sim_subfam') or (subfamilias_filtradas[0]['clave'] if subfamilias_filtradas else '1188')
-    active_sf = data['subfamilias_dict'].get(selected_clave) or (subfamilias_filtradas[0] if subfamilias_filtradas else None)
 
-    # Simulación inicial
-    sim_cant = int(request.GET.get('sim_cant') or 0)
-    simulacion = None
-    if active_sf:
-        simulacion = sop_hiab.simular_propuesta_compra(active_sf['clave'], sim_cant)
+def _serializar_modelo_js(sf):
+    """Payload compacto por modelo para el selector multimodelo en cliente."""
+    return {
+        'clave': sf['clave'],
+        'modelo': sf['modelo'],
+        'familia': sf['familia'],
+        'subfamilia_code': sf['subfamilia_code'],
+        'marca_label': sf['marca_label'],
+        'grupo_sap': sf['grupo_sap'],
+        'nombre': sf['nombre'],
+        'inv_libre_cant': sf['inv_libre_cant'],
+        'semaforo': sf['semaforo'],
+        'semaforo_label': sf['semaforo_label'],
+    }
 
-    # Mapa serializable para el simulador interactivo en cliente (evita problemas de localización)
-    subfamilias_map = {}
-    for sf in subfamilias:
-        subfamilias_map[sf['clave']] = {
-            'clave': sf['clave'],
-            'nombre': sf['nombre'],
-            'familia': sf['familia'],
-            'stock_cant': sf['stock_cant'],
-            'tr_real_cant': sf['tr_real_cant'],
-            'tr_proj_cant': sf['tr_proj_cant'],
-            'en_proceso_cant': sf['en_proceso_cant'],
-            'inv_inicial_cant': sf['inv_inicial_cant'],
-            'backlog_cant': sf['backlog_cant'],
-            'inv_libre_cant': sf['inv_libre_cant'],
-            'ent_12m_cant': sf['ent_12m_cant'],
-            'ritmo_mensual': float(sf['ritmo_mensual']),
-            'cobertura_meses': float(sf['cobertura_meses']),
-            'semaforo': sf['semaforo'],
-            'semaforo_label': sf['semaforo_label'],
-            'costo_unitario_compra': float(sf['costo_unitario_compra']),
-        }
+
+@login_required
+def sop_hiab_view(request):
+    """Vista principal S&OP Equipos (Todas las Marcas) y Mesa de Negociación 1 a 1."""
+    filtros = _leer_filtros(request)
+    data = sop_equipos.get_sop_equipos_data(grupo=filtros['grupo'], marca=filtros['marca'])
+    if not data.get('hay_datos'):
+        return render(request, 'calculadora/sop_hiab.html', {
+            'hay_datos': False,
+            'error': data.get('error'),
+        })
+
+    todas = data['subfamilias']
+    filtradas = _filtrar_modelos(todas, filtros['semaforo'], filtros['q'])
+
+    # Modelo(s) activo(s) para el Simulador 1 a 1 (por defecto: Consolidado Total de todas las marcas)
+    selected_raw = request.GET.get('sim_subfam', '').strip()
+    if not selected_raw or selected_raw.upper() in ('TODOS', 'ALL', 'CONSOLIDADO'):
+        modelos_sel = filtradas or todas
+        is_consolidado_total = True
+    else:
+        modelos_sel = sop_equipos.resolver_modelos_multi(data, selected_raw)
+        if not modelos_sel:
+            modelos_sel = filtradas or todas
+            is_consolidado_total = True
+        else:
+            is_consolidado_total = False
+
+    active_sf = sop_equipos.consolidar_modelos(modelos_sel, alcance_label=data['alcance_label']) if modelos_sel else None
+    sim_cant = _parse_int(request.GET.get('sim_cant'), default=0 if is_consolidado_total else 2)
+    simulacion = sop_equipos.evaluar_simulacion(active_sf, sim_cant) if active_sf else None
+
+    subfamilias_map = {sf['clave']: _serializar_modelo_js(sf) for sf in todas}
+    selected_keys = [] if is_consolidado_total else [m['clave'] for m in modelos_sel]
+
+    alcance_params = {k: v for k, v in (('grupo', filtros['grupo']), ('marca', filtros['marca'])) if v}
+    alcance_qs = f'?{urlencode(alcance_params)}' if alcance_params else ''
 
     context = {
         'hay_datos': True,
-        'fuente': data.get('fuente', 'BD Datalake (SAP)'),
-        'fecha_sync': data.get('fecha_sync'),
-        'anio_ref': data.get('anio_ref', timezone.localdate().year),
+        'fuente': data['fuente'],
+        'fecha_sync': data['fecha_sync'],
+        'anio_ref': data['anio_ref'],
         'ultimo_mes_consumo': data.get('ultimo_mes_consumo'),
-        'skus_sin_modelo': data.get('skus_sin_modelo', []),
-        'backlog_antiguos_excluidos': data.get('backlog_antiguos_excluidos', 0),
-        'kpis': kpis,
-        'subfamilias': subfamilias_filtradas,
-        'todas_subfamilias': subfamilias,
+        'catalogo': data['catalogo'],
+        'alcance_label': data['alcance_label'],
+        'alcance_qs': alcance_qs,
+        'skus_sin_modelo': data['skus_sin_modelo'],
+        'backlog_antiguos_excluidos': data['backlog_antiguos_excluidos'],
+        'kpis': data['kpis'],
+        'subfamilias': filtradas,
+        'todas_subfamilias': todas,
+        'total_filtradas': len(filtradas),
         'subfamilias_map': subfamilias_map,
+        'selected_keys': selected_keys,
+        'is_consolidado_total': is_consolidado_total,
         'active_sf': active_sf,
         'simulacion': simulacion,
-        'propuestas_recientes': data.get('propuestas_recientes', []),
+        'propuestas_recientes': data['propuestas_recientes'],
         'decision_choices': PropuestaCompraSOP.DECISIONES,
-        'f_subfam': f_subfam,
-        'f_semaforo': f_semaforo,
-        'f_search': f_search,
-        'total_subfamilias': len(subfamilias),
+        'f_grupo': filtros['grupo'],
+        'f_marca': filtros['marca'],
+        'f_semaforo': filtros['semaforo'],
+        'f_search': filtros['q'],
+        'total_subfamilias': len(todas),
+        'total_filtradas': len(filtradas),
         'total_skus': data['total_skus'],
     }
     return render(request, 'calculadora/sop_hiab.html', context)
 
 
 @login_required
+def sop_hiab_simular_api(request):
+    """Endpoint JSON — fuente única de verdad para el Simulador 1 a 1 (single y multimodelo)."""
+    clave = request.GET.get('subfamilia', '').strip()
+    cant = _parse_int(request.GET.get('cantidad'), default=0)
+    grupo = request.GET.get('grupo', '').strip()
+    marca = request.GET.get('marca', '').strip()
+    res = sop_equipos.simular_propuesta_compra(clave, cant, grupo=grupo, marca=marca)
+    status = 404 if res.get('error') else 200
+    return JsonResponse(res, status=status)
+
+
+def _resolver_triplet_modelo(request):
+    """Extrae (familia, subfamilia, modelo, clave_principal, claves_csv) desde POST."""
+    claves_csv = request.POST.get('clave_modelo', '').strip()
+    primera = claves_csv.split(',')[0].strip() if claves_csv else ''
+    parsed = sop_equipos.ClaveModelo.parse(primera)
+    if parsed:
+        return parsed.familia, parsed.subfamilia, parsed.modelo, parsed.to_key(), claves_csv
+    familia = request.POST.get('familia', '').strip()
+    subfamilia = request.POST.get('subfamilia', '').strip()
+    modelo = request.POST.get('modelo', '').strip()
+    clave = sop_equipos.ClaveModelo(familia, subfamilia, modelo).to_key() if (familia or subfamilia) else modelo
+    return familia, subfamilia, modelo, clave, (claves_csv or clave)
+
+
+@login_required
 @require_POST
 def sop_hiab_guardar_decision(request):
-    """Registra una decisión de la reunión 1 a 1 en BD (reemplaza la hoja Solicitud del Excel)."""
-    modelo = request.POST.get('modelo', '').strip()
+    """Registra una decisión de la reunión 1 a 1 en BD (soporta trazabilidad multimodelo)."""
+    filtros = _leer_filtros(request)
+    familia, subfamilia, modelo, clave_principal, claves_csv = _resolver_triplet_modelo(request)
     vendedor = request.POST.get('vendedor', '').strip()
     negocio = request.POST.get('negocio', '').strip()
     decision = request.POST.get('decision', PropuestaCompraSOP.PENDIENTE).strip()
     comentario = request.POST.get('comentario', '').strip()
+    cant_sol = _parse_int(request.POST.get('cantidad_solicitada'), default=0)
+    cant_apr = _parse_int(request.POST.get('cantidad_aprobada'), default=0)
 
-    try:
-        cant_sol = max(0, int(request.POST.get('cantidad_solicitada', 0) or 0))
-    except (ValueError, TypeError):
-        cant_sol = 0
-    try:
-        cant_apr = max(0, int(request.POST.get('cantidad_aprobada', 0) or 0))
-    except (ValueError, TypeError):
-        cant_apr = 0
-
-    if not modelo:
-        messages.error(request, 'Debe seleccionar un modelo SAP válido.')
-        return redirect('calculadora:sop_hiab')
+    if not modelo or modelo.upper() in ('TODOS', 'ALL', 'CONSOLIDADO') or modelo.startswith('Consolidado'):
+        messages.warning(request, 'Para registrar una decisión en la bitácora comercial, selecciona un modelo específico en el evaluador.')
+        return redirect(_url_retorno(filtros))
 
     if decision == PropuestaCompraSOP.APROBADA and cant_apr == 0:
         cant_apr = cant_sol
@@ -128,11 +205,18 @@ def sop_hiab_guardar_decision(request):
         cant_apr = 0
 
     cant_eval = cant_apr if decision in (PropuestaCompraSOP.APROBADA, PropuestaCompraSOP.PARCIAL) else cant_sol
-    sim = sop_hiab.simular_propuesta_compra(modelo, cant_eval)
+    sim = sop_equipos.simular_propuesta_compra(claves_csv, cant_eval)
+
+    if not sim.get('error'):
+        familia = familia or sim.get('familia', '')
+        subfamilia = subfamilia or sim.get('marca_code', '')
+        if sim.get('es_multimodelo'):
+            traza = f"[Consolidado multimodelo: {sim['modelo_display']}]"
+            comentario = f'{traza} {comentario}'.strip() if comentario else traza
 
     PropuestaCompraSOP.objects.create(
-        familia=sop_hiab.FAMILIA_HIAB,
-        subfamilia=sop_hiab.SUBFAMILIA_HIAB,
+        familia=familia,
+        subfamilia=subfamilia,
         modelo=modelo,
         modelo_nombre=sim.get('nombre', '') if not sim.get('error') else '',
         vendedor=vendedor,
@@ -148,45 +232,69 @@ def sop_hiab_guardar_decision(request):
         creado_por=request.user,
     )
     messages.success(request, f'Decisión registrada para Modelo SAP {modelo}.')
-    return redirect(f"/calculadora/sop-hiab/?sim_subfam={modelo}&sim_cant={cant_sol}#historial-decisiones")
+    return redirect(_url_retorno(filtros, extra={'sim_subfam': claves_csv, 'sim_cant': cant_sol}, anchor='historial-decisiones'))
 
 
 @login_required
 @require_POST
 def sop_hiab_eliminar_decision(request, pk):
     """Elimina una decisión 1 a 1 registrada por error."""
+    filtros = _leer_filtros(request)
     obj = get_object_or_404(PropuestaCompraSOP, pk=pk)
     obj.delete()
     messages.info(request, 'Registro de decisión eliminado.')
-    return redirect('/calculadora/sop-hiab/#historial-decisiones')
+    return redirect(_url_retorno(filtros, anchor='historial-decisiones'))
+
+
+@login_required
+@require_POST
+def sop_hiab_rechazar_decision(request, pk):
+    """Marca una propuesta/decisión como Rechazada (Refutada) conservando su trazabilidad histórica."""
+    filtros = _leer_filtros(request)
+    propuesta = get_object_or_404(PropuestaCompraSOP, pk=pk)
+    if propuesta.solicitud_compra_id:
+        messages.error(request, f'Esta decisión ya tiene la SC #{propuesta.solicitud_compra_id} generada; descártala desde Solicitudes.')
+        return redirect(_url_retorno(filtros, anchor='historial-decisiones'))
+    propuesta.decision = PropuestaCompraSOP.REFUTADA
+    propuesta.cantidad_aprobada = 0
+    propuesta.save(update_fields=['decision', 'cantidad_aprobada', 'actualizado_en'])
+    messages.info(request, f'Propuesta del Modelo SAP {propuesta.modelo} marcada como Refutada / Rechazada.')
+    return redirect(_url_retorno(filtros, anchor='historial-decisiones'))
+
+
+@login_required
+@require_POST
+def sop_hiab_generar_sc(request, pk):
+    """Genera una Solicitud de Compra oficial (SolicitudCompra + LineaSolicitud) desde la Bitácora 1 a 1."""
+    filtros = _leer_filtros(request)
+    propuesta = get_object_or_404(PropuestaCompraSOP, pk=pk)
+    try:
+        sc = sop_equipos.generar_solicitud_compra_desde_propuesta(propuesta, usuario=request.user)
+        messages.success(request, f'Solicitud de Compra SC #{sc.pk} creada en borrador. Puedes revisarla, aprobarla y exportarla a SAP.')
+        return redirect('calculadora:solicitud_detalle', pk=sc.pk)
+    except ValueError as exc:
+        messages.error(request, str(exc))
+        return redirect(_url_retorno(filtros, anchor='historial-decisiones'))
 
 
 @login_required
 @require_POST
 def sop_hiab_guardar_presupuesto(request):
     """Guarda o actualiza el presupuesto anual de un Modelo SAP."""
-    modelo = request.POST.get('modelo', '').strip()
-    try:
-        anio = int(request.POST.get('anio', timezone.localdate().year))
-    except (ValueError, TypeError):
-        anio = timezone.localdate().year
-    try:
-        cantidad = max(0.0, float(request.POST.get('cantidad', 0) or 0))
-    except (ValueError, TypeError):
-        cantidad = 0.0
-    try:
-        monto_usd = max(0.0, float(request.POST.get('monto_usd', 0) or 0))
-    except (ValueError, TypeError):
-        monto_usd = 0.0
+    filtros = _leer_filtros(request)
+    familia, subfamilia, modelo, _, _ = _resolver_triplet_modelo(request)
+    anio = _parse_int(request.POST.get('anio'), default=timezone.localdate().year, minimo=2020)
+    cantidad = _parse_float(request.POST.get('cantidad'), default=0.0)
+    monto_usd = _parse_float(request.POST.get('monto_usd'), default=0.0)
 
     if not modelo:
         messages.error(request, 'Modelo SAP inválido para presupuesto.')
-        return redirect('/calculadora/sop-hiab/#matriz-consolidada')
+        return redirect(_url_retorno(filtros, anchor='matriz-consolidada'))
 
     PresupuestoSOP.objects.update_or_create(
         anio=anio,
-        familia=sop_hiab.FAMILIA_HIAB,
-        subfamilia=sop_hiab.SUBFAMILIA_HIAB,
+        familia=familia,
+        subfamilia=subfamilia,
         modelo=modelo,
         defaults={
             'cantidad': cantidad,
@@ -195,118 +303,135 @@ def sop_hiab_guardar_presupuesto(request):
         },
     )
     messages.success(request, f'Presupuesto {anio} guardado para Modelo SAP {modelo}.')
-    return redirect('/calculadora/sop-hiab/#matriz-consolidada')
+    return redirect(_url_retorno(filtros, anchor='matriz-consolidada'))
 
 
 @login_required
-def sop_hiab_simular_api(request):
-    """Endpoint AJAX para la simulación interactiva en tiempo real."""
-    sf_clave = request.GET.get('subfamilia', '').strip()
-    cant = request.GET.get('cantidad', 0)
-    try:
-        cant_num = int(cant)
-    except (ValueError, TypeError):
-        cant_num = 0
+@require_POST
+def sop_hiab_importar_excel(request):
+    """Importación opcional desde Excel hacia PresupuestoSOP (puente inicial de migración)."""
+    filtros = _leer_filtros(request)
+    anio = _parse_int(request.POST.get('anio'), default=timezone.localdate().year, minimo=2020)
+    archivo = request.FILES.get('archivo_excel')
+    if not archivo:
+        messages.error(request, 'Seleccione un archivo .xlsx para importar.')
+        return redirect(_url_retorno(filtros))
 
-    res = sop_hiab.simular_propuesta_compra(sf_clave, cant_num)
-    return JsonResponse(res)
+    res = sop_equipos_io.importar_presupuesto_excel(archivo, anio=anio, user=request.user)
+    if res.get('error'):
+        messages.error(request, res['error'])
+    else:
+        aviso_extra = ''
+        if res.get('no_encontrados'):
+            aviso_extra += f" ({len(res['no_encontrados'])} códigos no existen en SAP)"
+        if res.get('sin_modelo'):
+            aviso_extra += f" ({len(res['sin_modelo'])} códigos sin u_rhmodelo en SAP)"
+        messages.success(
+            request,
+            f"Presupuesto importado desde '{res['hoja']}': {res['modelos_importados']} modelos · {res['total_unidades']} un · ${res['total_usd']:,.0f} USD.{aviso_extra}",
+        )
+    return redirect(_url_retorno(filtros, anchor='matriz-consolidada'))
 
 
 @login_required
 def sop_hiab_excel(request):
-    """Exporta el análisis S&OP HIAB a un libro Excel multi-pestaña."""
-    data = sop_hiab.get_sop_hiab_data()
+    """Exporta el acta S&OP Equipos a Excel multi-pestaña respetando el filtro Grupo/Marca activo."""
+    filtros = _leer_filtros(request)
+    data = sop_equipos.get_sop_equipos_data(grupo=filtros['grupo'], marca=filtros['marca'])
     if not data.get('hay_datos'):
         return HttpResponse('No hay datos para exportar', status=400)
 
     hoy = timezone.localdate()
 
-    # Hoja 1: Resumen por Subfamilia
-    filas_subfam = []
-    for sf in data['subfamilias']:
-        filas_subfam.append({
-            'Subfamilia': sf['clave'],
-            'Modelo Representativo': sf['nombre'],
-            'Familia': sf['familia'],
-            'Stock Físico (u)': sf['stock_cant'],
-            'Stock Físico (USD)': round(sf['stock_usd'], 2),
-            'Tránsito Real (u)': sf['tr_real_cant'],
-            'Tránsito Proyectado (u)': sf['tr_proj_cant'],
-            'En Taller/Proceso (u)': sf['en_proceso_cant'],
-            'Inventario Inicial Total (u)': sf['inv_inicial_cant'],
-            'Backlog Comprometido (u)': sf['backlog_cant'],
-            'Backlog (USD)': round(sf['backlog_usd'], 2),
-            'Inventario Libre No Comprometido (u)': sf['inv_libre_cant'],
-            'Ventas L12M (u)': sf['ent_12m_cant'],
-            'Ventas 2026 YTD (u)': sf['ent_2026_cant'],
-            'Presupuesto 2026 (u)': sf['presup_cant'],
-            'Ritmo Mensual Demanda (u/m)': sf['ritmo_mensual'],
-            'Meses de Cobertura': sf['cobertura_meses'] if sf['cobertura_meses'] < 999 else 'Sin ventas',
-            'Estado Semáforo': sf['semaforo_label'],
-            'Solicitud Compra Propuesta (u)': sf['solic_cant'],
-            'Costo Unitario Compra (USD)': sf['costo_unitario_compra'],
-        })
+    filas_modelos = [{
+        'Grupo SAP': sf['grupo_sap'],
+        'Marca (Subfam SAP)': f"{sf['marca_label']} ({sf['subfamilia_code']})",
+        'Modelo SAP': sf['modelo'],
+        'Descripción Representativa': sf['nombre'],
+        'Stock Físico (u)': sf['stock_cant'],
+        'Stock Físico (USD)': round(sf['stock_usd'], 2),
+        'Tránsito Real FR (u)': sf['tr_real_cant'],
+        'Tránsito Proy OC (u)': sf['tr_proj_cant'],
+        'En Taller OF (u)': sf['en_proceso_cant'],
+        'Inventario Inicial (u)': sf['inv_inicial_cant'],
+        'Backlog Comprometido (u)': sf['backlog_cant'],
+        'Backlog (USD)': round(sf['backlog_usd'], 2),
+        'Inventario Disponible (u)': sf['inv_libre_cant'],
+        'Ventas L12M (u)': sf['ent_12m_cant'],
+        f"Ventas {data['anio_ref']} YTD (u)": sf['ent_2026_cant'],
+        f"Presupuesto {data['anio_ref']} (u)": sf['presup_cant'],
+        'Ritmo Mensual (u/m)': sf['ritmo_mensual'],
+        'Cobertura (meses)': sf['cobertura_meses'] if sf['cobertura_meses'] < sop_equipos.COBERTURA_SIN_VENTA else 'Sin ventas',
+        'Estado Semáforo': sf['semaforo_label'],
+        'Propuesta Compra (u)': sf['solic_cant'],
+        'Costo Unitario Compra (USD)': sf['costo_unitario_compra'],
+    } for sf in data['subfamilias']]
 
-    # Hoja 2: Detalle por SKU (90 ítems)
-    filas_skus = []
-    for s in data['skus_detalle']:
-        filas_skus.append({
-            'Fila': s['fila'],
-            'Código': s['codigo'],
-            'Origen': s['origen'],
-            'Familia': s['familia'],
-            'Subfamilia': s['subfamilia'],
-            'Descripción': s['descripcion'],
-            'Sobre Camión': s['sobre_camion'],
-            'Costo Unitario USD': round(s['costo_unitario'], 2),
-            'Stock Cant': s['stock_cant'],
-            'Stock Total USD': round(s['stock_usd'], 2),
-            'Tránsito Real Cant': s['tr_real_cant'],
-            'Tránsito Proy Cant': s['tr_proj_cant'],
-            'En Taller/Producción': s['prod_cant'],
-            'Solicitud Cant': s['solic_cant'],
-            'Backlog Cant': s['backlog_cant'],
-            'Entregado 2026 Cant': s['ent_2026_cant'],
-            'Presupuesto 2026 Cant': s['presup_cant'],
-            'Entregado L12M Cant': s['ent_12m_cant'],
-        })
+    filas_skus = [{
+        'Código SKU': s['codigo'],
+        'Origen': s['origen'],
+        'Grupo SAP': s['grupo_sap'],
+        'Marca (Subfam SAP)': f"{s['marca_label']} ({s['marca_code']})",
+        'Modelo SAP': s['subfamilia'],
+        'Descripción': s['descripcion'],
+        'Sobre Camión': s['sobre_camion'],
+        'Costo Unitario USD': round(s['costo_unitario'], 2),
+        'Stock (u)': s['stock_cant'],
+        'Stock (USD)': round(s['stock_usd'], 2),
+        'Tránsito Real FR (u)': s['tr_real_cant'],
+        'Tránsito Proy OC (u)': s['tr_proj_cant'],
+        'Taller OF (u)': s['prod_cant'],
+        'Backlog PC (u)': s['backlog_cant'],
+        'Ventas L12M (u)': s['ent_12m_cant'],
+        f"Ventas {data['anio_ref']} YTD (u)": s['ent_2026_cant'],
+    } for s in data['skus_detalle']]
 
-    # Hoja 3: Backlog detallado por Cliente
-    filas_backlog = []
-    for sf in data['subfamilias']:
-        for b in sf['backlog_items']:
-            filas_backlog.append({
-                'Subfamilia': sf['clave'],
-                'Código SKU': b['codigo'],
-                'Descripción': b['descripcion'],
-                'Cantidad (u)': b['cantidad'],
-                'Total USD': round(b['total_usd'], 2),
-                'Ejecutivo Responsable': b['ejecutivo'],
-                'N° Pedido (PC)': b['pc'],
-                'Cliente': b['cliente'],
-            })
+    filas_backlog = [{
+        'Marca': sf['marca_label'],
+        'Modelo SAP': sf['modelo'],
+        'Código SKU': b['codigo'],
+        'Descripción': b['descripcion'],
+        'Cantidad (u)': b['cantidad'],
+        'Total USD': round(b['total_usd'], 2),
+        'Ejecutivo Responsable': b['ejecutivo'],
+        'Fecha Emisión': b.get('fecha_emision', ''),
+        'N° Pedido (PC)': b['pc'],
+        'Cliente': b['cliente'],
+    } for sf in data['subfamilias'] for b in sf['backlog_items']]
 
-    # Hoja 4: Decisiones y Solicitudes 1 a 1
-    filas_solicitudes = []
-    for sf in data['subfamilias']:
-        for sol in sf['solicitudes_items']:
-            filas_solicitudes.append({
-                'Modelo SAP': sf['clave'],
-                'Fecha': sol.get('fecha', ''),
-                'Vendedor': sol.get('vendedor', ''),
-                'Negocio / Cliente': sol.get('negocio', ''),
-                'Decisión': sol.get('decision_label', ''),
-                'Cant. Solicitada': sol.get('cantidad_solicitada', sol.get('cantidad', 0)),
-                'Cant. Aprobada': sol.get('cantidad_aprobada', 0),
-                'Inversión USD': round(sol.get('total_usd', 0), 2),
-                'Comentario': sol.get('descripcion', ''),
-            })
+    filas_decisiones = [{
+        'Fecha': pr.creado_en.strftime('%d-%m-%Y %H:%M'),
+        'Familia SAP': pr.familia,
+        'Subfam/Marca SAP': pr.subfamilia,
+        'Modelo SAP': pr.modelo,
+        'Equipo': pr.modelo_nombre,
+        'Vendedor': pr.vendedor,
+        'Negocio / Cliente': pr.negocio,
+        'Decisión': pr.get_decision_display(),
+        'Cant. Solicitada': pr.cantidad_solicitada,
+        'Cant. Aprobada': pr.cantidad_aprobada,
+        'Inversión USD': round(pr.inversion_usd, 2),
+        'SC Generada': f'SC #{pr.solicitud_compra_id}' if pr.solicitud_compra_id else '—',
+        'Comentario': pr.comentario,
+    } for pr in data['propuestas_recientes']]
+
+    filas_master_data = [{
+        'Código SKU': m['codigo'],
+        'Descripción': m['descripcion'],
+        'Grupo SAP': m['grupo'],
+        'Familia SAP': m['familia'],
+        'Subfamilia SAP': m['subfamilia'],
+        'Marca': m['marca'],
+        'Acción Requerida': 'Asignar campo u_rhmodelo en Maestro SAP',
+    } for m in data['skus_sin_modelo']]
 
     hojas = {
-        'Resumen Subfamilias': filas_subfam,
-        'Detalle SKUs': filas_skus,
-        'Backlog Clientes': filas_backlog if filas_backlog else [{'Nota': 'Sin backlog'}],
-        'Decisiones 1 a 1': filas_solicitudes if filas_solicitudes else [{'Nota': 'Sin decisiones registradas'}],
+        'Resumen Modelos': filas_modelos if filas_modelos else [{'Nota': 'Sin modelos con actividad'}],
+        'Detalle SKUs': filas_skus if filas_skus else [{'Nota': 'Sin SKUs'}],
+        'Backlog Clientes': filas_backlog if filas_backlog else [{'Nota': 'Sin backlog abierto'}],
+        'Decisiones 1 a 1': filas_decisiones if filas_decisiones else [{'Nota': 'Sin decisiones registradas'}],
+        'Master Data Pendiente': filas_master_data if filas_master_data else [{'Nota': 'Todos los SKUs tienen modelo asignado en SAP'}],
     }
 
-    return respuesta_excel_multi(f'SOP_HIAB_Analisis_{hoy:%Y%m%d}.xlsx', hojas)
+    sufijo = f"_{filtros['marca'] or filtros['grupo'] or 'Todas'}"
+    return respuesta_excel_multi(f'SOP_Equipos{sufijo}_{hoy:%Y%m%d}.xlsx', hojas)

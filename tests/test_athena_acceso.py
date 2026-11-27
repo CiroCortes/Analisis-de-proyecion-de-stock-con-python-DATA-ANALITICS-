@@ -47,6 +47,46 @@ class AthenaAccesoTest(TestCase):
     @override_settings(DEBUG=True)
     def test_boton_visible_solo_para_admin(self):
         self.client.force_login(self.admin)
-        self.assertContains(self.client.get(reverse('data_ingestion:upload')), 'syncAthenaForm')
+        resp_admin = self.client.get(reverse('data_ingestion:upload'))
+        self.assertContains(resp_admin, 'syncAthenaForm')
+        self.assertNotContains(resp_admin, 'syncDatalakeForm')
         self.client.force_login(self.normal)
         self.assertNotContains(self.client.get(reverse('data_ingestion:upload')), 'syncAthenaForm')
+
+    @override_settings(DEBUG=True)
+    def test_streaming_athena_permisos_y_logs(self):
+        import time as _t
+        # Usuario normal bloqueado en endpoints JSON
+        self.client.force_login(self.normal)
+        self.assertEqual(self.client.post(reverse('data_ingestion:sync_athena_start')).status_code, 403)
+        self.assertEqual(self.client.get(reverse('data_ingestion:sync_athena_status')).status_code, 403)
+
+        # Admin inicia job en vivo con mocks y captura logs + stdout
+        def fake_sync(log=print):
+            log('[1/2] Maestro de Artículos & Costos.txt ...')
+            log('[2/2] Stock Físico por Bodega.txt ...')
+
+        def fake_ingest():
+            print('[DATALAKE] 1/5 Instando Maestro...')
+            print('[OK] Corrida 1: listo')
+
+        self.client.force_login(self.admin)
+        with mock.patch.object(views, 'sync_datalake', fake_sync), \
+                mock.patch.object(views, 'run_full_datalake_pipeline', fake_ingest):
+            r_start = self.client.post(reverse('data_ingestion:sync_athena_start'))
+            self.assertEqual(r_start.status_code, 200)
+            self.assertTrue(r_start.json()['started'])
+
+            # Esperar fin del hilo (ms)
+            for _ in range(40):
+                st = self.client.get(reverse('data_ingestion:sync_athena_status')).json()
+                if st['status'] in ('done', 'error'):
+                    break
+                _t.sleep(0.05)
+
+            self.assertEqual(st['status'], 'done')
+            self.assertEqual(st['progress'], 100)
+            textos = '\n'.join(l['text'] for l in st['logs'])
+            self.assertIn('[1/2] Maestro de Artículos', textos)
+            self.assertIn('[DATALAKE] 1/5 Instando Maestro', textos)
+            self.assertIsNotNone(st['db_stats'])

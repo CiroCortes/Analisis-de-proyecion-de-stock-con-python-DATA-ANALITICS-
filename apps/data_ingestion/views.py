@@ -1,25 +1,33 @@
+import datetime
 import os
 import time
-import datetime
-from django.shortcuts import render, redirect
+
+from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.conf import settings
+from django.http import JsonResponse
+from django.shortcuts import redirect, render
+from django.views.decorators.http import require_GET, require_POST
 
+from apps.data_ingestion.athena_client import athena_permitido, sync_datalake
+from apps.data_ingestion.datalake_ingest import run_full_datalake_pipeline
+from apps.data_ingestion.sync_runner import sync_manager
 from apps.inventory.models import (
-    ProductSKU, StockProjection, ProductionOrderMovement,
-    SalesOrderMovement, SKUClassification
+    ProductSKU,
+    ProductionOrderMovement,
+    SKUClassification,
+    SalesOrderMovement,
+    StockProjection,
 )
 from apps.inventory.stock_actual_models import StockActual
-from apps.data_ingestion.datalake_ingest import run_full_datalake_pipeline
-from apps.data_ingestion.athena_client import athena_permitido, sync_datalake
 
+# Caché local en carpeta data/ (refrescado automáticamente por Athena; carga manual por TXT OBSOLETA)
 DATALAKE_FILES = [
     {
         'id': 'dl_maestro',
         'name': 'Maestro de Artículos & Costos (Datalake)',
         'filename': 'Maestro de Artículos & Costos.txt',
-        'description': '20.500+ SKUs con costo unitario promedio en USD, lead times y taxonomía viva SAP B1.',
+        'description': '20.500+ SKUs con costo unitario en USD, lead times y taxonomía viva SAP B1.',
         'target_model': 'ProductSKU',
     },
     {
@@ -47,22 +55,34 @@ DATALAKE_FILES = [
         'id': 'dl_ocs',
         'name': 'Órdenes de Compra en Tránsito OC (Datalake)',
         'filename': 'Órdenes de Compra en Tránsito (OC).txt',
-        'description': 'Compras a proveedores en viaje con fecha de entrega para evitar duplicados.',
-        'target_model': 'OC Tránsito (InventoryMetric)',
+        'description': 'Compras a proveedores en viaje (OC/FR) y fabricación en taller (OF).',
+        'target_model': 'OCAbierta & InventoryMetric',
     },
     {
         'id': 'dl_scs',
         'name': 'Solicitudes de Compra SC (Datalake)',
         'filename': 'Solicitudes de Compra (SC).txt',
-        'description': 'SC abiertas aún sin OC. Suman al Disponible Futuro (consulta 6 de data/consultas_datalake.sql). Si falta, SC = 0.',
+        'description': 'SC abiertas aún sin OC. Suman al Disponible Futuro.',
         'target_model': 'SC (InventoryMetric)',
         'optional': True,
     },
 ]
 
 
+def _get_db_stats():
+    """Única fuente de métricas de BD para la vista y el reporte de cierre del streaming."""
+    return {
+        'total_skus': ProductSKU.objects.count(),
+        'total_ofs': ProductionOrderMovement.objects.count(),
+        'total_pedidos': SalesOrderMovement.objects.count(),
+        'total_clasificaciones': SKUClassification.objects.count(),
+        'total_proyecciones': StockProjection.objects.count(),
+        'total_stock_actual': StockActual.objects.count(),
+    }
+
+
 def _get_files_status(file_list, base_folder):
-    """Escanea un directorio y obtiene el estado de cada archivo."""
+    """Escanea carpeta data/ y reporta estado del caché local TXT generado por Athena."""
     alt_mapping = {
         'Maestro de Artículos & Costos.txt': 'oitm.txt',
         'Stock Físico por Bodega.txt': 'oitw.txt',
@@ -87,8 +107,7 @@ def _get_files_status(file_list, base_folder):
         if exists:
             stat = os.stat(full_path)
             size_mb = round(stat.st_size / (1024 * 1024), 2)
-            mod_time = datetime.datetime.fromtimestamp(stat.st_mtime)
-            mod_time_str = mod_time.strftime('%d/%m/%Y %H:%M:%S')
+            mod_time_str = datetime.datetime.fromtimestamp(stat.st_mtime).strftime('%d/%m/%Y %H:%M:%S')
 
         files_info.append({
             **f,
@@ -102,62 +121,84 @@ def _get_files_status(file_list, base_folder):
 
 @login_required
 def upload_view(request):
-    """
-    Centro de Control y Sincronización de Datos S&OP.
-    La única fuente de datos es el Datalake (archivos TXT exportados de Athena/SAP B1 en /data).
+    """Centro de Control y Sincronización Oficial desde AWS Athena (Datalake Pesco).
+
+    NOTA: La sincronización manual por TXT (action='sync_datalake') quedó OBSOLETA y se
+    eliminó de la interfaz. Los archivos en data/ actúan únicamente como caché intermedio
+    que Athena regenera automáticamente en cada corrida.
     """
     data_dir = os.path.join(settings.BASE_DIR, 'data')
 
     if request.method == 'POST':
-        action = request.POST.get('action', 'sync_datalake')
+        action = request.POST.get('action', 'sync_athena')
         t0 = time.time()
 
         try:
-            if action == 'sync_datalake':
-                run_full_datalake_pipeline()
-                dt = round(time.time() - t0, 1)
-                messages.success(request, f"¡Sincronización oficial desde Datalake (TXT) completada con éxito en {dt} segundos! Base de datos y motor S&OP actualizados.")
-
-            elif action == 'sync_athena':
-                # Solo DEBUG + administrador; se valida aqui aunque el boton no se muestre
+            if action == 'sync_athena':
                 if not athena_permitido(request.user):
                     messages.error(request, 'La conexión directa a Athena solo está disponible en modo DEBUG para administradores.')
                     return redirect('data_ingestion:upload')
                 sync_datalake(log=lambda *_: None)
                 run_full_datalake_pipeline()
                 dt = round(time.time() - t0, 1)
-                messages.success(request, f"Consultas ejecutadas en Athena (boto3) y datos ingestados en {dt} segundos. Los TXT de data/ quedaron actualizados.")
+                messages.success(request, f'Sincronización desde AWS Athena completada en {dt} segundos. Base de datos, Calculadora y S&OP Equipos actualizados.')
+
+            elif action == 'sync_datalake':
+                # OBSOLETO (legacy TXT): mantenido solo como respaldo técnico; botón eliminado de la UI.
+                run_full_datalake_pipeline()
+                dt = round(time.time() - t0, 1)
+                messages.info(request, f'[Legacy TXT] Ingesta local completada en {dt} segundos.')
 
             elif action == 'sync_engine':
                 from apps.calculadora.servicio import recalcular_red
                 recalcular_red(usuario=request.user)
                 dt = round(time.time() - t0, 1)
-                messages.success(request, f"Motor S&OP y Calculadora recalculados en {dt} segundos.")
+                messages.success(request, f'Motor S&OP y Calculadora recalculados en {dt} segundos.')
 
             else:
-                messages.error(request, f"Acción desconocida: {action}")
+                messages.error(request, f'Acción desconocida: {action}')
 
         except Exception as e:
-            messages.error(request, f"Error durante la sincronización: {str(e)}")
+            messages.error(request, f'Error durante la sincronización: {str(e)}')
 
         return redirect('data_ingestion:upload')
 
     datalake_status = _get_files_status(DATALAKE_FILES, data_dir)
-
-    # Métricas actuales en BD
-    db_stats = {
-        'total_skus': ProductSKU.objects.count(),
-        'total_ofs': ProductionOrderMovement.objects.count(),
-        'total_pedidos': SalesOrderMovement.objects.count(),
-        'total_clasificaciones': SKUClassification.objects.count(),
-        'total_proyecciones': StockProjection.objects.count(),
-        'total_stock_actual': StockActual.objects.count(),
-    }
-
     context = {
         'datalake_status': datalake_status,
         'all_datalake_exist': all(f['exists'] for f in datalake_status if not f.get('optional')),
-        'db_stats': db_stats,
+        'db_stats': _get_db_stats(),
         'puede_athena': athena_permitido(request.user),
+        'sync_en_curso': sync_manager.snapshot().get('status') == 'running',
     }
     return render(request, 'data_ingestion/upload.html', context)
+
+
+@login_required
+@require_POST
+def sync_athena_start(request):
+    """Inicia la sincronización en vivo (Athena -> data/ -> BD -> S&OP) en segundo plano."""
+    if not athena_permitido(request.user):
+        return JsonResponse(
+            {'error': 'La conexión directa a Athena solo está disponible en modo DEBUG para administradores.'},
+            status=403,
+        )
+    payload = sync_manager.start(
+        sync_fn=sync_datalake,
+        ingest_fn=run_full_datalake_pipeline,
+        stats_fn=_get_db_stats,
+    )
+    return JsonResponse(payload)
+
+
+@login_required
+@require_GET
+def sync_athena_status(request):
+    """Devuelve el progreso, fase actual y líneas nuevas de la terminal en vivo."""
+    if not athena_permitido(request.user):
+        return JsonResponse({'error': 'No autorizado.'}, status=403)
+    try:
+        since = max(0, int(request.GET.get('since', 0)))
+    except (ValueError, TypeError):
+        since = 0
+    return JsonResponse(sync_manager.snapshot(since=since))

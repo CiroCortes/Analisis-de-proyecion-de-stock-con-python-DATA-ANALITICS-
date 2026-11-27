@@ -53,11 +53,14 @@ urlpatterns = [
     path('marcas/', mk.marcas_view, name='marcas'),
     path('abc-venta/', mk.abc_venta, name='abc_venta'),
 
-    # S&OP HIAB: Analisis especial de Ignacio y Mesa de Negociacion 1 a 1
+    # S&OP Equipos: Analisis comercial multi-marca y Mesa de Negociacion 1 a 1
     path('sop-hiab/', hiab.sop_hiab_view, name='sop_hiab'),
     path('sop-hiab/simular/', hiab.sop_hiab_simular_api, name='sop_hiab_simular'),
     path('sop-hiab/decision/', hiab.sop_hiab_guardar_decision, name='sop_hiab_guardar_decision'),
     path('sop-hiab/decision/<int:pk>/eliminar/', hiab.sop_hiab_eliminar_decision, name='sop_hiab_eliminar_decision'),
+    path('sop-hiab/decision/<int:pk>/rechazar/', hiab.sop_hiab_rechazar_decision, name='sop_hiab_rechazar_decision'),
+    path('sop-hiab/decision/<int:pk>/generar-sc/', hiab.sop_hiab_generar_sc, name='sop_hiab_generar_sc'),
     path('sop-hiab/presupuesto/', hiab.sop_hiab_guardar_presupuesto, name='sop_hiab_guardar_presupuesto'),
+    path('sop-hiab/importar-excel/', hiab.sop_hiab_importar_excel, name='sop_hiab_importar_excel'),
     path('sop-hiab/excel/', hiab.sop_hiab_excel, name='sop_hiab_excel'),
 ]

@@ -1,234 +1,405 @@
 {% extends 'base.html' %}
 {% load calculadora_tags %}
 
-{% block title %}S&OP HIAB · Mesa de Negociación Comercial | Calculadora Pesco{% endblock %}
+{% block title %}S&OP Equipos · Mesa de Negociación Comercial | Calculadora Pesco{% endblock %}
 
 {% block content %}
-<div class="w-full space-y-6">
+<style>
+.sop-cards-4 {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 1rem;
+}
+@media (min-width: 768px) {
+    .sop-cards-4 {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+@media (min-width: 1280px) {
+    .sop-cards-4 {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+}
+.sop-sim-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 1.25rem;
+}
+@media (min-width: 1024px) {
+    .sop-sim-grid {
+        grid-template-columns: 5fr 7fr;
+    }
+}
+.sop-matriz-scroll {
+    max-height: 580px;
+    overflow-y: auto;
+    overflow-x: auto;
+}
+.sop-matriz-scroll thead th {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+.sop-excel-dropdown {
+    position: relative;
+}
+.sop-excel-menu {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: calc(100% + 6px);
+    z-index: 40;
+}
+.sop-excel-input::placeholder {
+    color: #0f172a;
+    opacity: 1;
+    font-weight: 700;
+}
+</style>
+
+<div class="w-full space-y-5">
     {% include 'calculadora/_subnav.html' %}
 
-    <!-- Header Hero -->
-    <div
-        class="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 bg-white p-6 sm:p-7 rounded-3xl shadow-sm border border-slate-200 border-l-8 border-l-pesco-cyan">
-        <div>
-            <div class="flex flex-wrap items-center gap-2">
-                <span class="text-xs font-bold text-pesco-cyan uppercase tracking-wider">Planificación S&OP · Equipos de
-                    Izaje</span>
-                <span class="px-2 py-0.5 rounded-full text-[10px] font-black bg-cyan-100 text-cyan-800">Mesa 1 a
-                    1</span>
-                {% if hay_datos %}
-                <span
-                    class="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-200">
-                    <i class="fa-solid fa-database mr-1"></i>{{ fuente }}{% if fecha_sync %} · Sync {{ fecha_sync|date:"d-m-Y H:i" }}{% endif %}
-                </span>
+    <!-- Header Hero + Selector de Grupo SAP y Marca SAP (A-Z) -->
+    <div class="bg-white p-5 sm:p-6 rounded-3xl shadow-sm border border-slate-200 border-l-8 border-l-pesco-cyan space-y-4">
+        <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
+            <div>
+                <div class="flex flex-wrap items-center gap-2">
+                    <span class="text-xs font-bold text-pesco-cyan uppercase tracking-wider">Planificación S&OP · Todas las Marcas de Equipos</span>
+                    <span class="px-2 py-0.5 rounded-full text-[10px] font-black bg-cyan-100 text-cyan-800">Mesa 1 a 1</span>
+                    {% if hay_datos %}
+                    <span class="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-200">
+                        <i class="fa-solid fa-database mr-1"></i>{{ fuente }}{% if fecha_sync %} · Sync {{ fecha_sync|date:"d-m-Y H:i" }}{% endif %}
+                    </span>
+                    {% endif %}
+                </div>
+                <h1 class="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight mt-1">S&OP Equipos · Análisis Comercial y Refutador de Compras</h1>
+                <p class="text-xs sm:text-sm text-slate-500 mt-1 max-w-4xl">
+                    Alimentado directamente desde nuestra base de datos (Datalake SAP) agrupando por <strong>Modelo SAP</strong>.
+                    Evalúa propuestas 1 a 1, combina modelos reemplazados y convierte decisiones aprobadas directamente en <strong>Solicitudes de Compra (SC)</strong>.
+                </p>
+            </div>
+            {% if hay_datos %}
+            <div class="flex flex-wrap gap-2">
+                <button type="button" onclick="document.getElementById('panel-importar-excel').classList.toggle('hidden')" class="bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 text-xs font-bold px-4 py-2.5 rounded-full shadow-xs uppercase tracking-wider whitespace-nowrap flex items-center gap-2 cursor-pointer transition">
+                    <i class="fa-solid fa-file-import text-pesco-cyan"></i> Importar Presupuesto
+                </button>
+                <a href="{% url 'calculadora:sop_hiab_excel' %}{{ alcance_qs }}" class="bg-pesco-cyan hover:bg-pesco-darkcyan text-white text-xs font-bold px-5 py-2.5 rounded-full shadow-md uppercase tracking-wider whitespace-nowrap flex items-center gap-2 transition">
+                    <i class="fa-solid fa-file-excel"></i> Exportar Acta Excel
+                </a>
+            </div>
+            {% endif %}
+        </div>
+
+        {% if hay_datos %}
+        <div id="panel-importar-excel" class="hidden pt-3 border-t border-slate-100">
+            <form method="post" action="{% url 'calculadora:sop_hiab_importar_excel' %}" enctype="multipart/form-data" class="bg-cyan-50/60 border border-cyan-200 rounded-2xl p-3.5 flex flex-col md:flex-row items-stretch md:items-center gap-3 text-xs">
+                {% csrf_token %}
+                <input type="hidden" name="grupo" value="{{ f_grupo }}">
+                <input type="hidden" name="marca" value="{{ f_marca }}">
+                <input type="hidden" name="anio" value="{{ anio_ref }}">
+                <div class="font-bold text-cyan-900 whitespace-nowrap"><i class="fa-solid fa-upload mr-1"></i> Cargar Presupuesto {{ anio_ref }} (.xlsx):</div>
+                <input type="file" name="archivo_excel" accept=".xlsx" required class="flex-1 bg-white border border-cyan-300 rounded-xl px-3 py-1.5 text-xs">
+                <button type="submit" class="bg-slate-900 hover:bg-pesco-cyan text-white font-bold px-4 py-2 rounded-xl cursor-pointer transition whitespace-nowrap">Cargar a BD</button>
+            </form>
+        </div>
+
+        <!-- Selector de Alcance: Grupo SAP + Marca SAP (Alfabético A-Z) -->
+        <form method="get" id="form-alcance" class="pt-3 border-t border-slate-100 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 bg-slate-50 p-3 rounded-2xl border border-slate-200">
+            <div class="flex flex-wrap items-center gap-3">
+                <div class="flex items-center gap-2">
+                    <label for="sel-grupo" class="text-[11px] font-black text-slate-600 uppercase whitespace-nowrap"><i class="fa-solid fa-layer-group text-pesco-cyan mr-1"></i>Grupo SAP:</label>
+                    <select id="sel-grupo" name="grupo" onchange="document.getElementById('sel-marca').value=''; this.form.submit();" class="bg-white border border-slate-300 text-slate-900 rounded-xl px-3 py-1.5 text-xs font-bold cursor-pointer focus:ring-2 focus:ring-pesco-cyan">
+                        <option value="">Todos los Grupos de Equipos</option>
+                        {% for g in catalogo.grupos %}
+                        <option value="{{ g.code }}" {% if f_grupo == g.code %}selected{% endif %}>{{ g.name }} ({{ g.count }} SKUs)</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="flex items-center gap-2">
+                    <label for="sel-marca" class="text-[11px] font-black text-slate-600 uppercase whitespace-nowrap"><i class="fa-solid fa-tag text-pesco-cyan mr-1"></i>Marca SAP:</label>
+                    <select id="sel-marca" name="marca" onchange="this.form.submit();" class="bg-white border border-slate-300 text-slate-900 rounded-xl px-3 py-1.5 text-xs font-bold cursor-pointer focus:ring-2 focus:ring-pesco-cyan">
+                        <option value="">Todas las Marcas ({{ catalogo.marcas|length }})</option>
+                        {% for m in catalogo.marcas %}
+                        <option value="{{ m.code }}" {% if f_marca == m.code %}selected{% endif %}>{{ m.label }} · {{ m.count }} SKUs</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                {% if f_grupo or f_marca %}
+                <a href="{% url 'calculadora:sop_hiab' %}" class="text-xs font-bold text-slate-500 hover:text-slate-900 px-2.5 py-1.5 rounded-xl bg-white border border-slate-200 transition">
+                    <i class="fa-solid fa-rotate-left mr-1"></i>Ver Todas
+                </a>
                 {% endif %}
             </div>
-            <h1 class="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight mt-1">S&OP HIAB · Análisis
-                Comercial y Refutador de Compras</h1>
-            <p class="text-sm text-slate-500 mt-1 max-w-4xl">
-                Alimentado directamente desde nuestra base de datos (Datalake SAP) agrupando por <strong>Modelo
-                    SAP</strong>.
-                Unifica automáticamente los <strong>códigos de compra</strong> y <strong>códigos de venta</strong>,
-                integrando stock físico, tránsito real (FR), tránsito proyectado (OC), montaje en taller (OF) y backlog
-                comprometido (PC) contra la demanda anual real.
-            </p>
-        </div>
-        <div class="flex flex-wrap gap-2">
-            <a href="{% url 'calculadora:sop_hiab_excel' %}"
-                class="bg-pesco-cyan hover:bg-pesco-darkcyan text-white text-xs font-bold px-5 py-3 rounded-full shadow-md uppercase tracking-wider whitespace-nowrap flex items-center gap-2">
-                <i class="fa-solid fa-file-excel"></i> Exportar Acta Excel
-            </a>
-        </div>
+
+            <div class="text-xs text-slate-600 font-medium flex items-center gap-2">
+                <span class="px-2.5 py-1 rounded-xl bg-white border border-slate-200 font-mono text-[11px] font-bold text-slate-800">
+                    {{ total_subfamilias }} modelos · {{ total_skus }} SKUs activos
+                </span>
+            </div>
+        </form>
+        {% endif %}
     </div>
 
+    {% if not hay_datos %}
+    <div class="bg-amber-50 border border-amber-200 rounded-3xl p-6 text-sm text-amber-800">
+        {{ error|default:"No hay datos de Equipos cargados desde el Datalake. Ejecuta la sincronización del Datalake primero." }}
+    </div>
+    {% else %}
+
     {% if skus_sin_modelo %}
-    <div
-        class="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-xs text-amber-900 flex items-center justify-between gap-4">
-        <div>
-            <strong class="font-black"><i class="fa-solid fa-triangle-exclamation mr-1"></i> Master Data SAP:</strong>
-            Existen <strong>{{ skus_sin_modelo|length }}</strong> códigos HIAB sin campo <span
-                class="font-mono font-bold">modelo</span> asignado en SAP. Al ajustarlos en Master Data y sincronizar el
-            Datalake se agruparán automáticamente.
+    <div class="bg-amber-50 border border-amber-200 rounded-2xl p-3.5 text-xs text-amber-900">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+            <div>
+                <strong class="font-black"><i class="fa-solid fa-triangle-exclamation mr-1"></i> Master Data SAP ({{ alcance_label }}):</strong>
+                Existen <strong>{{ skus_sin_modelo|length }}</strong> códigos sin campo <span class="font-mono font-bold">u_rhmodelo</span> en SAP (también en la hoja <em>Master Data Pendiente</em> del Excel).
+            </div>
+            <button type="button" onclick="document.getElementById('lista-sin-modelo').classList.toggle('hidden')" class="px-3 py-1 rounded-lg bg-amber-100 hover:bg-amber-200 text-amber-900 font-bold cursor-pointer transition">
+                Ver códigos ({{ skus_sin_modelo|length }})
+            </button>
+        </div>
+        <div id="lista-sin-modelo" class="hidden mt-3 pt-3 border-t border-amber-200 max-h-40 overflow-y-auto grid grid-cols-1 md:grid-cols-2 gap-1.5 text-[11px]">
+            {% for m in skus_sin_modelo %}
+            <div class="bg-white/80 px-2.5 py-1.5 rounded-lg border border-amber-200/70 flex justify-between gap-2">
+                <span><a href="{% url 'calculadora:articulo' m.codigo %}" target="_blank" class="font-mono font-black text-pesco-cyan hover:underline">{{ m.codigo }}</a> · {{ m.descripcion|truncatechars:42 }}</span>
+                <span class="text-amber-700 font-mono whitespace-nowrap">{{ m.marca }} ({{ m.subfamilia|default:"-" }})</span>
+            </div>
+            {% endfor %}
         </div>
     </div>
     {% endif %}
 
-    {% if not hay_datos %}
-    <div class="bg-amber-50 border border-amber-200 rounded-3xl p-6 text-sm text-amber-800">
-        {{ error|default:"No hay datos de Equipos HIAB cargados desde el Datalake. Ejecuta la sincronización del Datalake primero." }}
+    <!-- 1. FILA DE 4 CARDS COMPACTAS (LAS 3 ORIGINALES + TARJETA GERENCIAL OFICIAL) -->
+    <div class="sop-cards-4">
+        <!-- Card 1 (Resumen Gerencial · primera a la izquierda) -->
+        <div class="bg-white rounded-2xl border border-slate-200 p-3 shadow-sm flex flex-col justify-between overflow-hidden">
+            <table class="w-full text-[10px] border-collapse border border-slate-300 leading-tight">
+                <thead>
+                    <tr>
+                        <th class="py-1 px-1.5 bg-white border-b border-r border-slate-300 text-left text-[9px] font-black text-slate-400 uppercase">Resumen Gerencial</th>
+                        <th class="py-1 px-1.5 bg-pesco-cyan text-white font-black text-center underline border border-slate-300">Dinero</th>
+                        <th class="py-1 px-1.5 bg-pesco-cyan text-white font-black text-center underline border border-slate-300">Cant.</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr class="border-b border-slate-300">
+                        <td class="py-1 px-1.5 font-bold text-slate-900 border-r border-slate-300">Entregado 12m</td>
+                        <td class="py-1 px-1.5 font-mono text-right text-slate-900 border-r border-slate-300 whitespace-nowrap">${{ kpis.entregado_12m_usd|floatformat:"0g" }}</td>
+                        <td class="py-1 px-1 font-mono text-center font-bold text-slate-900">{{ kpis.entregado_12m_cant }}</td>
+                    </tr>
+                    <tr class="border-b border-slate-300">
+                        <td class="py-1 px-1.5 font-bold text-slate-900 border-r border-slate-300">Entregado {{ anio_ref }}</td>
+                        <td class="py-1 px-1.5 font-mono text-right text-slate-900 border-r border-slate-300 whitespace-nowrap">${{ kpis.entregado_2026_usd|floatformat:"0g" }}</td>
+                        <td class="py-1 px-1 font-mono text-center font-bold text-slate-900">{{ kpis.entregado_2026_cant }}</td>
+                    </tr>
+                    <tr class="border-b border-slate-300">
+                        <td class="py-1 px-1.5 font-bold text-slate-900 border-r border-slate-300">Backlog</td>
+                        <td class="py-1 px-1.5 font-mono text-right text-slate-900 border-r border-slate-300 whitespace-nowrap">${{ kpis.backlog_usd|floatformat:"0g" }}</td>
+                        <td class="py-1 px-1 font-mono text-center font-bold text-slate-900">{{ kpis.backlog_cant }}</td>
+                    </tr>
+                    <tr class="border-b border-slate-300 bg-orange-50">
+                        <td class="py-1 px-1.5 font-black text-slate-900 border-r border-slate-300">Ppto {{ anio_ref }}{% if kpis.ppto_parcial %} *{% endif %}</td>
+                        <td class="py-1 px-1.5 font-mono text-right font-bold text-slate-900 border-r border-slate-300 whitespace-nowrap">${{ kpis.presupuesto_usd|floatformat:"0g" }}</td>
+                        <td class="py-1 px-1 font-mono text-center font-bold text-slate-900">{{ kpis.presupuesto_cant }}</td>
+                    </tr>
+                    <tr class="border-b border-slate-300 bg-orange-50">
+                        <td class="py-1 px-1.5 font-bold text-slate-900 border-r border-slate-300">Cump. Ppto (Cant)</td>
+                        <td colspan="2" class="py-1 px-1.5 font-mono text-center font-black text-slate-900">{% if kpis.tiene_presupuesto %}{{ kpis.cumplimiento_cant_pct|floatformat:2 }}%{% if kpis.ppto_parcial %} *{% endif %}{% else %}Sin Ppto{% endif %}</td>
+                    </tr>
+                    <tr class="border-b border-slate-300 bg-orange-50">
+                        <td class="py-1 px-1.5 font-bold text-slate-900 border-r border-slate-300">Cump. Ppto (USD)</td>
+                        <td colspan="2" class="py-1 px-1.5 font-mono text-center font-black text-slate-900">{% if kpis.tiene_presupuesto %}{{ kpis.cumplimiento_usd_pct|floatformat:2 }}%{% if kpis.ppto_parcial %} *{% endif %}{% else %}Sin Ppto{% endif %}</td>
+                    </tr>
+                    <tr class="border-b border-slate-300">
+                        <td class="py-1 px-1.5 font-bold text-slate-900 border-r border-slate-300">Rotación (12m)</td>
+                        <td colspan="2" class="py-1 px-1.5 font-mono text-center font-black text-pesco-cyan">{{ kpis.rotacion_actual_meses|floatformat:2 }}</td>
+                    </tr>
+                    <tr>
+                        <td class="py-1 px-1.5 font-bold text-slate-900 border-r border-slate-300">Rotación + solic.</td>
+                        <td colspan="2" class="py-1 px-1.5 font-mono text-center font-black text-amber-700">{{ kpis.rotacion_proj_meses|floatformat:2 }}</td>
+                    </tr>
+                </tbody>
+            </table>
+            {% if kpis.ppto_parcial %}
+            <div class="text-[8px] text-amber-800 bg-amber-50/90 border border-amber-200/60 px-1.5 py-0.5 mt-1 rounded text-center leading-tight">
+                * Ppto cargado en {{ kpis.modelos_con_ppto }}/{{ kpis.modelos_totales }} modelos (cump. sobre modelos con ppto)
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Card 2: Desempeño Comercial -->
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex flex-col justify-between">
+            <div>
+                <div class="flex justify-between items-center mb-2.5">
+                    <span class="text-[10px] font-black text-slate-400 uppercase tracking-wider">Desempeño {{ anio_ref }}</span>
+                    <span class="text-[10px] font-bold text-pesco-cyan truncate max-w-[120px]" title="{{ alcance_label }}">{{ alcance_label }}</span>
+                </div>
+                <div class="grid grid-cols-2 gap-2 text-center">
+                    <div class="bg-slate-50 rounded-xl p-2.5 border border-slate-100">
+                        <div class="text-[9px] font-bold text-slate-500 uppercase">Cump. (Cant)</div>
+                        {% if kpis.tiene_presupuesto %}
+                        <div class="text-lg font-black font-mono text-slate-900 mt-0.5">{{ kpis.cumplimiento_cant_pct|floatformat:1 }}%</div>
+                        <div class="text-[10px] text-slate-500 font-mono">{{ kpis.avance_ppto_cant }}/{{ kpis.presupuesto_cant }}</div>
+                        {% else %}
+                        <div class="text-sm font-black font-mono text-slate-400 mt-1">Sin Ppto</div>
+                        <div class="text-[10px] text-slate-600 font-mono">{{ kpis.avance_2026_cant }} un</div>
+                        {% endif %}
+                    </div>
+                    <div class="bg-slate-50 rounded-xl p-2.5 border border-slate-100">
+                        <div class="text-[9px] font-bold text-slate-500 uppercase">Cump. (USD)</div>
+                        {% if kpis.tiene_presupuesto %}
+                        <div class="text-lg font-black font-mono text-emerald-600 mt-0.5">{{ kpis.cumplimiento_usd_pct|floatformat:1 }}%</div>
+                        <div class="text-[10px] text-slate-500 font-mono">${{ kpis.presupuesto_usd|floatformat:"0g" }}</div>
+                        {% else %}
+                        <div class="text-sm font-black font-mono text-slate-400 mt-1">Sin Ppto</div>
+                        <div class="text-[10px] text-emerald-700 font-mono">${{ kpis.avance_2026_usd|floatformat:"0g" }}</div>
+                        {% endif %}
+                    </div>
+                </div>
+                {% if kpis.ppto_parcial %}
+                <div class="mt-2 text-[10px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1 text-center font-semibold">
+                    Ppto cargado en {{ kpis.modelos_con_ppto }} de {{ kpis.modelos_totales }} modelos (HIAB)
+                </div>
+                {% endif %}
+            </div>
+            <div class="mt-3 pt-2.5 border-t border-slate-100 flex justify-between items-center text-[11px]">
+                <span class="text-slate-500" title="L12M = Last 12 Months: ventas físicas acumuladas de los últimos 12 meses móviles cerrados desde Datalake">L12M (Últimos 12m):</span>
+                <span class="font-mono font-bold text-slate-900">{{ kpis.entregado_12m_cant }} un · ${{ kpis.entregado_12m_usd|floatformat:"0g" }}</span>
+            </div>
+        </div>
+
+        <!-- Card 2 (Original): Balance de Inventario Total -->
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex flex-col justify-between">
+            <div>
+                <div class="flex justify-between items-center mb-2">
+                    <span class="text-[10px] font-black text-slate-400 uppercase tracking-wider">Balance Inventario</span>
+                    <span class="text-[10px] font-mono font-bold text-slate-600">{{ kpis.inventario_inicial_cant }} brutas</span>
+                </div>
+                <div class="space-y-1 text-[11px]">
+                    <div class="flex justify-between">
+                        <span class="text-slate-600">Stock Físico (+)</span>
+                        <span class="font-mono font-bold text-slate-900">{{ kpis.stock_cant }} un</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-slate-600">Tránsito FR (+)</span>
+                        <span class="font-mono font-bold text-cyan-700">{{ kpis.transito_real_cant }} un</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-slate-600">Tránsito OC (+)</span>
+                        <span class="font-mono font-bold text-amber-700">{{ kpis.transito_proj_cant }} un</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-slate-600">Taller OF (+)</span>
+                        <span class="font-mono font-bold text-purple-700">{{ kpis.en_proceso_cant }} un</span>
+                    </div>
+                    <div class="flex justify-between text-red-600">
+                        <span>Backlog PC (-)</span>
+                        <span class="font-mono font-bold">-{{ kpis.backlog_cant }} un</span>
+                    </div>
+                </div>
+            </div>
+            <div class="mt-2 pt-2 border-t border-slate-200 flex justify-between items-center">
+                <span class="text-[10px] font-black text-slate-800 uppercase">Inv. Disponible:</span>
+                <span class="text-base font-black font-mono text-emerald-700">{{ kpis.inventario_final_cant }} un</span>
+            </div>
+        </div>
+
+        <!-- Card 3 (Original): Rotación y Cobertura -->
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex flex-col justify-between">
+            <div>
+                <div class="flex justify-between items-center mb-2">
+                    <span class="text-[10px] font-black text-slate-400 uppercase tracking-wider">Rotación y Cobertura</span>
+                    <span class="px-2 py-0.5 rounded-full text-[9px] font-bold bg-slate-100 text-slate-700">Meta &le; 6 m</span>
+                </div>
+                <div class="bg-slate-50 rounded-xl p-3 border border-slate-100">
+                    <div class="text-[10px] text-slate-500 font-medium">Rotación Actual (12m)</div>
+                    <div class="text-2xl font-black font-mono text-pesco-cyan mt-0.5">{{ kpis.rotacion_actual_meses|floatformat:2 }} <span class="text-xs font-normal text-slate-600">meses</span></div>
+                    <p class="text-[10px] text-slate-500 mt-0.5">{{ kpis.inventario_final_cant }} un disponibles al ritmo actual.</p>
+                </div>
+            </div>
+            <div class="mt-2.5 p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-[11px]">
+                <div class="flex justify-between font-bold">
+                    <span>Propuestas mesa:</span>
+                    <span class="font-mono">+{{ kpis.solicitud_cant }} un</span>
+                </div>
+                <div class="flex justify-between text-[10px] text-amber-700 mt-0.5">
+                    <span>Rotación + solic.:</span>
+                    <span class="font-mono font-bold">{{ kpis.rotacion_proj_meses|floatformat:2 }} m</span>
+                </div>
+            </div>
+        </div>
     </div>
-    {% else %}
 
-    <!-- 1. BLOQUE DE RESUMEN MACRO (Idéntico a la Hoja Resumen de Ignacio) -->
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
-        <!-- Tarjeta 1: Cumplimiento Presupuesto 2026 -->
-        <div class="bg-white rounded-3xl border border-slate-200 p-5 shadow-sm flex flex-col justify-between">
-            <div>
-                <div class="flex justify-between items-center mb-3">
-                    <span class="text-[11px] font-black text-slate-400 uppercase tracking-wider">Cumplimiento
-                        Presupuesto 2026</span>
-                    <span
-                        class="px-2 py-0.5 rounded-full text-[10px] font-black {% if kpis.cumplimiento_cant_pct >= 75 %}bg-emerald-100 text-emerald-800{% else %}bg-amber-100 text-amber-800{% endif %}">
-                        Avance {{ kpis.cumplimiento_cant_pct }}% cant
-                    </span>
-                </div>
-                <div class="grid grid-cols-2 gap-3 mb-4">
-                    <div class="bg-slate-50 p-3 rounded-2xl border border-slate-100">
-                        <div class="text-[10px] font-bold text-slate-400 uppercase">En Cantidad</div>
-                        <div class="text-xl font-black text-slate-900 font-mono mt-0.5">{{ kpis.cumplimiento_cant_pct }}%</div>
-                        <div class="text-[11px] text-slate-500 mt-1 font-mono">
-                            {{ kpis.entregado_2026_cant|add:kpis.backlog_cant }} / {{ kpis.presupuesto_cant }} un
-                        </div>
-                    </div>
-                    <div class="bg-slate-50 p-3 rounded-2xl border border-slate-100">
-                        <div class="text-[10px] font-bold text-slate-400 uppercase">En Dinero (USD)</div>
-                        <div class="text-xl font-black text-slate-900 font-mono mt-0.5">{{ kpis.cumplimiento_usd_pct }}%
-                        </div>
-                        <div class="text-[11px] text-slate-500 mt-1 font-mono">
-                            ${{ kpis.presupuesto_usd|floatformat:"0g" }} meta
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div class="pt-3 border-t border-slate-100 flex justify-between text-xs text-slate-600">
-                <span>Ventas L12M (Año móvil):</span>
-                <span class="font-mono font-bold text-slate-900">{{ kpis.entregado_12m_cant }} un · USD {{ kpis.entregado_12m_usd|floatformat:"0g" }}</span>
-            </div>
-        </div>
-
-        <!-- Tarjeta 2: Ecuación de Inventario y Capital de Trabajo -->
-        <div class="bg-white rounded-3xl border border-slate-200 p-5 shadow-sm flex flex-col justify-between">
-            <div>
-                <div class="flex justify-between items-center mb-3">
-                    <span class="text-[11px] font-black text-slate-400 uppercase tracking-wider">Ecuación de Inventario
-                        Global</span>
-                    <span class="px-2 py-0.5 rounded-full text-[10px] font-black bg-slate-100 text-slate-800">
-                        Total {{ kpis.inventario_inicial_cant }} grúas
-                    </span>
-                </div>
-                <div class="space-y-1.5 text-xs">
-                    <div class="flex justify-between items-center py-1 border-b border-slate-50">
-                        <span class="text-slate-600 flex items-center gap-1.5"><i
-                                class="fa-solid fa-warehouse text-emerald-500 text-[10px]"></i> Stock Físico (+)</span>
-                        <span class="font-mono font-bold text-slate-900">{{ kpis.stock_cant }} un <span
-                                class="text-slate-400 font-normal">(${{ kpis.stock_usd|floatformat:"0g" }})</span></span>
-                    </div>
-                    <div class="flex justify-between items-center py-1 border-b border-slate-50">
-                        <span class="text-slate-600 flex items-center gap-1.5"><i
-                                class="fa-solid fa-ship text-pesco-cyan text-[10px]"></i> Tránsito Real (+)</span>
-                        <span class="font-mono font-bold text-slate-900">{{ kpis.transito_real_cant }} un <span
-                                class="text-slate-400 font-normal">(${{ kpis.transito_real_usd|floatformat:"0g" }})</span></span>
-                    </div>
-                    <div class="flex justify-between items-center py-1 border-b border-slate-50">
-                        <span class="text-slate-600 flex items-center gap-1.5"><i
-                                class="fa-solid fa-clock-rotate-left text-indigo-500 text-[10px]"></i> Tránsito
-                            Proyectado (+)</span>
-                        <span class="font-mono font-bold text-slate-900">{{ kpis.transito_proj_cant }} un <span
-                                class="text-slate-400 font-normal">(${{ kpis.transito_proj_usd|floatformat:"0g" }})</span></span>
-                    </div>
-                    <div class="flex justify-between items-center py-1 border-b border-slate-50">
-                        <span class="text-slate-600 flex items-center gap-1.5"><i
-                                class="fa-solid fa-gears text-purple-500 text-[10px]"></i> Montaje Taller / Producción
-                            (+)</span>
-                        <span class="font-mono font-bold text-slate-900">{{ kpis.en_proceso_cant }} un <span
-                                class="text-slate-400 font-normal">(${{ kpis.en_proceso_usd|floatformat:"0g" }})</span></span>
-                    </div>
-                    <div
-                        class="flex justify-between items-center py-1 text-red-600 font-medium border-b border-slate-100">
-                        <span class="flex items-center gap-1.5"><i class="fa-solid fa-file-signature text-[10px]"></i>
-                            Backlog Clientes Comprometido (-)</span>
-                        <span class="font-mono font-bold">-{{ kpis.backlog_cant }} un <span
-                                class="text-red-400 font-normal">(-${{ kpis.backlog_usd|floatformat:"0g" }})</span></span>
-                    </div>
-                </div>
-            </div>
-            <div class="pt-3 border-t border-slate-100 flex justify-between items-center">
-                <span class="text-xs font-black uppercase text-slate-700">Inventario Libre No Comprometido:</span>
-                <span class="text-lg font-black font-mono text-emerald-600">{{ kpis.inventario_final_cant }} un <span
-                        class="text-xs text-slate-400 font-normal">(${{ kpis.inventario_final_usd|floatformat:"0g" }})</span></span>
-            </div>
-        </div>
-
-        <!-- Tarjeta 3: Rotación y Cobertura (Mando de Control) -->
-        <div class="bg-white rounded-3xl border border-slate-200 p-5 shadow-sm flex flex-col justify-between">
-            <div>
-                <div class="flex justify-between items-center mb-3">
-                    <span class="text-[11px] font-black text-slate-400 uppercase tracking-wider">Rotación y Meses de
-                        Cobertura</span>
-                    <span class="px-2 py-0.5 rounded-full text-[10px] font-black bg-cyan-100 text-cyan-800">
-                        Demanda L12M
-                    </span>
-                </div>
-                <div class="p-4 rounded-2xl bg-slate-50 border border-slate-200 text-center mb-4">
-                    <div class="text-xs font-bold text-slate-500 uppercase tracking-wider">Cobertura Actual de la Red
-                    </div>
-                    <div class="text-3xl font-black font-mono text-pesco-cyan mt-1">{{ kpis.rotacion_actual_meses }}
-                        <span class="text-lg font-normal text-slate-600">meses</span>
-                    </div>
-                    <p class="text-[11px] text-slate-500 mt-1">Con {{ kpis.inventario_final_cant }} unidades libres
-                        cubrimos {{ kpis.rotacion_actual_meses }} meses al ritmo de venta real.</p>
-                </div>
-            </div>
-            <div class="p-3 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 text-xs">
-                <div class="flex justify-between items-center font-bold">
-                    <span>Solicitudes en evaluación:</span>
-                    <span class="font-mono">+{{ kpis.solicitud_cant }} un (${{ kpis.solicitud_usd|floatformat:"0g" }}
-                        USD)</span>
-                </div>
-                <div class="flex justify-between items-center mt-1 text-[11px] text-amber-700">
-                    <span>Rotación proyectada si se compran:</span>
-                    <span class="font-mono font-bold">{{ kpis.rotacion_proj_meses }} meses</span>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- 2. SIMULADOR 1 A 1 DE NEGOCIACIÓN COMERCIAL (REDiseñado 100% LIGHT THEME PESCO) -->
-    <div class="bg-white rounded-3xl p-6 sm:p-8 shadow-sm border border-slate-200 border-l-8 border-l-pesco-cyan">
-        <div
-            class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-slate-100 pb-5">
+    <!-- 2. SIMULADOR 1 A 1 CON SELECTOR DE MODELOS TIPO FILTRO EXCEL (CHECKBOXES) -->
+    <div id="simulador-panel" class="bg-white rounded-3xl p-5 sm:p-6 shadow-sm border border-slate-200 border-l-8 border-l-pesco-cyan scroll-mt-6">
+        <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-slate-100 pb-4">
             <div>
                 <div class="flex items-center gap-2">
-                    <span
-                        class="px-2.5 py-1 rounded-full text-[10px] font-black bg-cyan-100 text-cyan-800 uppercase tracking-wider">Simulador
-                        1 a 1</span>
-                    <span class="text-xs text-slate-500 font-medium">Reunión de Negociación Comercial con
-                        Vendedor</span>
+                    <span class="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-cyan-100 text-cyan-800 uppercase tracking-wider">Simulador 1 a 1</span>
+                    <span class="text-xs text-slate-500 font-medium">Reunión de Negociación Comercial con Vendedor</span>
                 </div>
-                <h2 class="text-2xl font-black tracking-tight text-slate-900 mt-1">Evaluador y Refutador de Propuestas
-                    de Compra</h2>
-                <p class="text-xs text-slate-500 mt-0.5">Selecciona el modelo que el vendedor propone comprar y simula
-                    el volumen para obtener el argumento técnico de refutación o aprobación.</p>
+                <h2 class="text-xl sm:text-2xl font-black tracking-tight text-slate-900 mt-1">Evaluador y Refutador de Propuestas de Compra</h2>
+                <p class="text-xs text-slate-500 mt-0.5">Selecciona 1 o marca varios modelos (ej. reemplazo 455 + 456) dentro del menú con casillas tipo filtro Excel.</p>
             </div>
-            <div class="flex items-center gap-3 w-full md:w-auto">
-                <label class="text-xs text-slate-700 font-bold whitespace-nowrap">Modelo a Evaluar:</label>
-                <select id="sim-subfam-select" onchange="cambiarModeloSimulador()"
-                    class="bg-white border-2 border-slate-200 text-slate-900 rounded-2xl px-4 py-2.5 text-xs font-bold focus:ring-2 focus:ring-pesco-cyan focus:border-pesco-cyan w-full md:w-80 shadow-xs">
-                    {% for sf in todas_subfamilias %}
-                    <option value="{{ sf.clave }}" {% if active_sf.clave == sf.clave %}selected{% endif %}>
-                        HIAB {{ sf.clave }} · {{ sf.nombre|truncatechars:35 }} (Libres: {{ sf.inv_libre_cant }})
-                    </option>
-                    {% endfor %}
-                </select>
+
+            <!-- Desplegable clásico con checkboxes adentro tipo Filtro Excel -->
+            <div class="flex items-center gap-2 w-full md:w-auto">
+                <span class="text-xs text-slate-700 font-bold whitespace-nowrap">Modelo(s):</span>
+                <div class="sop-excel-dropdown w-full md:w-96" id="excelModelDropdown">
+                    <div class="relative">
+                        <input type="text" id="excelModelSearch" autocomplete="off" onfocus="abrirExcelDropdown()" onclick="abrirExcelDropdown()" oninput="filtrarOpcionesExcel()" placeholder="Buscar o seleccionar modelo..." class="sop-excel-input w-full bg-white border-2 border-slate-200 focus:border-pesco-cyan text-slate-900 rounded-2xl pl-3.5 pr-9 py-2.5 text-xs shadow-xs cursor-pointer">
+                        <i class="fa-solid fa-chevron-down absolute text-slate-400 text-[10px]" style="right: 14px; top: 50%; transform: translateY(-50%); pointer-events: none;"></i>
+                    </div>
+
+                    <div id="excelModelMenu" class="sop-excel-menu hidden bg-white rounded-2xl border border-slate-300 shadow-xl overflow-hidden">
+                        <div class="p-1.5 border-b border-slate-200 bg-slate-50">
+                            <button type="button" onclick="seleccionarConsolidadoTotal()" class="w-full text-left px-2.5 py-2 rounded-xl hover:bg-cyan-100/80 text-xs font-bold text-pesco-darkcyan flex items-center justify-between transition cursor-pointer">
+                                <span><i class="fa-solid fa-layer-group text-pesco-cyan mr-1.5"></i>★ Consolidado {{ alcance_label }} ({{ total_filtradas }} modelos)</span>
+                                <span class="text-[10px] text-pesco-cyan font-mono font-black">Ver Todo</span>
+                            </button>
+                        </div>
+                        <div id="excelModelList" style="max-height: 280px; overflow-y: auto;" class="p-1.5">
+                            {% for sf in todas_subfamilias %}
+                            <label class="excel-opt-item flex items-center gap-2.5 px-2.5 py-2 rounded-xl hover:bg-cyan-50/70 cursor-pointer text-xs transition" data-search="{{ sf.marca_label|lower }} {{ sf.modelo|lower }} {{ sf.nombre|lower }}">
+                                <input type="checkbox" class="excel-model-cb w-4 h-4 rounded accent-cyan-600 cursor-pointer shrink-0" value="{{ sf.clave }}" {% if sf.clave in selected_keys %}checked{% endif %} onchange="onToggleCheckboxModelo(this)">
+                                <div class="min-w-0 flex-1">
+                                    <div class="flex items-center justify-between gap-1">
+                                        <span class="font-mono font-black text-[11px] text-slate-900">{{ sf.marca_label }} · Mod {{ sf.modelo }}</span>
+                                        <span class="font-mono text-[10px] text-emerald-700 font-bold shrink-0">Disp: {{ sf.inv_libre_cant }}</span>
+                                    </div>
+                                    <div class="text-[10px] text-slate-500 truncate">{{ sf.nombre }}</div>
+                                </div>
+                            </label>
+                            {% endfor %}
+                        </div>
+                        <div class="px-3 py-1.5 bg-slate-50 border-t border-slate-200 flex justify-between items-center text-[10px]">
+                            <span id="excelModelCountHint" class="font-bold text-pesco-cyan"></span>
+                            <button type="button" onclick="dejarSoloPrimeroExcel()" class="text-slate-500 hover:text-slate-900 font-bold underline cursor-pointer">Quitar selección múltiple</button>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
 
         {% if active_sf %}
-        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 mt-6">
-            <!-- Columna Izquierda: Radiografía Actual del Modelo (5 cols) -->
-            <div
-                class="lg:col-span-5 bg-slate-50 rounded-2xl p-5 border border-slate-200 flex flex-col justify-between">
+        <div class="sop-sim-grid mt-5">
+            <!-- Columna Izquierda: Radiografía Consolidada -->
+            <div class="bg-slate-50 rounded-2xl p-5 border border-slate-200 flex flex-col justify-between">
                 <div>
-                    <div class="flex justify-between items-start">
+                    <div class="flex justify-between items-start gap-2">
                         <div>
-                            <span class="text-[10px] font-black text-pesco-cyan uppercase tracking-wider">Subfamilia {{ active_sf.clave }}</span>
-                            <h3 id="sim-modelo-nombre" class="text-lg font-black text-slate-900 mt-0.5 leading-snug">{{ active_sf.nombre }}</h3>
+                            <span id="sim-modelo-meta" class="text-[10px] font-black text-pesco-cyan uppercase tracking-wider">
+                                {% if active_sf.es_consolidado_total %}
+                                {{ active_sf.marca_label }} · {{ active_sf.modelo }}
+                                {% else %}
+                                {{ active_sf.marca_label }} · Modelo SAP {{ active_sf.modelo }}
+                                {% endif %}
+                            </span>
+                            <h3 id="sim-modelo-nombre" class="text-base sm:text-lg font-black text-slate-900 mt-0.5 leading-snug">{{ active_sf.nombre }}</h3>
                         </div>
-                        <span id="sim-semaforo-badge" class="px-2.5 py-1 rounded-full text-[10px] font-black uppercase
-                            {% if active_sf.semaforo == 'SOBRESTOCK' %}bg-red-100 text-red-800 border border-red-200
-                            {% elif active_sf.semaforo == 'PRECAUCION' %}bg-amber-100 text-amber-800 border border-amber-200
-                            {% elif active_sf.semaforo == 'OPTIMO' %}bg-emerald-100 text-emerald-800 border border-emerald-200
-                            {% else %}bg-cyan-100 text-cyan-800 border border-cyan-200{% endif %}">
+                        <span id="sim-semaforo-badge" class="px-2.5 py-1 rounded-full text-[10px] font-black uppercase shrink-0 {% if active_sf.semaforo == 'SOBRESTOCK' %}bg-red-100 text-red-800 border border-red-200{% elif active_sf.semaforo == 'PRECAUCION' %}bg-amber-100 text-amber-800 border border-amber-200{% elif active_sf.semaforo == 'OPTIMO' %}bg-emerald-100 text-emerald-800 border border-emerald-200{% else %}bg-cyan-100 text-cyan-800 border border-cyan-200{% endif %}">
                             {{ active_sf.semaforo_label }}
                         </span>
                     </div>
@@ -242,12 +413,12 @@
                         <div class="bg-white p-3 rounded-xl border border-slate-200 shadow-xs">
                             <div class="text-[9px] font-bold text-slate-400 uppercase">En Tránsito</div>
                             <div id="sim-tr-val" class="text-xl font-black font-mono text-cyan-700 mt-0.5">{{ active_sf.tr_real_cant|add:active_sf.tr_proj_cant }}</div>
-                            <div class="text-[9px] text-slate-400">R: {{ active_sf.tr_real_cant }} | P: {{ active_sf.tr_proj_cant }}</div>
+                            <div id="sim-tr-sub" class="text-[9px] text-slate-400">FR: {{ active_sf.tr_real_cant }} | OC: {{ active_sf.tr_proj_cant }}</div>
                         </div>
                         <div class="bg-white p-3 rounded-xl border border-slate-200 shadow-xs">
                             <div class="text-[9px] font-bold text-slate-400 uppercase">En Taller</div>
                             <div id="sim-prod-val" class="text-xl font-black font-mono text-purple-700 mt-0.5">{{ active_sf.en_proceso_cant }}</div>
-                            <div class="text-[9px] text-slate-400">montaje</div>
+                            <div class="text-[9px] text-slate-400">montaje OF</div>
                         </div>
                     </div>
 
@@ -258,23 +429,20 @@
                         </div>
                         <div class="flex justify-between py-1 border-b border-slate-200 text-red-600">
                             <span>Backlog Clientes (Comprometido):</span>
-                            <span id="sim-bklg" class="font-mono font-bold">-{{ active_sf.backlog_cant }}
-                                unidades</span>
+                            <span id="sim-bklg" class="font-mono font-bold">-{{ active_sf.backlog_cant }} unidades</span>
                         </div>
-                        <div
-                            class="flex justify-between py-2 bg-emerald-50 px-3 rounded-xl border border-emerald-200 font-bold">
-                            <span class="text-emerald-800">Inventario Libre Actual:</span>
+                        <div class="flex justify-between py-2 bg-emerald-50 px-3 rounded-xl border border-emerald-200 font-bold">
+                            <span class="text-emerald-800">Inventario Disponible Actual:</span>
                             <span id="sim-inv-libre" class="font-mono text-emerald-800 font-black text-sm">{{ active_sf.inv_libre_cant }} unidades</span>
                         </div>
                     </div>
                 </div>
 
-                <div class="pt-4 mt-3 border-t border-slate-200 grid grid-cols-2 gap-2 text-xs">
+                <div class="pt-3 mt-3 border-t border-slate-200 grid grid-cols-2 gap-2 text-xs">
                     <div class="bg-white p-2.5 rounded-xl border border-slate-200 text-center">
                         <span class="text-[10px] text-slate-400 block font-bold uppercase">Ventas L12M</span>
                         <span id="sim-l12m" class="font-mono font-bold text-slate-900 text-sm">{{ active_sf.ent_12m_cant }} un</span>
-                        <span class="text-[9px] text-slate-500 block font-mono">({{ active_sf.ritmo_mensual }}
-                            un/mes)</span>
+                        <span id="sim-ritmo" class="text-[9px] text-slate-500 block font-mono">({{ active_sf.ritmo_mensual }} un/mes)</span>
                     </div>
                     <div class="bg-white p-2.5 rounded-xl border border-slate-200 text-center">
                         <span class="text-[10px] text-slate-400 block font-bold uppercase">Cobertura Actual</span>
@@ -284,196 +452,171 @@
                 </div>
             </div>
 
-            <!-- Columna Derecha: Entrada de la Propuesta y Veredicto Automático (7 cols) -->
-            <div
-                class="lg:col-span-7 bg-slate-50 rounded-2xl p-6 border border-slate-200 flex flex-col justify-between space-y-4">
+            <!-- Columna Derecha: Propuesta, Veredicto y Registro 1 a 1 -->
+            <div class="bg-slate-50 rounded-2xl p-5 border border-slate-200 flex flex-col justify-between space-y-4">
                 <div>
-                    <div
-                        class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
+                    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-white p-3.5 rounded-2xl border border-slate-200 shadow-xs">
                         <div>
-                            <span
-                                class="text-[10px] font-black text-pesco-cyan uppercase tracking-wider block">Propuesta
-                                del Vendedor</span>
-                            <span class="text-sm font-bold text-slate-900">¿Cuántas unidades propone comprar a
-                                fábrica?</span>
+                            <span class="text-[10px] font-black text-pesco-cyan uppercase tracking-wider block">Propuesta del Vendedor</span>
+                            <span class="text-sm font-bold text-slate-900">¿Cuántas unidades propone comprar a fábrica?</span>
                         </div>
                         <div class="flex items-center gap-2">
-                            <button type="button" onclick="modificarCantidad(-1)"
-                                class="w-9 h-9 rounded-xl bg-slate-100 hover:bg-slate-200 active:scale-95 text-slate-800 font-black flex items-center justify-center border border-slate-300 shadow-xs cursor-pointer transition select-none">-</button>
-                            <input type="number" id="sim-input-cant"
-                                value="{{ simulacion.cantidad_solicitada|default:2 }}" min="0" max="50"
-                                oninput="ejecutarSimulacionEnVivo()"
-                                class="w-16 bg-white border-2 border-pesco-cyan text-slate-900 text-center rounded-xl py-2 font-mono text-lg font-black focus:ring-2 focus:ring-pesco-cyan">
-                            <button type="button" onclick="modificarCantidad(1)"
-                                class="w-9 h-9 rounded-xl bg-slate-100 hover:bg-slate-200 active:scale-95 text-slate-800 font-black flex items-center justify-center border border-slate-300 shadow-xs cursor-pointer transition select-none">+</button>
+                            <button type="button" onclick="modificarCantidad(-1)" class="w-9 h-9 rounded-xl bg-slate-100 hover:bg-slate-200 active:scale-95 text-slate-800 font-black flex items-center justify-center border border-slate-300 shadow-xs cursor-pointer transition select-none">-</button>
+                            <input type="number" id="sim-input-cant" value="{{ simulacion.cantidad_solicitada|default:2 }}" min="0" max="100" oninput="ejecutarSimulacionEnVivo()" class="w-16 bg-white border-2 border-pesco-cyan text-slate-900 text-center rounded-xl py-1.5 font-mono text-lg font-black focus:ring-2 focus:ring-pesco-cyan">
+                            <button type="button" onclick="modificarCantidad(1)" class="w-9 h-9 rounded-xl bg-slate-100 hover:bg-slate-200 active:scale-95 text-slate-800 font-black flex items-center justify-center border border-slate-300 shadow-xs cursor-pointer transition select-none">+</button>
                             <span class="text-xs text-slate-600 font-bold ml-1">unidades</span>
                         </div>
                     </div>
 
-                    <!-- Impacto Proyectado en Cifras -->
-                    <div class="grid grid-cols-3 gap-3 mt-4 text-center text-xs">
+                    <div class="grid grid-cols-3 gap-3 mt-3 text-center text-xs">
                         <div class="bg-white p-3 rounded-xl border border-slate-200 shadow-xs">
                             <span class="text-[10px] text-slate-500 block uppercase font-bold">Inversión Estimada</span>
-                            <span id="sim-res-inversion"
-                                class="text-base font-black font-mono text-slate-900 mt-1 block">
-                                ${{ simulacion.inversion_usd|floatformat:"0g" }} USD
-                            </span>
-                            <span class="text-[9px] text-slate-400 block mt-0.5">(${{ active_sf.costo_unitario_compra|floatformat:"0g" }} c/u)</span>
+                            <span id="sim-res-inversion" class="text-base font-black font-mono text-slate-900 mt-1 block">${{ simulacion.inversion_usd|floatformat:"0g" }} USD</span>
+                            <span id="sim-costo-u" class="text-[9px] text-slate-400 block mt-0.5">(${{ active_sf.costo_unitario_compra|floatformat:"0g" }} c/u)</span>
                         </div>
                         <div class="bg-white p-3 rounded-xl border border-slate-200 shadow-xs">
-                            <span class="text-[10px] text-slate-500 block uppercase font-bold">Inv. Libre
-                                Resultante</span>
-                            <span id="sim-res-invlibre" class="text-base font-black font-mono text-cyan-700 mt-1 block">
-                                {{ simulacion.inv_libre_proyectado }} unidades
-                            </span>
-                            <span class="text-[9px] text-slate-400 block mt-0.5">Disponibles sin venta</span>
+                            <span class="text-[10px] text-slate-500 block uppercase font-bold">Disponible Resultante</span>
+                            <span id="sim-res-invlibre" class="text-base font-black font-mono text-cyan-700 mt-1 block">{{ simulacion.inv_libre_proyectado }} unidades</span>
+                            <span class="text-[9px] text-slate-400 block mt-0.5">Sin venta comprometida</span>
                         </div>
                         <div class="bg-white p-3 rounded-xl border border-slate-200 shadow-xs">
                             <span class="text-[10px] text-slate-500 block uppercase font-bold">Nueva Cobertura</span>
-                            <span id="sim-res-cobertura"
-                                class="text-base font-black font-mono text-amber-600 mt-1 block">
-                                {{ simulacion.cobertura_proyectada_meses }} meses
-                            </span>
+                            <span id="sim-res-cobertura" class="text-base font-black font-mono text-amber-600 mt-1 block">{{ simulacion.cobertura_proyectada_meses }} meses</span>
                             <span class="text-[9px] text-slate-400 block mt-0.5">Meses de inventario</span>
                         </div>
                     </div>
 
-                    <!-- Veredicto y Argumentario de Refutación -->
-                    <div class="mt-4">
-                        <div id="sim-box-veredicto" class="p-4 rounded-2xl border
-                            {% if simulacion.color == 'red' %}bg-red-50 border-red-200 text-red-900
-                            {% elif simulacion.color == 'amber' %}bg-amber-50 border-amber-200 text-amber-900
-                            {% elif simulacion.color == 'emerald' %}bg-emerald-50 border-emerald-200 text-emerald-900
-                            {% else %}bg-white border-slate-200 text-slate-800{% endif %}">
-                            <div class="flex items-center gap-2 mb-2">
-                                <span class="text-xs font-black uppercase tracking-wider text-slate-500">Veredicto
-                                    S&OP:</span>
+                    <div class="mt-3">
+                        <div id="sim-box-veredicto" class="p-3.5 rounded-2xl border {% if simulacion.color == 'red' %}bg-red-50 border-red-200 text-red-900{% elif simulacion.color == 'amber' %}bg-amber-50 border-amber-200 text-amber-900{% elif simulacion.color == 'emerald' %}bg-emerald-50 border-emerald-200 text-emerald-900{% else %}bg-white border-slate-200 text-slate-800{% endif %}">
+                            <div class="flex items-center gap-2 mb-1.5">
+                                <span class="text-xs font-black uppercase tracking-wider text-slate-500">Veredicto S&OP:</span>
                                 <span id="sim-veredicto-titulo" class="font-black text-sm">{{ simulacion.veredicto }}</span>
                             </div>
-                            <p id="sim-argumento-texto" class="text-xs leading-relaxed font-medium">
-                                {{ simulacion.argumento }}
-                            </p>
+                            <p id="sim-argumento-texto" class="text-xs leading-relaxed font-medium">{{ simulacion.argumento }}</p>
                         </div>
                     </div>
-                    <!-- Registrar Decisión de Reunión 1 a 1 en BD -->
-                    <form method="post" action="{% url 'calculadora:sop_hiab_guardar_decision' %}"
-                        class="mt-4 bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-3">
+
+                    <!-- Registrar Decisión de Reunión 1 a 1 -->
+                    <form method="post" action="{% url 'calculadora:sop_hiab_guardar_decision' %}" class="mt-3 bg-white p-3.5 rounded-2xl border border-slate-200 shadow-xs space-y-2.5">
                         {% csrf_token %}
-                        <input type="hidden" name="modelo" id="dec-modelo" value="{{ active_sf.clave }}">
-                        <input type="hidden" name="cantidad_solicitada" id="dec-cant-sol"
-                            value="{{ simulacion.cantidad_solicitada|default:2 }}">
+                        <input type="hidden" name="grupo" value="{{ f_grupo }}">
+                        <input type="hidden" name="marca" value="{{ f_marca }}">
+                        <input type="hidden" name="clave_modelo" id="dec-clave-modelo" value="{{ active_sf.clave }}">
+                        <input type="hidden" name="cantidad_solicitada" id="dec-cant-sol" value="{{ simulacion.cantidad_solicitada|default:2 }}">
                         <div class="flex items-center justify-between">
-                            <span class="text-[10px] font-black text-slate-700 uppercase tracking-wider"><i
-                                    class="fa-solid fa-gavel text-pesco-cyan mr-1"></i> Registrar Decisión de Reunión 1
-                                a 1</span>
-                            <span class="text-[10px] text-slate-400">Reemplaza hoja Solicitud del Excel</span>
+                            <span class="text-[10px] font-black text-slate-700 uppercase tracking-wider"><i class="fa-solid fa-gavel text-pesco-cyan mr-1"></i> Registrar Decisión de Reunión 1 a 1</span>
+                            <span class="text-[10px] text-slate-400">En la Bitácora podrás convertirla en SC o rechazarla</span>
                         </div>
                         <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
-                            <input type="text" name="vendedor" placeholder="Vendedor / Ejecutivo"
-                                class="border border-slate-200 rounded-xl px-3 py-1.5 text-xs">
-                            <input type="text" name="negocio" placeholder="Cliente / Negocio / Licitación"
-                                class="border border-slate-200 rounded-xl px-3 py-1.5 text-xs">
-                            <select name="decision"
-                                class="border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-bold">
+                            <input type="text" name="vendedor" placeholder="Vendedor / Ejecutivo" class="border border-slate-200 rounded-xl px-3 py-1.5 text-xs">
+                            <input type="text" name="negocio" placeholder="Cliente / Negocio / Licitación" class="border border-slate-200 rounded-xl px-3 py-1.5 text-xs">
+                            <select name="decision" class="border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-bold cursor-pointer">
                                 {% for val, lbl in decision_choices %}
                                 <option value="{{ val }}">{{ lbl }}</option>
                                 {% endfor %}
                             </select>
                         </div>
                         <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 text-xs">
-                            <input type="number" name="cantidad_aprobada" id="dec-cant-apr" min="0" max="50"
-                                value="{{ simulacion.cantidad_solicitada|default:0 }}" placeholder="Cant. aprobada"
-                                class="w-full sm:w-28 border border-slate-200 rounded-xl px-3 py-1.5 text-xs font-mono font-bold"
-                                title="Unidades aprobadas finalmente">
-                            <input type="text" name="comentario" placeholder="Acuerdo / comentario de la reunión..."
-                                class="flex-1 border border-slate-200 rounded-xl px-3 py-1.5 text-xs">
-                            <button type="submit"
-                                class="bg-slate-900 hover:bg-pesco-cyan text-white font-bold px-4 py-1.5 rounded-xl cursor-pointer transition whitespace-nowrap">
+                            <input type="number" name="cantidad_aprobada" id="dec-cant-apr" min="0" max="100" value="{{ simulacion.cantidad_solicitada|default:0 }}" placeholder="Cant. aprob." class="w-full sm:w-28 border border-slate-200 rounded-xl px-3 py-1.5 text-xs font-mono font-bold" title="Unidades aprobadas finalmente">
+                            <input type="text" name="comentario" placeholder="Acuerdo / comentario de la reunión..." class="flex-1 border border-slate-200 rounded-xl px-3 py-1.5 text-xs">
+                            <button type="submit" class="bg-slate-900 hover:bg-pesco-cyan text-white font-bold px-4 py-1.5 rounded-xl cursor-pointer transition whitespace-nowrap">
                                 <i class="fa-solid fa-check mr-1"></i> Guardar Decisión
                             </button>
                         </div>
                     </form>
                 </div>
 
-                <div
-                    class="flex justify-between items-center text-[11px] text-slate-500 border-t border-slate-200 pt-3">
-                    <span>Criterio estándar Pesco: Lead time fábrica ~4-6 meses. Todo stock por sobre 12 meses es
-                        catalogado como sobrestock de alto riesgo.</span>
+                <div class="flex justify-between items-center text-[11px] text-slate-500 border-t border-slate-200 pt-2.5">
+                    <span>Criterio estándar Pesco: Lead time fábrica ~4-6 meses. Todo stock por sobre 12 meses es sobrestock de alto riesgo.</span>
                 </div>
             </div>
+        </div>
+        {% else %}
+        <div class="mt-5 p-6 text-center text-xs text-slate-500 bg-slate-50 rounded-2xl border border-slate-200">
+            No hay modelos con actividad en el filtro de Grupo/Marca seleccionado.
         </div>
         {% endif %}
     </div>
 
-    <!-- 3. MATRIZ S&OP POR SUBFAMILIA Y MODELO (TABLA MAESTRA CON DESGLOSE COMPRA/VENTA Y BACKLOG) -->
-    <div id="matriz-consolidada"
-        class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden scroll-mt-6">
-        <div
-            class="p-6 border-b border-slate-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+    <!-- 3. MATRIZ CONSOLIDADA CON SCROLL VERTICAL REAL Y CABECERA FIJA -->
+    <div id="matriz-consolidada" class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden scroll-mt-6">
+        <div class="p-5 border-b border-slate-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
             <div>
-                <span class="text-xs font-bold text-pesco-cyan uppercase tracking-wider">Matriz Consolidada · Maestro
-                    SAP</span>
-                <h3 class="text-xl font-black text-slate-900 tracking-tight">Radiografía S&OP de los {{ total_subfamilias }} Modelos HIAB</h3>
-                <p class="text-xs text-slate-500 mt-0.5">Haz clic en cualquier fila para desplegar sus códigos de
-                    compra, códigos de venta sobre camión, pedidos en backlog y editar su presupuesto anual.</p>
+                <span class="text-xs font-bold text-pesco-cyan uppercase tracking-wider">Matriz Consolidada · Maestro SAP</span>
+                <h3 class="text-xl font-black text-slate-900 tracking-tight">Radiografía S&OP · {{ alcance_label }} ({{ total_filtradas }} modelos)</h3>
+                <p class="text-xs text-slate-500 mt-0.5">Desplázate con el scroll interno. Escribe para buscar en vivo o haz clic en "Expandir SKUs" para ver el desglose completo.</p>
             </div>
 
-            <!-- Barra de Filtros y Búsqueda -->
-            <form method="get" action="#matriz-consolidada" class="flex flex-wrap items-center gap-2 text-xs">
-                <select name="semaforo" onchange="this.form.submit()"
-                    class="border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium cursor-pointer">
-                    <option value="">Todos los Estados</option>
-                    <option value="SOBRESTOCK" {% if f_semaforo == 'SOBRESTOCK' %}selected{% endif %}>🔴 Sobrestock (> 12
-                        m)</option>
-                    <option value="PRECAUCION" {% if f_semaforo == 'PRECAUCION' %}selected{% endif %}>🟡 Precaución (6-12
-                        m)</option>
-                    <option value="OPTIMO" {% if f_semaforo == 'OPTIMO' %}selected{% endif %}>🟢 Óptimo (3-6 m)</option>
-                    <option value="QUIEBRE" {% if f_semaforo == 'QUIEBRE' %}selected{% endif %}>🔵 Baja Cobertura (< 3
-                            m)</option>
-                </select>
+            <div class="flex flex-wrap items-center gap-2">
+                <input type="text" id="matrizQuickSearch" oninput="filtrarMatrizEnVivo(this.value)" placeholder="Buscar marca, modelo o SKU en vivo..." class="border border-slate-300 rounded-xl px-3 py-2 text-xs w-56 sm:w-64 focus:ring-2 focus:ring-pesco-cyan shadow-xs">
 
-                <input type="text" name="q" value="{{ f_search }}" placeholder="Buscar modelo o SKU..."
-                    class="border border-slate-200 rounded-xl px-3 py-2 text-xs w-48">
+                <button type="button" onclick="toggleTodosLosDetalles()" id="btn-toggle-todos" class="bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 text-xs font-bold px-3 py-2 rounded-xl transition cursor-pointer flex items-center gap-1.5 shadow-xs whitespace-nowrap">
+                    <i class="fa-solid fa-list-ul text-pesco-cyan"></i> <span id="label-toggle-todos">Expandir SKUs</span>
+                </button>
 
-                <button type="submit"
-                    class="bg-pesco-cyan hover:bg-pesco-darkcyan text-white font-bold px-4 py-2 rounded-xl cursor-pointer transition">Filtrar</button>
-                {% if f_semaforo or f_search or f_subfam %}
-                <a href="{% url 'calculadora:sop_hiab' %}#matriz-consolidada"
-                    class="text-slate-500 hover:text-slate-800 font-bold px-2 py-2">Limpiar</a>
-                {% endif %}
-            </form>
+                <form method="get" action="#matriz-consolidada" class="flex items-center gap-1.5 text-xs">
+                    {% if f_grupo %}<input type="hidden" name="grupo" value="{{ f_grupo }}">{% endif %}
+                    {% if f_marca %}<input type="hidden" name="marca" value="{{ f_marca }}">{% endif %}
+                    <select name="semaforo" onchange="this.form.submit()" class="border border-slate-300 rounded-xl px-2.5 py-2 text-xs font-medium cursor-pointer shadow-xs">
+                        <option value="">Todos los Estados</option>
+                        <option value="SOBRESTOCK" {% if f_semaforo == 'SOBRESTOCK' %}selected{% endif %}>🔴 Sobrestock (> 12 m)</option>
+                        <option value="PRECAUCION" {% if f_semaforo == 'PRECAUCION' %}selected{% endif %}>🟡 Precaución (6-12 m)</option>
+                        <option value="OPTIMO" {% if f_semaforo == 'OPTIMO' %}selected{% endif %}>🟢 Óptimo (3-6 m)</option>
+                        <option value="QUIEBRE" {% if f_semaforo == 'QUIEBRE' %}selected{% endif %}>🔵 Baja Cobertura (< 3 m)</option>
+                    </select>
+                    {% if f_semaforo %}
+                    <a href="{% url 'calculadora:sop_hiab' %}{{ alcance_qs }}#matriz-consolidada" class="text-slate-500 hover:text-slate-800 font-bold px-1.5 py-1">Limpiar</a>
+                    {% endif %}
+                </form>
+            </div>
         </div>
 
-        <div class="overflow-x-auto">
+        <!-- Contenedor scrolleable con CSS nativo garantizado -->
+        <div class="sop-matriz-scroll">
             <table class="min-w-full text-xs">
                 <thead>
-                    <tr
-                        class="text-[10px] uppercase tracking-wider text-slate-400 bg-slate-50/80 border-b border-slate-200">
-                        <th class="py-3 px-4 text-left">Modelo / Subfamilia</th>
-                        <th class="py-3 px-2 text-right">Stock</th>
-                        <th class="py-3 px-2 text-right">Tránsito</th>
-                        <th class="py-3 px-2 text-right">Taller</th>
-                        <th class="py-3 px-2 text-right text-red-600">Backlog</th>
-                        <th class="py-3 px-3 text-right font-black text-slate-900 bg-emerald-50/50">Inv. Libre</th>
-                        <th class="py-3 px-2 text-right">L12M</th>
-                        <th class="py-3 px-2 text-right">Ppto 2026</th>
-                        <th class="py-3 px-3 text-right">Cobertura</th>
-                        <th class="py-3 px-3 text-center">Estado</th>
-                        <th class="py-3 px-3 text-center">Solicitud</th>
-                        <th class="py-3 px-4 text-center">Acción</th>
+                    <tr class="text-[10px] uppercase tracking-wider text-slate-500 border-b border-slate-200 bg-slate-50">
+                        <th class="py-3 px-4 text-left bg-slate-50">Marca / Modelo SAP</th>
+                        <th class="py-3 px-2 text-right bg-slate-50">Stock</th>
+                        <th class="py-3 px-2 text-right bg-slate-50">Tránsito</th>
+                        <th class="py-3 px-2 text-right bg-slate-50">Taller</th>
+                        <th class="py-3 px-2 text-right text-red-600 bg-slate-50">Backlog</th>
+                        <th class="py-3 px-3 text-right font-black text-slate-900 bg-emerald-50">Inventario Disponible</th>
+                        <th class="py-3 px-2 text-right bg-slate-50">L12M</th>
+                        <th class="py-3 px-2 text-right bg-slate-50">Ppto {{ anio_ref }}</th>
+                        <th class="py-3 px-3 text-right bg-slate-50">Cobertura</th>
+                        <th class="py-3 px-3 text-center bg-slate-50">Estado</th>
+                        <th class="py-3 px-3 text-center bg-slate-50">Propuesta</th>
+                        <th class="py-3 px-4 text-center bg-slate-50">Acción</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-slate-100 font-sans">
                     {% for sf in subfamilias %}
-                    <tr class="hover:bg-slate-50/80 transition group" id="row-{{ sf.clave }}">
-                        <td class="py-3 px-4">
+                    <tr class="sop-matriz-row hover:bg-slate-50/80 transition group" id="row-{{ sf.dom_id }}" data-search="{{ sf.marca_label|lower }} {{ sf.modelo|lower }} {{ sf.nombre|lower }} {% for s in sf.skus %}{{ s.codigo|lower }} {{ s.descripcion|lower }} {% endfor %}">
+                        <td class="py-2.5 px-4">
                             <div class="flex items-center gap-2">
-                                <span
-                                    class="font-mono font-black text-xs px-2 py-0.5 rounded bg-slate-100 text-slate-800">{{ sf.clave }}</span>
+                                <div class="flex flex-col items-start gap-0.5 shrink-0">
+                                    <span class="font-mono font-black text-[10px] px-2 py-0.5 rounded bg-cyan-50 text-cyan-800 border border-cyan-100">{{ sf.marca_label }}</span>
+                                    {% if sf.modelo == 'SIN_MODELO' %}
+                                    <span class="font-mono font-black text-[10px] px-2 py-0.5 rounded bg-amber-100 text-amber-900 border border-amber-300 inline-flex items-center gap-1">
+                                        <i class="fa-solid fa-triangle-exclamation text-amber-600"></i> Sin Modelo
+                                    </span>
+                                    {% else %}
+                                    <span class="font-mono font-bold text-[10px] px-2 py-0.5 rounded bg-slate-100 text-slate-700">Mod {{ sf.modelo }}</span>
+                                    {% endif %}
+                                </div>
                                 <div>
-                                    <span class="font-bold text-slate-900 block">{{ sf.nombre|truncatechars:38 }}</span>
-                                    <span class="text-[10px] text-slate-400">{{ sf.skus|length }} SKUs mapeados ·
-                                        Familia {{ sf.familia }}</span>
+                                    <span class="font-bold text-slate-900 block">{{ sf.nombre|truncatechars:40 }}</span>
+                                    <div class="flex flex-wrap items-center gap-1 mt-0.5 text-[10px]">
+                                        <span class="text-slate-400 font-bold">SKU:</span>
+                                        {% for s in sf.skus|slice:":5" %}
+                                        <a href="{% url 'calculadora:articulo' s.codigo %}" target="_blank" class="font-mono font-bold text-pesco-cyan hover:underline bg-cyan-50/80 border border-cyan-200 px-1.5 py-0.5 rounded shadow-2xs" title="Ver ficha técnica de {{ s.codigo }}">{{ s.codigo }} <i class="fa-solid fa-arrow-up-right-from-square text-[8px] text-slate-400"></i></a>
+                                        {% endfor %}
+                                        {% if sf.skus|length > 5 %}
+                                        <button type="button" onclick="toggleDetalle('{{ sf.dom_id }}')" class="text-slate-600 hover:text-slate-900 font-mono font-bold bg-slate-100 hover:bg-slate-200 px-1.5 py-0.5 rounded cursor-pointer transition">+{{ sf.skus|length|add:"-5" }} más</button>
+                                        {% endif %}
+                                        <span class="text-slate-400">· {{ sf.grupo_sap }}</span>
+                                    </div>
                                 </div>
                             </div>
                         </td>
@@ -484,163 +627,108 @@
                         <td class="px-3 text-right font-mono font-black text-emerald-700 bg-emerald-50/40 text-sm">{{ sf.inv_libre_cant }}</td>
                         <td class="px-2 text-right font-mono text-slate-700">{{ sf.ent_12m_cant }}</td>
                         <td class="px-2 text-right font-mono text-slate-500">{{ sf.presup_cant }}</td>
-                        <td class="px-3 text-right font-mono font-black
-                            {% if sf.semaforo == 'SOBRESTOCK' %}text-red-600
-                            {% elif sf.semaforo == 'PRECAUCION' %}text-amber-600
-                            {% elif sf.semaforo == 'OPTIMO' %}text-emerald-600
-                            {% else %}text-cyan-600{% endif %}">
+                        <td class="px-3 text-right font-mono font-black {% if sf.semaforo == 'SOBRESTOCK' %}text-red-600{% elif sf.semaforo == 'PRECAUCION' %}text-amber-600{% elif sf.semaforo == 'OPTIMO' %}text-emerald-600{% else %}text-cyan-600{% endif %}">
                             {{ sf.cobertura_meses }} m
                         </td>
                         <td class="px-3 text-center">
-                            <span class="px-2 py-0.5 rounded-full text-[10px] font-black
-                                {% if sf.semaforo == 'SOBRESTOCK' %}bg-red-100 text-red-800
-                                {% elif sf.semaforo == 'PRECAUCION' %}bg-amber-100 text-amber-800
-                                {% elif sf.semaforo == 'OPTIMO' %}bg-emerald-100 text-emerald-800
-                                {% else %}bg-cyan-100 text-cyan-800{% endif %}">
+                            <span class="px-2 py-0.5 rounded-full text-[10px] font-black {% if sf.semaforo == 'SOBRESTOCK' %}bg-red-100 text-red-800{% elif sf.semaforo == 'PRECAUCION' %}bg-amber-100 text-amber-800{% elif sf.semaforo == 'OPTIMO' %}bg-emerald-100 text-emerald-800{% else %}bg-cyan-100 text-cyan-800{% endif %}">
                                 {{ sf.semaforo_label }}
                             </span>
                         </td>
                         <td class="px-3 text-center font-mono">
                             {% if sf.solic_cant %}
-                            <span class="px-2 py-0.5 rounded bg-amber-100 text-amber-900 font-bold">+{{ sf.solic_cant }}
-                                un</span>
+                            <span class="px-2 py-0.5 rounded bg-amber-100 text-amber-900 font-bold">+{{ sf.solic_cant }} un</span>
                             {% else %}
                             <span class="text-slate-300">—</span>
                             {% endif %}
                         </td>
                         <td class="px-4 text-center whitespace-nowrap">
-                            <div class="flex items-center justify-center gap-1.5">
-                                <button type="button" onclick="cargarEnSimulador('{{ sf.clave }}')"
-                                    class="bg-pesco-lightcyan hover:bg-pesco-cyan text-pesco-cyan hover:text-white text-[10px] font-bold px-2.5 py-1.5 rounded-lg transition"
-                                    title="Subir a la caja del simulador">
+                            <div class="flex items-center justify-center gap-1">
+                                <button type="button" onclick="cargarEnSimulador('{{ sf.clave|escapejs }}', false)" class="bg-pesco-lightcyan hover:bg-pesco-cyan text-pesco-cyan hover:text-white text-[10px] font-bold px-2 py-1.5 rounded-lg cursor-pointer transition" title="Evaluar solo este modelo">
                                     <i class="fa-solid fa-calculator mr-0.5"></i> Simular
                                 </button>
-                                <button type="button" onclick="toggleDetalle('{{ sf.clave }}')"
-                                    class="bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-bold px-2 py-1.5 rounded-lg transition"
-                                    title="Ver desglose de SKUs y clientes">
-                                    <i class="fa-solid fa-chevron-down" id="chevron-{{ sf.clave }}"></i>
+                                <button type="button" onclick="cargarEnSimulador('{{ sf.clave|escapejs }}', true)" class="bg-indigo-50 hover:bg-indigo-600 text-indigo-700 hover:text-white text-[10px] font-bold px-2 py-1.5 rounded-lg cursor-pointer transition" title="Sumar al consolidado multimodelo">
+                                    <i class="fa-solid fa-plus"></i>
+                                </button>
+                                <button type="button" onclick="toggleDetalle('{{ sf.dom_id }}')" class="bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-bold px-2 py-1.5 rounded-lg cursor-pointer transition" title="Ver SKUs, backlog y presupuesto">
+                                    <i class="fa-solid fa-chevron-down" id="chevron-{{ sf.dom_id }}"></i>
                                 </button>
                             </div>
                         </td>
                     </tr>
 
-                    <!-- FILA ACORDEÓN DE DETALLE EXPANDIBLE (SKUS Y CLIENTES) -->
-                    <tr id="detalle-{{ sf.clave }}" class="hidden bg-slate-50/90 border-b border-slate-200">
-                        <td colspan="12" class="p-4 sm:p-6">
+                    <!-- FILA ACORDEÓN DE DETALLE EXPANDIBLE -->
+                    <tr id="detalle-{{ sf.dom_id }}" class="hidden bg-slate-50/90 border-b border-slate-200">
+                        <td colspan="12" class="p-4 sm:p-5">
                             <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                                <!-- Desglose de SKUs de Compra vs Venta -->
                                 <div class="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm">
-                                    <div
-                                        class="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-2 flex items-center justify-between">
-                                        <span>SKUs Asociados al Modelo (Compra y Venta)</span>
+                                    <div class="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-2 flex items-center justify-between">
+                                        <span>SKUs Asociados al Modelo SAP {{ sf.modelo }}</span>
                                         <span class="text-pesco-cyan">{{ sf.skus|length }} códigos</span>
                                     </div>
-                                    <div class="space-y-2 max-h-60 overflow-y-auto pr-1">
+                                    <div class="space-y-2 max-h-56 overflow-y-auto pr-1">
                                         {% for s in sf.skus %}
-                                        <div
-                                            class="p-2.5 rounded-xl border border-slate-100 bg-slate-50/50 flex justify-between items-center text-xs">
+                                        <div class="p-2.5 rounded-xl border border-slate-100 bg-slate-50/50 flex justify-between items-center text-xs">
                                             <div>
                                                 <div class="flex items-center gap-1.5">
-                                                    <span
-                                                        class="px-1.5 py-0.2 rounded text-[9px] font-black {% if s.origen == 'Compra' %}bg-amber-100 text-amber-800{% else %}bg-cyan-100 text-cyan-800{% endif %}">
-                                                        {{ s.origen }}
-                                                    </span>
-                                                    <span class="font-mono font-bold text-slate-900">{{ s.codigo }}</span>
+                                                    <span class="px-1.5 py-0.5 rounded text-[9px] font-black {% if s.origen == 'Compra' %}bg-amber-100 text-amber-800{% else %}bg-cyan-100 text-cyan-800{% endif %}">{{ s.origen }}</span>
+                                                    <a href="{% url 'calculadora:articulo' s.codigo %}" target="_blank" class="font-mono font-bold text-pesco-cyan hover:underline" title="Abrir ficha del artículo {{ s.codigo }}">{{ s.codigo }} <i class="fa-solid fa-arrow-up-right-from-square text-[8px]"></i></a>
                                                     {% if s.sobre_camion == 'Sí' %}
-                                                    <span
-                                                        class="px-1.5 py-0.2 rounded text-[9px] font-bold bg-purple-100 text-purple-800">Sobre
-                                                        Camión</span>
+                                                    <span class="px-1.5 py-0.5 rounded text-[9px] font-bold bg-purple-100 text-purple-800">Sobre Camión</span>
                                                     {% endif %}
                                                 </div>
                                                 <div class="text-[11px] text-slate-600 mt-0.5">{{ s.descripcion }}</div>
+                                                {% if s.stock_bodegas %}
+                                                <div class="text-[10px] text-slate-400 font-mono mt-0.5">Bodegas: {% for bod, q in s.stock_bodegas.items %}{{ bod }}: {{ q }}{% if not forloop.last %} · {% endif %}{% endfor %}</div>
+                                                {% endif %}
                                             </div>
-                                            <div class="text-right font-mono text-[11px]">
-                                                <div>Stock: <strong class="text-slate-900">{{ s.stock_cant }}</strong>
-                                                </div>
-                                                {% if s.tr_real_cant or s.tr_proj_cant %}
-                                                <div class="text-cyan-700">Trán: {{ s.tr_real_cant|add:s.tr_proj_cant }}
-                                                </div>
-                                                {% endif %}
-                                                {% if s.prod_cant %}
-                                                <div class="text-purple-700">Taller: {{ s.prod_cant }}</div>
-                                                {% endif %}
+                                            <div class="text-right font-mono text-[11px] shrink-0">
+                                                <div>Stock: <strong class="text-slate-900">{{ s.stock_cant }}</strong></div>
+                                                {% if s.tr_real_cant or s.tr_proj_cant %}<div class="text-cyan-700">Trán: {{ s.tr_real_cant|add:s.tr_proj_cant }}</div>{% endif %}
+                                                {% if s.prod_cant %}<div class="text-purple-700">Taller: {{ s.prod_cant }}</div>{% endif %}
                                             </div>
                                         </div>
                                         {% endfor %}
                                     </div>
                                 </div>
 
-                                <!-- Detalle de Backlog con Clientes y Solicitudes -->
-                                <div
-                                    class="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm flex flex-col justify-between">
+                                <div class="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm flex flex-col justify-between">
                                     <div>
-                                        <div
-                                            class="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-2 flex items-center justify-between">
-                                            <span>Compromisos en Backlog (Clientes)</span>
-                                            <span class="text-red-600 font-bold">{{ sf.backlog_items|length }}
-                                                pedidos</span>
+                                        <div class="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-2 flex items-center justify-between">
+                                            <span>Compromisos en Backlog (Clientes PC)</span>
+                                            <span class="text-red-600 font-bold">{{ sf.backlog_items|length }} pedidos</span>
                                         </div>
                                         {% if sf.backlog_items %}
-                                        <div class="space-y-2 max-h-44 overflow-y-auto pr-1">
+                                        <div class="space-y-2 max-h-40 overflow-y-auto pr-1">
                                             {% for b in sf.backlog_items %}
                                             <div class="p-2.5 rounded-xl border border-red-100 bg-red-50/30 text-xs">
                                                 <div class="flex justify-between items-start">
                                                     <span class="font-black text-slate-900">{{ b.cliente }}</span>
-                                                    <span class="font-mono font-bold text-red-600">{{ b.cantidad }}
-                                                        un</span>
+                                                    <span class="font-mono font-bold text-red-600">{{ b.cantidad }} un</span>
                                                 </div>
-                                                <div
-                                                    class="flex justify-between items-center text-[10px] text-slate-500 mt-1">
-                                                    <span>PC: <strong class="text-slate-700">{{ b.pc }}</strong> · Ejec:
-                                                        {{ b.ejecutivo }}</span>
-                                                    <span class="font-mono">${{ b.total_usd|floatformat:"0g" }}
-                                                        USD</span>
+                                                <div class="flex justify-between items-center text-[10px] text-slate-500 mt-1">
+                                                    <span>PC: <strong class="text-slate-700">{{ b.pc }}</strong> · Ejec: {{ b.ejecutivo }}{% if b.fecha_emision %} · {{ b.fecha_emision }}{% endif %}</span>
+                                                    <span class="font-mono">${{ b.total_usd|floatformat:"0g" }} USD</span>
                                                 </div>
                                             </div>
                                             {% endfor %}
                                         </div>
                                         {% else %}
-                                        <div class="p-6 text-center text-slate-400 text-xs italic">
-                                            No hay pedidos de clientes en backlog para esta subfamilia.
-                                        </div>
+                                        <div class="p-5 text-center text-slate-400 text-xs italic">No hay pedidos de clientes en backlog para este modelo.</div>
                                         {% endif %}
                                     </div>
 
-                                    {% if sf.solicitudes_items %}
                                     <div class="mt-3 pt-3 border-t border-slate-100">
-                                        <div
-                                            class="text-[10px] font-black text-amber-700 uppercase tracking-wider mb-1">
-                                            Solicitudes de Compra Registradas</div>
-                                        {% for sol in sf.solicitudes_items %}
-                                        <div
-                                            class="p-2 rounded-xl bg-amber-50 border border-amber-200 text-xs flex justify-between items-center text-amber-900">
-                                            <div>
-                                                <strong>{{ sol.cantidad }} un</strong> para <em>{{ sol.negocio }}</em>
-                                                <span class="text-[10px] text-amber-700 block">{{ sol.descripcion }}</span>
-                                            </div>
-                                            <span class="font-mono font-bold">${{ sol.total_usd|floatformat:"0g" }}
-                                                USD</span>
-                                        </div>
-                                        {% endfor %}
-                                    </div>
-                                    {% endif %}
-                                    <div class="mt-3 pt-3 border-t border-slate-100">
-                                        <form method="post"
-                                            action="{% url 'calculadora:sop_hiab_guardar_presupuesto' %}"
-                                            class="flex flex-wrap items-center gap-2 text-xs">
+                                        <form method="post" action="{% url 'calculadora:sop_hiab_guardar_presupuesto' %}" class="flex flex-wrap items-center gap-2 text-xs">
                                             {% csrf_token %}
-                                            <input type="hidden" name="modelo" value="{{ sf.clave }}">
+                                            <input type="hidden" name="grupo" value="{{ f_grupo }}">
+                                            <input type="hidden" name="marca" value="{{ f_marca }}">
+                                            <input type="hidden" name="clave_modelo" value="{{ sf.clave }}">
                                             <input type="hidden" name="anio" value="{{ anio_ref }}">
                                             <span class="text-[10px] font-black text-slate-500 uppercase">Ppto {{ anio_ref }}:</span>
-                                            <input type="number" name="cantidad" min="0" step="1"
-                                                value="{{ sf.presup_cant }}" placeholder="Unid."
-                                                class="w-20 border border-slate-200 rounded-lg px-2 py-1 text-xs font-mono">
-                                            <input type="number" name="monto_usd" min="0" step="1000"
-                                                value="{{ sf.presup_usd|floatformat:0 }}" placeholder="USD"
-                                                class="w-28 border border-slate-200 rounded-lg px-2 py-1 text-xs font-mono">
-                                            <button type="submit"
-                                                class="bg-slate-800 hover:bg-pesco-cyan text-white text-[10px] font-bold px-3 py-1 rounded-lg cursor-pointer transition">Guardar
-                                                Ppto</button>
+                                            <input type="number" name="cantidad" min="0" step="1" value="{{ sf.presup_cant }}" placeholder="Unid." class="w-20 border border-slate-200 rounded-lg px-2 py-1 text-xs font-mono">
+                                            <input type="number" name="monto_usd" min="0" step="1000" value="{{ sf.presup_usd|floatformat:0 }}" placeholder="USD" class="w-28 border border-slate-200 rounded-lg px-2 py-1 text-xs font-mono">
+                                            <button type="submit" class="bg-slate-800 hover:bg-pesco-cyan text-white text-[10px] font-bold px-3 py-1 rounded-lg cursor-pointer transition">Guardar Ppto</button>
                                         </form>
                                     </div>
                                 </div>
@@ -649,42 +737,44 @@
                     </tr>
                     {% empty %}
                     <tr>
-                        <td colspan="12" class="p-8 text-center text-slate-500">
-                            No se encontraron modelos con los filtros seleccionados.
-                        </td>
+                        <td colspan="12" class="p-8 text-center text-slate-500">No se encontraron modelos con los filtros seleccionados.</td>
                     </tr>
                     {% endfor %}
                 </tbody>
             </table>
         </div>
+        <div class="px-5 py-2.5 bg-slate-50 border-t border-slate-200 text-[11px] text-slate-500 flex justify-between items-center">
+            <span><strong>{{ total_filtradas }}</strong> modelos en tabla (scroll vertical activo).</span>
+            <span class="font-mono">Total SKUs activos: {{ total_skus }}</span>
+        </div>
     </div>
 
-    <!-- 4. HISTORIAL DE DECISIONES 1 A 1 REGISTRADAS EN BD -->
-    <div id="historial-decisiones"
-        class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden scroll-mt-6">
-        <div class="p-6 border-b border-slate-100 flex justify-between items-center">
+    <!-- 4. BITÁCORA COMERCIAL 1 A 1: EVALUAR, RECHAZAR O CONVERTIR EN SC -->
+    <div id="historial-decisiones" class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden scroll-mt-6">
+        <div class="p-5 border-b border-slate-100 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
             <div>
                 <span class="text-xs font-bold text-pesco-cyan uppercase tracking-wider">Bitácora Comercial 1 a 1</span>
-                <h3 class="text-lg font-black text-slate-900 tracking-tight">Decisiones y Propuestas Registradas</h3>
+                <h3 class="text-lg font-black text-slate-900 tracking-tight">Gestión de Decisiones · Convertir en SC o Rechazar</h3>
             </div>
-            <span class="text-xs font-mono font-bold text-slate-500">{{ propuestas_recientes|length }}
-                registro(s)</span>
+            <div class="flex items-center gap-3">
+                <a href="{% url 'calculadora:solicitudes' %}" class="text-xs font-bold text-pesco-cyan hover:underline"><i class="fa-solid fa-file-invoice mr-1"></i>Ir a Solicitudes de Compra (SC)</a>
+                <span class="text-xs font-mono font-bold text-slate-500">{{ propuestas_recientes|length }} registro(s)</span>
+            </div>
         </div>
         {% if propuestas_recientes %}
         <div class="overflow-x-auto">
             <table class="min-w-full text-xs">
                 <thead>
-                    <tr
-                        class="text-[10px] uppercase tracking-wider text-slate-400 bg-slate-50 border-b border-slate-200">
+                    <tr class="text-[10px] uppercase tracking-wider text-slate-400 bg-slate-50 border-b border-slate-200">
                         <th class="py-2.5 px-4 text-left">Fecha</th>
-                        <th class="py-2.5 px-3 text-left">Modelo SAP</th>
+                        <th class="py-2.5 px-3 text-left">Marca / Modelo SAP</th>
                         <th class="py-2.5 px-3 text-left">Vendedor / Negocio</th>
                         <th class="py-2.5 px-2 text-right">Solic.</th>
                         <th class="py-2.5 px-2 text-right">Aprob.</th>
                         <th class="py-2.5 px-3 text-right">Inversión USD</th>
-                        <th class="py-2.5 px-3 text-center">Decisión</th>
+                        <th class="py-2.5 px-3 text-center">Estado</th>
                         <th class="py-2.5 px-3 text-left">Comentario</th>
-                        <th class="py-2.5 px-3 text-center">Acción</th>
+                        <th class="py-2.5 px-4 text-center">Decidir / Acción</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-slate-100">
@@ -692,8 +782,9 @@
                     <tr class="hover:bg-slate-50/70">
                         <td class="py-2.5 px-4 font-mono text-slate-500 whitespace-nowrap">{{ pr.creado_en|date:"d-m-Y H:i" }}</td>
                         <td class="py-2.5 px-3">
+                            <span class="font-mono font-black px-1.5 py-0.5 rounded bg-cyan-50 text-cyan-800">{{ pr.subfamilia|default:"-" }}</span>
                             <span class="font-mono font-black px-1.5 py-0.5 rounded bg-slate-100 text-slate-800">{{ pr.modelo }}</span>
-                            <span class="text-slate-600 ml-1">{{ pr.modelo_nombre|truncatechars:28 }}</span>
+                            <span class="text-slate-600 ml-1">{{ pr.modelo_nombre|truncatechars:24 }}</span>
                         </td>
                         <td class="py-2.5 px-3">
                             <span class="font-bold text-slate-800">{{ pr.vendedor|default:"—" }}</span>
@@ -703,17 +794,50 @@
                         <td class="py-2.5 px-2 text-right font-mono font-bold text-emerald-700">{{ pr.cantidad_aprobada }}</td>
                         <td class="py-2.5 px-3 text-right font-mono">${{ pr.inversion_usd|floatformat:"0g" }}</td>
                         <td class="py-2.5 px-3 text-center">
-                            <span
-                                class="px-2 py-0.5 rounded-full text-[10px] font-black {% if pr.decision == 'APROBADA' %}bg-emerald-100 text-emerald-800{% elif pr.decision == 'REFUTADA' %}bg-red-100 text-red-800{% elif pr.decision == 'PARCIAL' or pr.decision == 'POSTERGADA' %}bg-amber-100 text-amber-800{% else %}bg-slate-100 text-slate-700{% endif %}">{{ pr.get_decision_display }}</span>
+                            <span class="px-2 py-0.5 rounded-full text-[10px] font-black {% if pr.decision == 'APROBADA' %}bg-emerald-100 text-emerald-800{% elif pr.decision == 'REFUTADA' %}bg-red-100 text-red-800{% elif pr.decision == 'PARCIAL' or pr.decision == 'POSTERGADA' %}bg-amber-100 text-amber-800{% else %}bg-slate-100 text-slate-700{% endif %}">{{ pr.get_decision_display }}</span>
                         </td>
-                        <td class="py-2.5 px-3 text-slate-600 max-w-xs truncate">{{ pr.comentario|default:"—" }}</td>
-                        <td class="py-2.5 px-3 text-center">
-                            <form method="post" action="{% url 'calculadora:sop_hiab_eliminar_decision' pr.pk %}"
-                                onsubmit="return confirm('¿Eliminar este registro?');">
-                                {% csrf_token %}
-                                <button type="submit" class="text-slate-400 hover:text-red-600 cursor-pointer"
-                                    title="Eliminar"><i class="fa-solid fa-trash-can"></i></button>
-                            </form>
+                        <td class="py-2.5 px-3 text-slate-600 max-w-xs truncate" title="{{ pr.comentario }}">{{ pr.comentario|default:"—" }}</td>
+                        <td class="py-2.5 px-4 text-center whitespace-nowrap">
+                            <div class="flex items-center justify-center gap-1.5">
+                                <button type="button" onclick="cargarEnSimulador('{{ pr.familia }}|{{ pr.subfamilia }}|{{ pr.modelo }}', false)" class="bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-bold px-2 py-1 rounded-lg cursor-pointer transition" title="Re-abrir en el Simulador 1 a 1">
+                                    <i class="fa-solid fa-magnifying-glass-chart"></i>
+                                </button>
+
+                                {% if pr.solicitud_compra_id %}
+                                <a href="{% url 'calculadora:solicitud_detalle' pr.solicitud_compra_id %}" class="bg-emerald-100 hover:bg-emerald-200 text-emerald-800 text-[10px] font-black px-2.5 py-1 rounded-lg transition">
+                                    <i class="fa-solid fa-file-circle-check mr-0.5"></i> Ver SC #{{ pr.solicitud_compra_id }}
+                                </a>
+                                {% else %}
+                                    {% if pr.cantidad_aprobada > 0 or pr.cantidad_solicitada > 0 %}
+                                    <form method="post" action="{% url 'calculadora:sop_hiab_generar_sc' pr.pk %}" onsubmit="return confirm('¿Convertir esta decisión en una Solicitud de Compra (SC) oficial en borrador?');">
+                                        {% csrf_token %}
+                                        <input type="hidden" name="grupo" value="{{ f_grupo }}">
+                                        <input type="hidden" name="marca" value="{{ f_marca }}">
+                                        <button type="submit" class="bg-pesco-cyan hover:bg-pesco-darkcyan text-white text-[10px] font-black px-2.5 py-1 rounded-lg cursor-pointer transition">
+                                            <i class="fa-solid fa-cart-plus mr-0.5"></i> Convertir en SC
+                                        </button>
+                                    </form>
+                                    {% endif %}
+
+                                    {% if pr.decision != 'REFUTADA' %}
+                                    <form method="post" action="{% url 'calculadora:sop_hiab_rechazar_decision' pr.pk %}" onsubmit="return confirm('¿Marcar esta propuesta como Rechazada / Refutada?');">
+                                        {% csrf_token %}
+                                        <input type="hidden" name="grupo" value="{{ f_grupo }}">
+                                        <input type="hidden" name="marca" value="{{ f_marca }}">
+                                        <button type="submit" class="bg-red-50 hover:bg-red-600 text-red-700 hover:text-white border border-red-200 text-[10px] font-black px-2.5 py-1 rounded-lg cursor-pointer transition">
+                                            <i class="fa-solid fa-ban mr-0.5"></i> Rechazar
+                                        </button>
+                                    </form>
+                                    {% endif %}
+                                {% endif %}
+
+                                <form method="post" action="{% url 'calculadora:sop_hiab_eliminar_decision' pr.pk %}" onsubmit="return confirm('¿Eliminar definitivamente este registro?');">
+                                    {% csrf_token %}
+                                    <input type="hidden" name="grupo" value="{{ f_grupo }}">
+                                    <input type="hidden" name="marca" value="{{ f_marca }}">
+                                    <button type="submit" class="text-slate-400 hover:text-red-600 cursor-pointer px-1" title="Eliminar registro"><i class="fa-solid fa-trash-can"></i></button>
+                                </form>
+                            </div>
                         </td>
                     </tr>
                     {% endfor %}
@@ -722,154 +846,225 @@
         </div>
         {% else %}
         <div class="p-6 text-center text-xs text-slate-400 italic">
-            Aún no hay decisiones registradas. Usa el formulario dentro del Simulador 1 a 1 para guardar el resultado de
-            cada reunión con vendedores.
+            Aún no hay decisiones registradas para este alcance. Registra una arriba en el Simulador 1 a 1 para poder revisarla, rechazarla o convertirla en SC aquí.
         </div>
         {% endif %}
     </div>
     {% endif %}
 </div>
 
-<!-- Datos serializados de forma segura para JavaScript -->
 {{ subfamilias_map|json_script:"sf-data-json" }}
+{{ selected_keys|json_script:"sf-selected-keys" }}
 
-<!-- JavaScript para la Simulación en Tiempo Real y Acordeón -->
 <script>
-    const sfDataMap = JSON.parse(document.getElementById('sf-data-json')?.textContent || '{}');
+const sfDataMap = JSON.parse(document.getElementById('sf-data-json')?.textContent || '{}');
+let selectedKeys = JSON.parse(document.getElementById('sf-selected-keys')?.textContent || '[]');
+const SIMULAR_API_URL = "{% url 'calculadora:sop_hiab_simular' %}";
+const ALCANCE_LABEL = "{{ alcance_label|escapejs }}";
+const TOTAL_MODELOS = {{ total_filtradas|default:total_subfamilias }};
+const BADGE_CLASSES = {
+    SOBRESTOCK: 'bg-red-100 text-red-800 border border-red-200',
+    PRECAUCION: 'bg-amber-100 text-amber-800 border border-amber-200',
+    OPTIMO: 'bg-emerald-100 text-emerald-800 border border-emerald-200',
+    QUIEBRE: 'bg-cyan-100 text-cyan-800 border border-cyan-200',
+};
+const VEREDICTO_BOX_CLASSES = {
+    red: 'p-3.5 rounded-2xl border bg-red-50 border-red-200 text-red-900 shadow-xs',
+    amber: 'p-3.5 rounded-2xl border bg-amber-50 border-amber-200 text-amber-900 shadow-xs',
+    emerald: 'p-3.5 rounded-2xl border bg-emerald-50 border-emerald-200 text-emerald-900 shadow-xs',
+    slate: 'p-3.5 rounded-2xl border bg-white border-slate-200 text-slate-800 shadow-xs',
+};
+let simAbortController = null;
 
-    function toggleDetalle(clave) {
-        const row = document.getElementById('detalle-' + clave);
-        const chevron = document.getElementById('chevron-' + clave);
-        if (!row) return;
-        if (row.classList.contains('hidden')) {
-            row.classList.remove('hidden');
-            if (chevron) chevron.classList.add('rotate-180');
-        } else {
-            row.classList.add('hidden');
-            if (chevron) chevron.classList.remove('rotate-180');
-        }
+function formatMoney(num) {
+    return '$' + Math.round(num || 0).toLocaleString('de-DE') + ' USD';
+}
+
+function toggleDetalle(domId) {
+    const row = document.getElementById('detalle-' + domId);
+    const chevron = document.getElementById('chevron-' + domId);
+    if (!row) return;
+    row.classList.toggle('hidden');
+    if (chevron) chevron.classList.toggle('rotate-180');
+}
+
+let todosDetallesAbiertos = false;
+function toggleTodosLosDetalles() {
+    todosDetallesAbiertos = !todosDetallesAbiertos;
+    document.querySelectorAll('[id^="detalle-"]').forEach(r => {
+        if (todosDetallesAbiertos) r.classList.remove('hidden');
+        else r.classList.add('hidden');
+    });
+    document.querySelectorAll('[id^="chevron-"]').forEach(c => {
+        if (todosDetallesAbiertos) c.classList.add('rotate-180');
+        else c.classList.remove('rotate-180');
+    });
+    const lbl = document.getElementById('label-toggle-todos');
+    if (lbl) lbl.innerText = todosDetallesAbiertos ? 'Contraer SKUs' : 'Expandir SKUs';
+}
+
+function filtrarMatrizEnVivo(term) {
+    const q = (term || '').trim().toLowerCase();
+    document.querySelectorAll('.sop-matriz-row').forEach(row => {
+        const text = row.dataset.search || '';
+        const match = !q || text.includes(q);
+        row.style.display = match ? '' : 'none';
+        const domId = row.id.replace('row-', '');
+        const det = document.getElementById('detalle-' + domId);
+        if (det && !match) det.classList.add('hidden');
+    });
+}
+
+// -- Selector unico multimodelo (campo buscador + lista con casillas) --
+function abrirExcelDropdown() {
+    document.getElementById('excelModelMenu')?.classList.remove('hidden');
+}
+
+function cerrarExcelDropdown() {
+    document.getElementById('excelModelMenu')?.classList.add('hidden');
+    const inp = document.getElementById('excelModelSearch');
+    if (inp) { inp.value = ''; inp.blur(); }
+    filtrarOpcionesExcel();
+}
+
+document.addEventListener('click', (ev) => {
+    const wrap = document.getElementById('excelModelDropdown');
+    if (wrap && !wrap.contains(ev.target)) cerrarExcelDropdown();
+});
+document.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Escape') cerrarExcelDropdown();
+});
+
+function filtrarOpcionesExcel() {
+    const q = (document.getElementById('excelModelSearch')?.value || '').trim().toLowerCase();
+    document.querySelectorAll('.excel-opt-item').forEach((lbl) => {
+        lbl.style.display = (lbl.dataset.search || '').includes(q) ? '' : 'none';
+    });
+}
+
+function sincronizarCheckboxesYLabel() {
+    const setSel = new Set(selectedKeys);
+    document.querySelectorAll('.excel-model-cb').forEach((cb) => { cb.checked = setSel.has(cb.value); });
+    const inp = document.getElementById('excelModelSearch');
+    const hint = document.getElementById('excelModelCountHint');
+    if (hint) hint.innerText = selectedKeys.length ? `${selectedKeys.length} seleccionado(s)` : 'Consolidado Total';
+    if (!inp) return;
+    if (selectedKeys.length === 1) {
+        const sf = sfDataMap[selectedKeys[0]];
+        inp.placeholder = sf ? `${sf.marca_label} · Mod ${sf.modelo} · ${sf.nombre.slice(0, 28)}` : selectedKeys[0];
+    } else if (selectedKeys.length > 1) {
+        inp.placeholder = `Consolidado (${selectedKeys.length}): Mod ${selectedKeys.map((k) => sfDataMap[k]?.modelo || k).join(' + ')}`;
+    } else {
+        inp.placeholder = `★ Consolidado ${ALCANCE_LABEL} (${TOTAL_MODELOS} modelos)`;
     }
+}
 
-    function cargarEnSimulador(clave) {
-        const sel = document.getElementById('sim-subfam-select');
-        if (sel) {
-            sel.value = clave;
-            cambiarModeloSimulador();
-            // scroll suave hacia arriba
-            sel.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        }
+function onToggleCheckboxModelo(cb) {
+    const key = cb.value;
+    if (cb.checked) {
+        if (!selectedKeys.includes(key)) selectedKeys.push(key);
+    } else {
+        selectedKeys = selectedKeys.filter((k) => k !== key);
     }
+    sincronizarCheckboxesYLabel();
+    ejecutarSimulacionEnVivo();
+}
 
-    function cambiarModeloSimulador() {
-        const sel = document.getElementById('sim-subfam-select');
-        if (!sel) return;
-        const clave = sel.value;
-        const sf = sfDataMap[clave];
-        if (!sf) return;
+function seleccionarConsolidadoTotal() {
+    selectedKeys = [];
+    sincronizarCheckboxesYLabel();
+    cerrarExcelDropdown();
+    ejecutarSimulacionEnVivo();
+}
 
-        // Actualizar datos estáticos en el panel
-        document.getElementById('sim-modelo-nombre').innerText = sf.nombre;
-        document.getElementById('sim-stk-val').innerText = sf.stock_cant;
-        document.getElementById('sim-tr-val').innerText = sf.tr_real_cant + sf.tr_proj_cant;
-        document.getElementById('sim-prod-val').innerText = sf.en_proceso_cant;
-        document.getElementById('sim-inv-ini').innerText = sf.inv_inicial_cant + ' unidades';
-        document.getElementById('sim-bklg').innerText = '-' + sf.backlog_cant + ' unidades';
-        document.getElementById('sim-inv-libre').innerText = sf.inv_libre_cant + ' unidades';
-        document.getElementById('sim-l12m').innerText = sf.ent_12m_cant + ' un';
-        document.getElementById('sim-cob-act').innerText = sf.cobertura_meses + ' meses';
+function dejarSoloPrimeroExcel() {
+    selectedKeys = [];
+    sincronizarCheckboxesYLabel();
+    cerrarExcelDropdown();
+    ejecutarSimulacionEnVivo();
+}
 
-        // Actualizar semáforo badge
-        const badge = document.getElementById('sim-semaforo-badge');
-        if (badge) {
-            badge.className = 'px-2.5 py-1 rounded-full text-[10px] font-black uppercase ';
-            if (sf.semaforo === 'SOBRESTOCK') {
-                badge.className += 'bg-red-100 text-red-800 border border-red-200';
-            } else if (sf.semaforo === 'PRECAUCION') {
-                badge.className += 'bg-amber-100 text-amber-800 border border-amber-200';
-            } else if (sf.semaforo === 'OPTIMO') {
-                badge.className += 'bg-emerald-100 text-emerald-800 border border-emerald-200';
-            } else {
-                badge.className += 'bg-cyan-100 text-cyan-800 border border-cyan-200';
+function cargarEnSimulador(clave, sumarAlConsolidado) {
+    if (!sfDataMap[clave]) return;
+    if (sumarAlConsolidado) {
+        if (!selectedKeys.includes(clave)) selectedKeys.push(clave);
+    } else {
+        selectedKeys = [clave];
+    }
+    sincronizarCheckboxesYLabel();
+    ejecutarSimulacionEnVivo();
+    // Resaltar fila seleccionada en la matriz consolidada
+    document.querySelectorAll('.sop-matriz-row').forEach(r => r.classList.remove('bg-cyan-50/80', 'border-l-4', 'border-l-pesco-cyan'));
+    const domId = clave.replace(/[^A-Za-z0-9_-]/g, '_');
+    const activeRow = document.getElementById('row-' + domId);
+    if (activeRow) activeRow.classList.add('bg-cyan-50/80', 'border-l-4', 'border-l-pesco-cyan');
+    document.getElementById('simulador-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function modificarCantidad(delta) {
+    const input = document.getElementById('sim-input-cant');
+    if (!input) return;
+    input.value = Math.max(0, (parseInt(input.value, 10) || 0) + delta);
+    ejecutarSimulacionEnVivo();
+}
+
+async function ejecutarSimulacionEnVivo() {
+    const input = document.getElementById('sim-input-cant');
+    if (!input) return;
+
+    const clavesCsv = selectedKeys.length ? selectedKeys.join(',') : 'TODOS';
+    const cant = Math.max(0, parseInt(input.value, 10) || 0);
+
+    const decClave = document.getElementById('dec-clave-modelo');
+    const decSol = document.getElementById('dec-cant-sol');
+    const decApr = document.getElementById('dec-cant-apr');
+    if (decClave) decClave.value = clavesCsv;
+    if (decSol) decSol.value = cant;
+    if (decApr) decApr.value = cant;
+
+    if (simAbortController) simAbortController.abort();
+    simAbortController = new AbortController();
+    try {
+        const qs = new URLSearchParams({ subfamilia: clavesCsv, cantidad: String(cant) });
+        const resp = await fetch(`${SIMULAR_API_URL}?${qs.toString()}`, { signal: simAbortController.signal });
+        if (!resp.ok) return;
+        const sim = await resp.json();
+        const c = sim.consolidado;
+        if (c) {
+            const meta = sim.es_multimodelo && clavesCsv === 'TODOS'
+                ? `${c.marca_label} · ${c.modelo}`
+                : `${c.marca_label} · Modelo SAP ${c.modelo}`;
+            document.getElementById('sim-modelo-meta').innerText = meta;
+            document.getElementById('sim-modelo-nombre').innerText = c.nombre;
+            document.getElementById('sim-stk-val').innerText = c.stock_cant;
+            document.getElementById('sim-tr-val').innerText = c.tr_real_cant + c.tr_proj_cant;
+            document.getElementById('sim-tr-sub').innerText = `FR: ${c.tr_real_cant} | OC: ${c.tr_proj_cant}`;
+            document.getElementById('sim-prod-val').innerText = c.en_proceso_cant;
+            document.getElementById('sim-inv-ini').innerText = `${c.inv_inicial_cant} unidades`;
+            document.getElementById('sim-bklg').innerText = `-${c.backlog_cant} unidades`;
+            document.getElementById('sim-inv-libre').innerText = `${c.inv_libre_cant} unidades`;
+            document.getElementById('sim-l12m').innerText = `${c.ent_12m_cant} un`;
+            document.getElementById('sim-ritmo').innerText = `(${c.ritmo_mensual} un/mes)`;
+            document.getElementById('sim-cob-act').innerText = `${c.cobertura_meses} meses`;
+            document.getElementById('sim-costo-u').innerText = `(${formatMoney(c.costo_unitario_compra).replace(' USD', '')} c/u)`;
+            const badge = document.getElementById('sim-semaforo-badge');
+            if (badge) {
+                badge.className = 'px-2.5 py-1 rounded-full text-[10px] font-black uppercase shrink-0 ' + (BADGE_CLASSES[c.semaforo] || BADGE_CLASSES.QUIEBRE);
+                badge.innerText = c.semaforo_label;
             }
-            badge.innerText = sf.semaforo_label;
         }
-
-        ejecutarSimulacionEnVivo();
-    }
-
-    function modificarCantidad(delta) {
-        const input = document.getElementById('sim-input-cant');
-        if (!input) return;
-        let v = parseInt(input.value) || 0;
-        v = Math.max(0, v + delta);
-        input.value = v;
-        ejecutarSimulacionEnVivo();
-    }
-
-    function formatMoney(num) {
-        return '$' + Math.round(num).toLocaleString('de-DE') + ' USD';
-    }
-
-    function ejecutarSimulacionEnVivo() {
-        const sel = document.getElementById('sim-subfam-select');
-        const input = document.getElementById('sim-input-cant');
-        if (!sel || !input) return;
-
-        const clave = sel.value;
-        const cant = Math.max(0, parseInt(input.value) || 0);
-        const sf = sfDataMap[clave];
-        if (!sf) return;
-
-        // Sincronizar campos del formulario "Registrar Decisión 1 a 1"
-        const decMod = document.getElementById('dec-modelo');
-        const decSol = document.getElementById('dec-cant-sol');
-        const decApr = document.getElementById('dec-cant-apr');
-        if (decMod) decMod.value = clave;
-        if (decSol) decSol.value = cant;
-        if (decApr) decApr.value = cant;
-
-        const costo_u = sf.costo_unitario_compra || 100000;
-        const inversion = cant * costo_u;
-        const inv_libre_proj = sf.inv_libre_cant + cant;
-        let cob_proj = 0;
-        if (sf.ritmo_mensual > 0) {
-            cob_proj = Math.round((inv_libre_proj / sf.ritmo_mensual) * 10) / 10;
-        } else if (inv_libre_proj > 0) {
-            cob_proj = 999;
-        }
-
-        // Actualizar métricas proyectadas con colores contrastados
-        document.getElementById('sim-res-inversion').innerText = formatMoney(inversion);
-        document.getElementById('sim-res-invlibre').innerText = inv_libre_proj + ' unidades';
-        document.getElementById('sim-res-cobertura').innerText = cob_proj + ' meses';
-
-        // Dictamen y Argumento comercial (100% Light Theme legible)
+        document.getElementById('sim-res-inversion').innerText = formatMoney(sim.inversion_usd);
+        document.getElementById('sim-res-invlibre').innerText = `${sim.inv_libre_proyectado} unidades`;
+        document.getElementById('sim-res-cobertura').innerText = `${sim.cobertura_proyectada_meses} meses`;
         const box = document.getElementById('sim-box-veredicto');
-        const titulo = document.getElementById('sim-veredicto-titulo');
-        const texto = document.getElementById('sim-argumento-texto');
-
-        if (cant === 0) {
-            box.className = 'p-4 rounded-2xl border bg-white border-slate-200 text-slate-800 shadow-xs';
-            titulo.innerText = 'Sin solicitud adicional';
-            texto.innerText = `El modelo ${sf.nombre} (Subfamilia ${sf.clave}) cuenta actualmente con ${sf.inv_libre_cant} unidades libres (${sf.stock_cant} en stock, ${sf.tr_real_cant + sf.tr_proj_cant} en tránsito y ${sf.en_proceso_cant} en taller, descontando ${sf.backlog_cant} comprometidas en backlog). Cobertura actual: ${sf.cobertura_meses} meses.`;
-        } else if (sf.cobertura_meses > 12.0) {
-            box.className = 'p-4 rounded-2xl border bg-red-50 border-red-200 text-red-900 shadow-xs';
-            titulo.innerText = '⛔ REFUTAR COMPRA (Sobrestock Severo)';
-            texto.innerText = `Rechazar solicitud. El modelo ya cuenta con ${sf.inv_libre_cant} unidades disponibles no comprometidas (${sf.cobertura_meses} meses de cobertura al ritmo anual de ${sf.ent_12m_cant} unidades). Comprar ${cant} unidades adicionales inmovilizaría ${formatMoney(inversion)} en capital de trabajo y dispararía la cobertura a ${cob_proj} meses (${(cob_proj / 12).toFixed(1)} años). Recomendación: Priorizar la venta de las unidades en stock (${sf.stock_cant}) y en tránsito (${sf.tr_real_cant + sf.tr_proj_cant}).`;
-        } else if (sf.cobertura_meses >= 6.0) {
-            box.className = 'p-4 rounded-2xl border bg-amber-50 border-amber-200 text-amber-900 shadow-xs';
-            titulo.innerText = '⚠️ NEGOCIAR REDUCCIÓN O POSTERGAR';
-            texto.innerText = `Ajustar o diferir compra. El inventario libre actual (${sf.inv_libre_cant} unidades) cubre ${sf.cobertura_meses} meses de demanda, suficiente para cubrir el lead time de fábrica. Comprar ${cant} unidades (${formatMoney(inversion)}) elevaría la cobertura a ${cob_proj} meses. Recomendación: Si el cliente no tiene una orden en firme firmada, aplazar la compra a la próxima ventana S&OP o comprar máximo 1 unidad.`;
-        } else if (cob_proj <= 6.0) {
-            box.className = 'p-4 rounded-2xl border bg-emerald-50 border-emerald-200 text-emerald-900 shadow-xs';
-            titulo.innerText = '✅ APROBAR COMPRA (Completamente Justificada)';
-            texto.innerText = `Aprobar compra de ${cant} unidades (${formatMoney(inversion)}). El inventario libre actual es de solo ${sf.inv_libre_cant} unidades con cobertura baja (${sf.cobertura_meses} meses) frente a una demanda de ${sf.ritmo_mensual} un/mes. La compra asegura suministro para los próximos ${cob_proj} meses manteniendo un nivel de inventario saludable.`;
-        } else {
-            box.className = 'p-4 rounded-2xl border bg-amber-50 border-amber-200 text-amber-900 shadow-xs';
-            const sugerida = Math.max(1, Math.round((6.0 * sf.ritmo_mensual) - sf.inv_libre_cant));
-            titulo.innerText = '⚠️ APROBACIÓN PARCIAL (Reducir volumen)';
-            texto.innerText = `La compra solicitada de ${cant} unidades sobrepasa la cobertura óptima (alcanza ${cob_proj} meses). Se recomienda contra-ofertar la compra de ${sugerida} unidades (${formatMoney(sugerida * costo_u)}) para dejar la cobertura en un rango de ~6 meses.`;
-        }
+        if (box) box.className = VEREDICTO_BOX_CLASSES[sim.color] || VEREDICTO_BOX_CLASSES.slate;
+        document.getElementById('sim-veredicto-titulo').innerText = sim.veredicto;
+        document.getElementById('sim-argumento-texto').innerText = sim.argumento;
+    } catch (err) {
+        if (err.name !== 'AbortError') console.error('Error en simulación S&OP:', err);
     }
+}
+
+document.addEventListener('DOMContentLoaded', sincronizarCheckboxesYLabel);
 </script>
 {% endblock %}

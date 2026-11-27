@@ -1,125 +1,218 @@
 {% extends 'base.html' %}
 
-{% block title %}Centro de Sincronización de Datos S&amp;OP | Pesco S.A.{% endblock %}
+{% block title %}Centro de Sincronización Datalake | Pesco S.A.{% endblock %}
 
 {% block content %}
+<style>
+@keyframes shimmerBar {
+    0% { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+}
+.sync-bar-animated {
+    background: linear-gradient(90deg, #0ea5e9 0%, #22d3ee 45%, #38bdf8 60%, #0ea5e9 100%);
+    background-size: 200% 100%;
+    animation: shimmerBar 2s linear infinite;
+}
+.sync-bar-done {
+    background: linear-gradient(90deg, #10b981 0%, #34d399 100%);
+}
+.sync-bar-error {
+    background: linear-gradient(90deg, #ef4444 0%, #f43f5e 100%);
+}
+@keyframes terminalFadeIn {
+    from { opacity: 0; transform: translateY(3px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+.term-line {
+    animation: terminalFadeIn 0.16s ease-out forwards;
+}
+</style>
+
 <div class="w-full space-y-6">
 
     <!-- Header Section -->
-    <div
-        class="bg-white p-6 sm:p-7 rounded-3xl shadow-sm border border-slate-200 border-l-8 border-l-pesco-cyan flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+    <div class="bg-white p-6 sm:p-7 rounded-3xl shadow-sm border border-slate-200 border-l-8 border-l-pesco-cyan flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
             <div class="flex items-center gap-2 flex-wrap">
-                <span class="text-xs font-bold text-pesco-cyan uppercase tracking-wider">Centro de Control de Datos
-                    S&amp;OP</span>
-                <span
-                    class="bg-indigo-100 text-indigo-800 text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full border border-indigo-200">
-                    <i class="fa-solid fa-database mr-1"></i> Datalake SAP B1 Oficial
+                <span class="text-xs font-bold text-pesco-cyan uppercase tracking-wider">Centro de Control de Datos S&amp;OP</span>
+                <span class="bg-indigo-100 text-indigo-800 text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full border border-indigo-200">
+                    <i class="fa-solid fa-cloud-bolt mr-1"></i> AWS Athena · Datalake SAP B1
                 </span>
-                <span
-                    class="bg-emerald-100 text-emerald-800 text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full border border-emerald-200">
-                    <i class="fa-solid fa-bolt mr-1"></i> Ingesta Directa sin Subida Web
+                <span class="bg-emerald-100 text-emerald-800 text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full border border-emerald-200">
+                    <i class="fa-solid fa-terminal mr-1"></i> Streaming en Vivo
                 </span>
             </div>
-            <h1 class="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight mt-1">Sincronización de Datos &amp;
-                Pipeline S&amp;OP</h1>
-            <p class="text-sm text-slate-500 mt-0.5">Alimenta el catálogo maestro, inventario multi-bodega y ejecuta la
-                clasificación REPO y el balanceo DRP.</p>
+            <h1 class="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight mt-1">Sincronización Datalake &amp; Pipeline S&amp;OP</h1>
+            <p class="text-sm text-slate-500 mt-0.5">Actualiza directamente desde AWS Athena toda la base de datos: Maestro SAP, Stock 63 Bodegas, Calculadora de Repuestos y S&amp;OP Equipos (Todas las Marcas).</p>
         </div>
 
         <div class="flex flex-col gap-2 items-stretch">
-            <form method="POST" action="{% url 'data_ingestion:upload' %}" id="syncDatalakeForm">
-                {% csrf_token %}
-                <input type="hidden" name="action" value="sync_datalake">
-                <button type="submit" id="btnSyncDatalake"
-                    class="w-full bg-pesco-cyan hover:bg-pesco-darkcyan text-white text-xs font-bold px-7 py-4 rounded-full shadow-lg transition flex justify-center items-center gap-2 uppercase tracking-wider whitespace-nowrap">
-                    <i class="fa-solid fa-arrows-rotate fa-spin-pulse"></i> Sincronizar desde Datalake (TXT)
-                </button>
-            </form>
             {% if puede_athena %}
-            <!-- Solo DEBUG + administrador (athena_permitido); en producción no se renderiza -->
-            <form method="POST" action="{% url 'data_ingestion:upload' %}" id="syncAthenaForm"
-                onsubmit="var b=document.getElementById('btnSyncAthena'); b.disabled=true; b.classList.add('opacity-60','cursor-not-allowed'); return confirm('Se ejecutarán todas las consultas en Athena y se reemplazarán los TXT de data/. Puede tardar varios minutos. ¿Continuar?');">
+            <!-- Único botón oficial de sincronización: AWS Athena en vivo -->
+            <form method="POST" action="{% url 'data_ingestion:upload' %}" id="syncAthenaForm" onsubmit="return iniciarSyncEnVivo(event);">
                 {% csrf_token %}
                 <input type="hidden" name="action" value="sync_athena">
-                <button type="submit" id="btnSyncAthena"
-                    class="w-full bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold px-7 py-3 rounded-full shadow-md transition flex justify-center items-center gap-2 uppercase tracking-wider whitespace-nowrap">
-                    <i class="fa-solid fa-cloud-bolt"></i> Sincronizar desde Athena (boto3)
-                    <span class="bg-slate-900 text-white text-[9px] px-1.5 py-0.5 rounded-full">DEBUG · ADMIN</span>
+                <button type="submit" id="btnSyncAthena" class="w-full bg-amber-500 hover:bg-amber-600 active:scale-[0.98] text-white text-xs font-black px-7 py-4 rounded-full shadow-lg transition flex justify-center items-center gap-2.5 uppercase tracking-wider whitespace-nowrap cursor-pointer">
+                    <i id="btnSyncIcon" class="fa-solid fa-cloud-bolt text-sm"></i>
+                    <span id="btnSyncLabel">Sincronizar desde Athena</span>
+                    <span class="bg-slate-900/90 text-amber-300 text-[9px] px-2 py-0.5 rounded-full font-mono">LIVE</span>
                 </button>
             </form>
+            {% else %}
+            <div class="px-4 py-3 rounded-2xl bg-slate-50 border border-slate-200 text-xs text-slate-600 flex items-center gap-2">
+                <i class="fa-solid fa-lock text-slate-400"></i>
+                <span>Sincronización directa con Athena habilitada solo para administradores en entorno autorizado.</span>
+            </div>
             {% endif %}
         </div>
     </div>
 
+    <!-- ═══════════════════════════════════════════════════════════════════
+         CONSOLA ANIMADA DE SINCRONIZACIÓN EN VIVO (ATHEHA -> BD -> S&OP)
+         ═══════════════════════════════════════════════════════════════════ -->
+    {% if puede_athena %}
+    <div id="liveSyncPanel" class="{% if not sync_en_curso %}hidden {% endif %}bg-white rounded-3xl shadow-md border border-slate-200 overflow-hidden transition-all">
+        <!-- Cabecera de Progreso + Stepper 3 Fases -->
+        <div class="p-6 border-b border-slate-100 bg-slate-50/70 space-y-5">
+            <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
+                <div class="flex items-center gap-3">
+                    <div id="syncSpinnerWrap" class="w-11 h-11 rounded-2xl bg-cyan-100 text-pesco-cyan flex items-center justify-center text-lg border border-cyan-200 shadow-xs">
+                        <i id="syncPhaseIcon" class="fa-solid fa-arrows-rotate fa-spin"></i>
+                    </div>
+                    <div>
+                        <div class="flex items-center gap-2">
+                            <span id="syncStatusBadge" class="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase bg-cyan-100 text-cyan-800 border border-cyan-200 animate-pulse">Sincronizando</span>
+                            <span id="syncTimer" class="font-mono text-xs font-bold text-slate-500">00:00</span>
+                        </div>
+                        <h2 id="syncCurrentStep" class="text-sm sm:text-base font-black text-slate-900 mt-0.5">Preparando conexión con AWS Athena...</h2>
+                    </div>
+                </div>
+                <div class="flex items-center gap-3">
+                    <span id="syncPercent" class="text-3xl font-black font-mono text-pesco-cyan">0%</span>
+                </div>
+            </div>
+
+            <!-- Barra de progreso fluida -->
+            <div class="w-full h-3.5 bg-slate-200 rounded-full overflow-hidden shadow-inner">
+                <div id="syncProgressBar" class="h-full rounded-full sync-bar-animated transition-all duration-500 ease-out" style="width: 3%;"></div>
+            </div>
+
+            <!-- Stepper de 3 Fases -->
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                <div id="step-athena" class="p-3 rounded-2xl border border-slate-200 bg-white flex items-center gap-3 transition-all">
+                    <div class="step-dot w-8 h-8 rounded-xl bg-slate-100 text-slate-400 flex items-center justify-center font-black shrink-0"><i class="fa-solid fa-cloud-arrow-down"></i></div>
+                    <div>
+                        <div class="font-black text-slate-800">1. Consultas AWS Athena</div>
+                        <div class="text-[11px] text-slate-400">Extracción Datalake SAP B1</div>
+                    </div>
+                </div>
+                <div id="step-ingesta" class="p-3 rounded-2xl border border-slate-200 bg-white flex items-center gap-3 transition-all">
+                    <div class="step-dot w-8 h-8 rounded-xl bg-slate-100 text-slate-400 flex items-center justify-center font-black shrink-0"><i class="fa-solid fa-database"></i></div>
+                    <div>
+                        <div class="font-black text-slate-800">2. Ingesta a Base de Datos</div>
+                        <div class="text-[11px] text-slate-400">Maestro, Stock 63 bod, OF/PC/OC</div>
+                    </div>
+                </div>
+                <div id="step-calculo" class="p-3 rounded-2xl border border-slate-200 bg-white flex items-center gap-3 transition-all">
+                    <div class="step-dot w-8 h-8 rounded-xl bg-slate-100 text-slate-400 flex items-center justify-center font-black shrink-0"><i class="fa-solid fa-gears"></i></div>
+                    <div>
+                        <div class="font-black text-slate-800">3. Motor S&amp;OP &amp; Calculadora</div>
+                        <div class="text-[11px] text-slate-400">Repuestos + S&amp;OP Equipos</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Consola de Terminal en Vivo -->
+        <div class="bg-slate-950 text-slate-200 font-mono text-xs">
+            <div class="px-4 py-2.5 bg-slate-900 border-b border-slate-800 flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                    <span class="w-3 h-3 rounded-full bg-rose-500 inline-block"></span>
+                    <span class="w-3 h-3 rounded-full bg-amber-400 inline-block"></span>
+                    <span class="w-3 h-3 rounded-full bg-emerald-500 inline-block"></span>
+                    <span class="ml-2 text-[11px] text-slate-400 font-bold">terminal · athena-sync (pesco_sbo_pescousd)</span>
+                </div>
+                <div class="flex items-center gap-3 text-[11px]">
+                    <span id="termLiveDot" class="flex items-center gap-1.5 text-emerald-400 font-bold">
+                        <span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping inline-block"></span> LIVE
+                    </span>
+                    <span id="termLineCount" class="text-slate-500">0 líneas</span>
+                    <button type="button" onclick="copiarLogTerminal()" class="text-slate-400 hover:text-white px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 cursor-pointer transition">
+                        <i class="fa-regular fa-copy mr-1"></i>Copiar
+                    </button>
+                </div>
+            </div>
+            <div id="terminalOutput" class="p-4 h-72 overflow-y-auto space-y-1 leading-relaxed selection:bg-cyan-500/30">
+                <div class="text-slate-500 italic">Esperando salida de la terminal...</div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
     <!-- DB Stats Row -->
     <div class="grid grid-cols-2 md:grid-cols-6 gap-4">
-        <div class="bg-white rounded-2xl border border-slate-200 p-4 text-center shadow-sm">
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 text-center shadow-sm transition-all" id="card-stat-skus">
             <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Catálogo SKUs</div>
-            <div class="text-2xl sm:text-3xl font-black text-slate-900 mt-1 font-mono">{{ db_stats.total_skus|default:"0" }}</div>
+            <div id="stat-skus" class="text-2xl sm:text-3xl font-black text-slate-900 mt-1 font-mono">{{ db_stats.total_skus|default:"0" }}</div>
             <span class="text-[10px] text-emerald-600 font-bold block mt-0.5">Artículos Activos</span>
         </div>
-        <div class="bg-white rounded-2xl border border-slate-200 p-4 text-center shadow-sm">
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 text-center shadow-sm transition-all" id="card-stat-ofs">
             <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Historial OFs</div>
-            <div class="text-2xl sm:text-3xl font-black text-slate-900 mt-1 font-mono">{{ db_stats.total_ofs|default:"0" }}</div>
+            <div id="stat-ofs" class="text-2xl sm:text-3xl font-black text-slate-900 mt-1 font-mono">{{ db_stats.total_ofs|default:"0" }}</div>
             <span class="text-[10px] text-pesco-cyan font-bold block mt-0.5">Consumos Taller</span>
         </div>
-        <div class="bg-white rounded-2xl border border-slate-200 p-4 text-center shadow-sm">
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 text-center shadow-sm transition-all" id="card-stat-pedidos">
             <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Historial Ventas</div>
-            <div class="text-2xl sm:text-3xl font-black text-slate-900 mt-1 font-mono">{{ db_stats.total_pedidos|default:"0" }}</div>
+            <div id="stat-pedidos" class="text-2xl sm:text-3xl font-black text-slate-900 mt-1 font-mono">{{ db_stats.total_pedidos|default:"0" }}</div>
             <span class="text-[10px] text-indigo-600 font-bold block mt-0.5">Despachos Clientes</span>
         </div>
-        <div class="bg-white rounded-2xl border border-slate-200 p-4 text-center shadow-sm">
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 text-center shadow-sm transition-all" id="card-stat-clasif">
             <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Clasificaciones</div>
-            <div class="text-2xl sm:text-3xl font-black text-slate-900 mt-1 font-mono">{{ db_stats.total_clasificaciones|default:"0" }}</div>
+            <div id="stat-clasif" class="text-2xl sm:text-3xl font-black text-slate-900 mt-1 font-mono">{{ db_stats.total_clasificaciones|default:"0" }}</div>
             <span class="text-[10px] text-amber-600 font-bold block mt-0.5">Matriz Slim4+REPO</span>
         </div>
-        <div class="bg-white rounded-2xl border border-slate-200 p-4 text-center shadow-sm">
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 text-center shadow-sm transition-all" id="card-stat-stock">
             <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Stock 63 Bodegas</div>
-            <div class="text-2xl sm:text-3xl font-black text-slate-900 mt-1 font-mono">{{ db_stats.total_stock_actual|default:"0" }}</div>
+            <div id="stat-stock" class="text-2xl sm:text-3xl font-black text-slate-900 mt-1 font-mono">{{ db_stats.total_stock_actual|default:"0" }}</div>
             <span class="text-[10px] text-teal-600 font-bold block mt-0.5">Ubicaciones SAP</span>
         </div>
-        <div class="bg-slate-900 rounded-2xl border border-slate-700 p-4 text-center shadow-sm">
+        <div class="bg-slate-900 rounded-2xl border border-slate-700 p-4 text-center shadow-sm transition-all" id="card-stat-proy">
             <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Proyecciones DRP</div>
-            <div class="text-2xl sm:text-3xl font-black text-white mt-1 font-mono">{{ db_stats.total_proyecciones|default:"0" }}</div>
+            <div id="stat-proy" class="text-2xl sm:text-3xl font-black text-white mt-1 font-mono">{{ db_stats.total_proyecciones|default:"0" }}</div>
             <span class="text-[10px] text-emerald-400 font-bold block mt-0.5">9 Bodegas S&amp;OP</span>
         </div>
     </div>
 
     <!-- ═══════════════════════════════════════════════════════════
-         TABLA 1: ARCHIVOS OFICIALES DATALAKE SAP B1 (TXT)
+         MONITOR DE CACHÉ LOCAL EN CARPETA data/ (LEGACY TXT)
          ═══════════════════════════════════════════════════════════ -->
     <div class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
-        <div
-            class="p-6 border-b border-slate-100 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 bg-gradient-to-r from-slate-50 to-indigo-50/30">
+        <div class="p-6 border-b border-slate-100 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 bg-slate-50/70">
             <div>
-                <h3 class="text-base font-black text-slate-900 flex items-center gap-2">
-                    <i class="fa-solid fa-cloud-arrow-down text-indigo-600"></i> Pipeline Oficial Datalake Pesco (AWS
-                    Athena / SAP B1)
-                </h3>
-                <p class="text-xs text-slate-500 mt-0.5">Archivos TXT delimitados por pipes generados desde las
-                    consultas optimizadas en el Datalake (carpeta <code
-                        class="font-mono bg-slate-100 px-1 py-0.5 rounded">data/</code>).</p>
+                <div class="flex items-center gap-2">
+                    <h3 class="text-base font-black text-slate-900 flex items-center gap-2">
+                        <i class="fa-solid fa-folder-open text-indigo-600"></i> Caché Local de Extracción (carpeta <code class="font-mono text-xs bg-slate-200/70 px-1.5 py-0.5 rounded">data/</code>)
+                    </h3>
+                    <span class="px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-slate-200 text-slate-600">Carga manual TXT obsoleta</span>
+                </div>
+                <p class="text-xs text-slate-500 mt-0.5">Respaldo técnico en <code class="font-mono bg-slate-100 px-1 py-0.5 rounded">data/</code> refrescado automáticamente en cada sincronización desde AWS Athena.</p>
             </div>
-            <span
-                class="text-xs {% if all_datalake_exist %}bg-emerald-100 text-emerald-800 border-emerald-300{% else %}bg-amber-100 text-amber-800 border-amber-300{% endif %} border font-bold px-3 py-1 rounded-full flex items-center gap-1.5">
-                <i
-                    class="fa-solid {% if all_datalake_exist %}fa-circle-check text-emerald-600{% else %}fa-triangle-exclamation text-amber-600{% endif %}"></i>
-                {% if all_datalake_exist %}5 Archivos Listos{% else %}Archivos Pendientes{% endif %}
+            <span class="text-xs {% if all_datalake_exist %}bg-emerald-100 text-emerald-800 border-emerald-300{% else %}bg-amber-100 text-amber-800 border-amber-300{% endif %} border font-bold px-3 py-1 rounded-full flex items-center gap-1.5">
+                <i class="fa-solid {% if all_datalake_exist %}fa-circle-check text-emerald-600{% else %}fa-triangle-exclamation text-amber-600{% endif %}"></i>
+                {% if all_datalake_exist %}Archivos Actualizados{% else %}Pendiente de Sync{% endif %}
             </span>
         </div>
 
         <div class="overflow-x-auto">
             <table class="w-full text-left text-sm">
-                <thead
-                    class="bg-slate-50 text-slate-500 uppercase text-[10px] font-bold tracking-wider border-b border-slate-200">
+                <thead class="bg-slate-50 text-slate-500 uppercase text-[10px] font-bold tracking-wider border-b border-slate-200">
                     <tr>
                         <th class="py-3.5 px-5">Estado</th>
-                        <th class="py-3.5 px-4">Conjunto de Datos (Datalake)</th>
-                        <th class="py-3.5 px-4">Archivo TXT en data/</th>
-                        <th class="py-3.5 px-4">Destino Sistema</th>
+                        <th class="py-3.5 px-4">Conjunto de Datos (Athena)</th>
+                        <th class="py-3.5 px-4">Archivo en data/</th>
+                        <th class="py-3.5 px-4">Destino BD</th>
                         <th class="py-3.5 px-4 text-center">Tamaño</th>
-                        <th class="py-3.5 px-5 text-center">Última Modificación</th>
+                        <th class="py-3.5 px-5 text-center">Última Extracción</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-slate-100 font-medium text-xs">
@@ -127,14 +220,12 @@
                     <tr class="hover:bg-slate-50 transition">
                         <td class="py-3.5 px-5">
                             {% if f.exists %}
-                            <span
-                                class="bg-emerald-100 text-emerald-800 border border-emerald-200 px-2.5 py-1 rounded-full font-black text-[10px] inline-flex items-center gap-1">
+                            <span class="bg-emerald-100 text-emerald-800 border border-emerald-200 px-2.5 py-1 rounded-full font-black text-[10px] inline-flex items-center gap-1">
                                 <i class="fa-solid fa-circle-check"></i> DISPONIBLE
                             </span>
                             {% else %}
-                            <span
-                                class="bg-rose-100 text-rose-800 border border-rose-200 px-2.5 py-1 rounded-full font-black text-[10px] inline-flex items-center gap-1">
-                                <i class="fa-solid fa-circle-xmark"></i> NO DETECTADO
+                            <span class="bg-rose-100 text-rose-800 border border-rose-200 px-2.5 py-1 rounded-full font-black text-[10px] inline-flex items-center gap-1">
+                                <i class="fa-solid fa-circle-xmark"></i> PENDIENTE
                             </span>
                             {% endif %}
                         </td>
@@ -145,15 +236,9 @@
                         <td class="py-3.5 px-4 font-mono text-slate-700 font-bold text-xs">
                             <i class="fa-solid fa-file-lines text-indigo-500 mr-1.5"></i>{{ f.filename }}
                         </td>
-                        <td class="py-3.5 px-4 font-mono text-[11px] text-slate-600">
-                            {{ f.target_model }}
-                        </td>
-                        <td class="py-3.5 px-4 text-center font-mono font-bold text-slate-700">
-                            {% if f.exists %}{{ f.size_mb }} MB{% else %}—{% endif %}
-                        </td>
-                        <td class="py-3.5 px-5 text-center text-slate-500">
-                            {{ f.mod_time }}
-                        </td>
+                        <td class="py-3.5 px-4 font-mono text-[11px] text-slate-600">{{ f.target_model }}</td>
+                        <td class="py-3.5 px-4 text-center font-mono font-bold text-slate-700">{% if f.exists %}{{ f.size_mb }} MB{% else %}—{% endif %}</td>
+                        <td class="py-3.5 px-5 text-center text-slate-500">{{ f.mod_time }}</td>
                     </tr>
                     {% endfor %}
                 </tbody>
@@ -162,4 +247,223 @@
     </div>
 
 </div>
+
+{% if puede_athena %}
+<script>
+const URL_SYNC_START = "{% url 'data_ingestion:sync_athena_start' %}";
+const URL_SYNC_STATUS = "{% url 'data_ingestion:sync_athena_status' %}";
+const LINE_COLORS = {
+    phase: 'text-cyan-400 font-bold',
+    ok: 'text-emerald-400 font-bold',
+    warn: 'text-amber-300',
+    error: 'text-rose-400 font-bold',
+    info: 'text-slate-300',
+};
+const PHASES_ORDER = ['athena', 'ingesta', 'calculo'];
+
+let pollTimer = null;
+let nextLogIndex = 0;
+let totalLinesRendered = 0;
+
+function formatElapsed(sec) {
+    const s = Math.max(0, Math.floor(sec || 0));
+    const mm = String(Math.floor(s / 60)).padStart(2, '0');
+    const ss = String(s % 60).padStart(2, '0');
+    return `${mm}:${ss}`;
+}
+
+function getCsrfToken() {
+    return document.querySelector('#syncAthenaForm input[name="csrfmiddlewaretoken"]')?.value || '';
+}
+
+function setButtonLoading(isLoading) {
+    const btn = document.getElementById('btnSyncAthena');
+    const icon = document.getElementById('btnSyncIcon');
+    const label = document.getElementById('btnSyncLabel');
+    if (!btn) return;
+    btn.disabled = isLoading;
+    btn.classList.toggle('opacity-70', isLoading);
+    btn.classList.toggle('cursor-not-allowed', isLoading);
+    if (icon) icon.className = isLoading ? 'fa-solid fa-arrows-rotate fa-spin text-sm' : 'fa-solid fa-cloud-bolt text-sm';
+    if (label) label.innerText = isLoading ? 'Sincronizando Athena...' : 'Sincronizar desde Athena';
+}
+
+function renderStepper(phase, status) {
+    const curIdx = status === 'done' ? 99 : PHASES_ORDER.indexOf(phase);
+    PHASES_ORDER.forEach((p, idx) => {
+        const el = document.getElementById('step-' + p);
+        if (!el) return;
+        const dot = el.querySelector('.step-dot');
+        el.className = 'p-3 rounded-2xl border flex items-center gap-3 transition-all ';
+        if (idx < curIdx) {
+            el.className += 'border-emerald-200 bg-emerald-50/70';
+            if (dot) {
+                dot.className = 'step-dot w-8 h-8 rounded-xl bg-emerald-500 text-white flex items-center justify-center font-black shrink-0';
+                dot.innerHTML = '<i class="fa-solid fa-check"></i>';
+            }
+        } else if (idx === curIdx && status === 'running') {
+            el.className += 'border-cyan-300 bg-cyan-50 shadow-xs';
+            if (dot) {
+                dot.className = 'step-dot w-8 h-8 rounded-xl bg-pesco-cyan text-white flex items-center justify-center font-black shrink-0';
+                dot.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+            }
+        } else if (idx === curIdx && status === 'error') {
+            el.className += 'border-rose-300 bg-rose-50';
+            if (dot) {
+                dot.className = 'step-dot w-8 h-8 rounded-xl bg-rose-500 text-white flex items-center justify-center font-black shrink-0';
+                dot.innerHTML = '<i class="fa-solid fa-xmark"></i>';
+            }
+        } else {
+            el.className += 'border-slate-200 bg-white opacity-70';
+        }
+    });
+}
+
+function appendTerminalLines(lines) {
+    const box = document.getElementById('terminalOutput');
+    if (!box || !lines.length) return;
+    if (totalLinesRendered === 0) box.innerHTML = '';
+
+    const nearBottom = (box.scrollHeight - box.scrollTop - box.clientHeight) < 80;
+    const frag = document.createDocumentFragment();
+    for (const item of lines) {
+        const row = document.createElement('div');
+        row.className = 'term-line flex items-start gap-2.5';
+        const ts = document.createElement('span');
+        ts.className = 'text-slate-600 select-none shrink-0';
+        ts.textContent = item.ts;
+        const msg = document.createElement('span');
+        msg.className = (LINE_COLORS[item.level] || LINE_COLORS.info) + ' break-all';
+        msg.textContent = item.text;
+        row.appendChild(ts);
+        row.appendChild(msg);
+        frag.appendChild(row);
+        totalLinesRendered += 1;
+    }
+    box.appendChild(frag);
+    document.getElementById('termLineCount').innerText = `${totalLinesRendered} líneas`;
+    if (nearBottom) box.scrollTop = box.scrollHeight;
+}
+
+function actualizarStatsBD(stats) {
+    if (!stats) return;
+    const map = {
+        'stat-skus': stats.total_skus,
+        'stat-ofs': stats.total_ofs,
+        'stat-pedidos': stats.total_pedidos,
+        'stat-clasif': stats.total_clasificaciones,
+        'stat-stock': stats.total_stock_actual,
+        'stat-proy': stats.total_proyecciones,
+    };
+    Object.entries(map).forEach(([id, val]) => {
+        const el = document.getElementById(id);
+        if (el && val !== undefined) {
+            el.innerText = val;
+            el.parentElement?.classList.add('ring-2', 'ring-emerald-400');
+            setTimeout(() => el.parentElement?.classList.remove('ring-2', 'ring-emerald-400'), 2500);
+        }
+    });
+}
+
+function aplicarEstado(data) {
+    document.getElementById('liveSyncPanel')?.classList.remove('hidden');
+    document.getElementById('syncPercent').innerText = `${data.progress || 0}%`;
+    document.getElementById('syncTimer').innerText = formatElapsed(data.elapsed_seconds);
+    if (data.current_step) document.getElementById('syncCurrentStep').innerText = data.current_step;
+
+    const bar = document.getElementById('syncProgressBar');
+    if (bar) {
+        bar.style.width = `${Math.max(3, data.progress || 0)}%`;
+        bar.className = 'h-full rounded-full transition-all duration-500 ease-out ' + (
+            data.status === 'done' ? 'sync-bar-done' : data.status === 'error' ? 'sync-bar-error' : 'sync-bar-animated'
+        );
+    }
+
+    renderStepper(data.phase, data.status);
+    if (data.logs && data.logs.length) appendTerminalLines(data.logs);
+    if (typeof data.next_index === 'number') nextLogIndex = data.next_index;
+
+    const badge = document.getElementById('syncStatusBadge');
+    const icon = document.getElementById('syncPhaseIcon');
+    const wrap = document.getElementById('syncSpinnerWrap');
+    const liveDot = document.getElementById('termLiveDot');
+
+    if (data.status === 'done') {
+        detenerPolling();
+        setButtonLoading(false);
+        if (badge) { badge.className = 'px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase bg-emerald-100 text-emerald-800 border border-emerald-200'; badge.innerText = 'Completado'; }
+        if (icon) icon.className = 'fa-solid fa-circle-check';
+        if (wrap) wrap.className = 'w-11 h-11 rounded-2xl bg-emerald-100 text-emerald-600 flex items-center justify-center text-lg border border-emerald-200 shadow-xs';
+        if (liveDot) liveDot.innerHTML = '<span class="w-2 h-2 rounded-full bg-emerald-400 inline-block"></span> LISTO';
+        actualizarStatsBD(data.db_stats);
+    } else if (data.status === 'error') {
+        detenerPolling();
+        setButtonLoading(false);
+        if (badge) { badge.className = 'px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase bg-rose-100 text-rose-800 border border-rose-200'; badge.innerText = 'Error'; }
+        if (icon) icon.className = 'fa-solid fa-triangle-exclamation';
+        if (wrap) wrap.className = 'w-11 h-11 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center text-lg border border-rose-200 shadow-xs';
+        if (liveDot) liveDot.innerHTML = '<span class="w-2 h-2 rounded-full bg-rose-500 inline-block"></span> ERROR';
+    }
+}
+
+function detenerPolling() {
+    if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+}
+
+async function consultarEstado() {
+    try {
+        const res = await fetch(`${URL_SYNC_STATUS}?since=${nextLogIndex}`, { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+        if (!res.ok) return;
+        const data = await res.json();
+        aplicarEstado(data);
+    } catch (err) {
+        console.error('Error consultando estado Athena:', err);
+    }
+}
+
+async function iniciarSyncEnVivo(ev) {
+    ev.preventDefault();
+    if (!confirm('Se ejecutarán todas las consultas en AWS Athena y se actualizará toda la plataforma (Repuestos + S&OP Equipos). ¿Continuar?')) {
+        return false;
+    }
+    nextLogIndex = 0;
+    totalLinesRendered = 0;
+    document.getElementById('terminalOutput').innerHTML = '<div class="text-cyan-400">Iniciando conexión con AWS Athena...</div>';
+    document.getElementById('liveSyncPanel')?.classList.remove('hidden');
+    setButtonLoading(true);
+
+    try {
+        const res = await fetch(URL_SYNC_START, {
+            method: 'POST',
+            headers: { 'X-CSRFToken': getCsrfToken(), 'X-Requested-With': 'XMLHttpRequest' },
+        });
+        const data = await res.json();
+        if (!res.ok) {
+            aplicarEstado({ status: 'error', phase: 'error', progress: 100, current_step: data.error || 'No autorizado', logs: [{ ts: '--:--:--', text: data.error || 'Error', level: 'error' }] });
+            return false;
+        }
+        aplicarEstado(data);
+        detenerPolling();
+        pollTimer = setInterval(consultarEstado, 600);
+    } catch (err) {
+        aplicarEstado({ status: 'error', phase: 'error', progress: 100, current_step: String(err), logs: [{ ts: '--:--:--', text: String(err), level: 'error' }] });
+    }
+    return false;
+}
+
+function copiarLogTerminal() {
+    const text = document.getElementById('terminalOutput')?.innerText || '';
+    navigator.clipboard?.writeText(text);
+}
+
+// Si el usuario recarga la página mientras la sincronización sigue corriendo, reconectar automáticamente
+{% if sync_en_curso %}
+window.addEventListener('DOMContentLoaded', () => {
+    setButtonLoading(true);
+    consultarEstado();
+    pollTimer = setInterval(consultarEstado, 600);
+});
+{% endif %}
+</script>
+{% endif %}
 {% endblock %}
